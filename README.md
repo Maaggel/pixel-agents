@@ -11,8 +11,11 @@ This is the source code for the free [Pixel Agents extension for VS Code](https:
 
 ## Features
 
+- **Auto-detected agents** — agents are detected from your project's `.claude/agents/` folder and `CLAUDE.md`, appearing as idle characters that activate when a terminal starts
 - **One agent, one character** — every Claude Code terminal gets its own animated character
 - **Live activity tracking** — characters animate based on what the agent is actually doing (writing, reading, running commands)
+- **Cross-window sync** — agents from other VS Code windows appear in your office with a colored project indicator dot
+- **Open in editor tab** — run `Pixel Agents: Open in Editor Tab` from the command palette for a full-size view
 - **Office layout editor** — design your office with floors, walls, and furniture using a built-in editor
 - **Speech bubbles** — visual indicators when an agent is waiting for input or needs permission
 - **Sound notifications** — optional chime when an agent finishes its turn
@@ -48,10 +51,19 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 ### Usage
 
 1. Open the **Pixel Agents** panel (it appears in the bottom panel area alongside your terminal)
-2. Click **+ Agent** to spawn a new Claude Code terminal and its character
-3. Start coding with Claude — watch the character react in real time
+2. If your project has a `.claude/agents/` folder or a `CLAUDE.md` file, agents are detected automatically and appear as idle characters
+3. Start a Claude Code terminal — the corresponding character activates and tracks what the agent is doing in real time
 4. Click a character to select it, then click a seat to reassign it
 5. Click **Layout** to open the office editor and customize your space
+
+### Viewing Options
+
+- **Panel view** — the default, shown in the bottom panel alongside your terminal
+- **Editor tab** — run **Pixel Agents: Open in Editor Tab** from the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) for a larger, full-size view in an editor tab
+
+### Cross-Window Sync
+
+When you have multiple VS Code windows open, agents from other windows automatically appear in your office. Each project gets a colored dot on the nametag so you can tell which window an agent belongs to. Sync happens via `~/.pixel-agents/sync/` — no server or configuration needed.
 
 ## Layout Editor
 

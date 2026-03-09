@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nextId": 2,
+  "agents": {
+    "main": {
+      "id": 1,
+      "name": "Main",
+      "palette": 0,
+      "hueShift": 0,
+      "seatId": null
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { OfficeState } from './office/engine/officeState.js'
 import { OfficeCanvas } from './office/components/OfficeCanvas.js'
 import { ToolOverlay } from './office/components/ToolOverlay.js'
@@ -8,7 +8,7 @@ import { EditTool } from './office/types.js'
 import { isRotatable } from './office/layout/furnitureCatalog.js'
 import { vscode } from './vscodeApi.js'
 import { useExtensionMessages } from './hooks/useExtensionMessages.js'
-import { PULSE_ANIMATION_DURATION_SEC } from './constants.js'
+import { PULSE_ANIMATION_DURATION_SEC, CHAR_VISUAL_REPORT_INTERVAL_MS } from './constants.js'
 import { useEditorActions } from './hooks/useEditorActions.js'
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
 import { ZoomControls } from './components/ZoomControls.js'
@@ -121,11 +121,38 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, showNametags, setShowNametags } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+
+  // Report local character positions to the extension for cross-window sync
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const os = officeStateRef.current
+      if (!os) return
+      const states: Record<number, { x: number; y: number; tileCol: number; tileRow: number; state: string; dir: number; frame: number; moveProgress: number; path?: Array<{ col: number; row: number }> }> = {}
+      for (const ch of os.characters.values()) {
+        if (ch.isSubagent || ch.isRemote) continue
+        states[ch.id] = {
+          x: ch.x, y: ch.y,
+          tileCol: ch.tileCol, tileRow: ch.tileRow,
+          state: ch.state, dir: ch.dir,
+          frame: ch.frame, moveProgress: ch.moveProgress,
+          path: ch.path.length > 0 ? ch.path : undefined,
+        }
+      }
+      vscode.postMessage({ type: 'characterVisualStates', states })
+    }, CHAR_VISUAL_REPORT_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [])
 
   const [isDebugMode, setIsDebugMode] = useState(false)
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
+
+  const handleToggleNametags = useCallback(() => {
+    const newVal = !showNametags
+    setShowNametags(newVal)
+    vscode.postMessage({ type: 'setShowNametags', enabled: newVal })
+  }, [showNametags, setShowNametags])
 
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id })
@@ -146,13 +173,24 @@ function App() {
     editor.handleToggleEditMode,
   )
 
-  const handleCloseAgent = useCallback((id: number) => {
-    vscode.postMessage({ type: 'closeAgent', id })
+  const handleShuffleAgent = useCallback((id: number) => {
+    const os = getOfficeState()
+    os.shuffleAgentLook(id)
+    // Persist the new palette
+    const seats: Record<number, { palette: number; hueShift: number; seatId: string | null }> = {}
+    for (const ch of os.characters.values()) {
+      if (ch.isSubagent) continue
+      seats[ch.id] = { palette: ch.palette, hueShift: ch.hueShift, seatId: ch.seatId }
+    }
+    vscode.postMessage({ type: 'saveAgentSeats', seats })
   }, [])
 
   const handleClick = useCallback((agentId: number) => {
-    // If clicked agent is a sub-agent, focus the parent's terminal instead
     const os = getOfficeState()
+    // Remote agents cannot be focused (no local terminal)
+    const ch = os.characters.get(agentId)
+    if (ch?.isRemote) return
+    // If clicked agent is a sub-agent, focus the parent's terminal instead
     const meta = os.subagentMeta.get(agentId)
     const focusId = meta ? meta.parentAgentId : agentId
     vscode.postMessage({ type: 'focusAgent', id: focusId })
@@ -208,6 +246,7 @@ function App() {
         zoom={editor.zoom}
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
+        showNametags={showNametags}
       />
 
       <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
@@ -225,11 +264,11 @@ function App() {
 
       <BottomToolbar
         isEditMode={editor.isEditMode}
-        onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
         isDebugMode={isDebugMode}
         onToggleDebugMode={handleToggleDebugMode}
-        workspaceFolders={workspaceFolders}
+        showNametags={showNametags}
+        onToggleNametags={handleToggleNametags}
       />
 
       {editor.isEditMode && editor.isDirty && (
@@ -272,6 +311,7 @@ function App() {
             selectedFurnitureType={editorState.selectedFurnitureType}
             selectedFurnitureUid={selUid}
             selectedFurnitureColor={selColor}
+            selectedZoneType={editorState.selectedZoneType}
             floorColor={editorState.floorColor}
             wallColor={editorState.wallColor}
             onToolChange={editor.handleToolChange}
@@ -280,6 +320,7 @@ function App() {
             onWallColorChange={editor.handleWallColorChange}
             onSelectedFurnitureColorChange={editor.handleSelectedFurnitureColorChange}
             onFurnitureTypeChange={editor.handleFurnitureTypeChange}
+            onZoneTypeChange={editor.handleZoneTypeChange}
             loadedAssets={loadedAssets}
           />
         )
@@ -287,13 +328,13 @@ function App() {
 
       <ToolOverlay
         officeState={officeState}
-        agents={agents}
         agentTools={agentTools}
+        subagentTools={subagentTools}
         subagentCharacters={subagentCharacters}
         containerRef={containerRef}
         zoom={editor.zoom}
         panRef={editor.panRef}
-        onCloseAgent={handleCloseAgent}
+        onShuffleAgent={handleShuffleAgent}
       />
 
       {isDebugMode && (

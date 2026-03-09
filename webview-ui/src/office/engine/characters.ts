@@ -6,6 +6,8 @@ import {
   WALK_SPEED_PX_PER_SEC,
   WALK_FRAME_DURATION_SEC,
   TYPE_FRAME_DURATION_SEC,
+  BUILD_FRAME_DURATION_SEC,
+  SIT_WAIT_FRAME_DURATION_SEC,
   WANDER_PAUSE_MIN_SEC,
   WANDER_PAUSE_MAX_SEC,
   WANDER_MOVES_BEFORE_REST_MIN,
@@ -17,9 +19,25 @@ import {
 /** Tools that show reading animation instead of typing */
 const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'])
 
+/** Tools that show build/run animation instead of typing */
+const BUILD_TOOLS = new Set(['Bash'])
+
+/** Returns true for any state where the character is seated */
+export function isSittingState(state: CharacterState): boolean {
+  return state === CharacterState.TYPE
+    || state === CharacterState.SIT_IDLE
+    || state === CharacterState.SIT_WAIT
+    || state === CharacterState.BUILD
+}
+
 export function isReadingTool(tool: string | null): boolean {
   if (!tool) return false
   return READING_TOOLS.has(tool)
+}
+
+export function isBuildTool(tool: string | null): boolean {
+  if (!tool) return false
+  return BUILD_TOOLS.has(tool)
 }
 
 /** Pixel center of a tile */
@@ -31,7 +49,7 @@ function tileCenter(col: number, row: number): { x: number; y: number } {
 }
 
 /** Direction from one tile to an adjacent tile */
-function directionBetween(fromCol: number, fromRow: number, toCol: number, toRow: number): Direction {
+export function directionBetween(fromCol: number, fromRow: number, toCol: number, toRow: number): Direction {
   const dc = toCol - fromCol
   const dr = toRow - fromRow
   if (dc > 0) return Direction.RIGHT
@@ -68,11 +86,13 @@ export function createCharacter(
     wanderTimer: 0,
     wanderCount: 0,
     wanderLimit: randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX),
-    isActive: true,
+    isActive: false,
+    isWaiting: false,
     seatId,
     bubbleType: null,
     bubbleTimer: 0,
     seatTimer: 0,
+    idleZoneTimer: 0,
     isSubagent: false,
     parentAgentId: null,
     matrixEffect: null,
@@ -97,19 +117,103 @@ export function updateCharacter(
         ch.frameTimer -= TYPE_FRAME_DURATION_SEC
         ch.frame = (ch.frame + 1) % 2
       }
-      // If no longer active, stand up and start wandering (after seatTimer expires)
-      if (!ch.isActive) {
-        if (ch.seatTimer > 0) {
-          ch.seatTimer -= dt
-          break
-        }
-        ch.seatTimer = 0 // clear sentinel
-        ch.state = CharacterState.IDLE
+      // Switch to BUILD state if current tool is a build tool
+      if (ch.isActive && isBuildTool(ch.currentTool)) {
+        ch.state = CharacterState.BUILD
         ch.frame = 0
         ch.frameTimer = 0
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
-        ch.wanderCount = 0
-        ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
+        break
+      }
+      // If no longer active, transition to sitting-wait or sitting-idle
+      if (!ch.isActive) {
+        if (ch.isWaiting) {
+          ch.state = CharacterState.SIT_WAIT
+          ch.frame = 0
+          ch.frameTimer = 0
+        } else {
+          ch.state = CharacterState.SIT_IDLE
+          ch.frame = 0
+          ch.frameTimer = 0
+          // Preserve seatTimer if already set (e.g. by idle zone delay)
+          if (ch.seatTimer <= 0) ch.seatTimer = 0
+        }
+      }
+      break
+    }
+
+    case CharacterState.BUILD: {
+      if (ch.frameTimer >= BUILD_FRAME_DURATION_SEC) {
+        ch.frameTimer -= BUILD_FRAME_DURATION_SEC
+        ch.frame = (ch.frame + 1) % 3
+      }
+      // Switch back to TYPE if tool changed to non-build
+      if (ch.isActive && !isBuildTool(ch.currentTool)) {
+        ch.state = CharacterState.TYPE
+        ch.frame = 0
+        ch.frameTimer = 0
+        break
+      }
+      // If no longer active, transition to sitting-wait or sitting-idle
+      if (!ch.isActive) {
+        if (ch.isWaiting) {
+          ch.state = CharacterState.SIT_WAIT
+          ch.frame = 0
+          ch.frameTimer = 0
+        } else {
+          ch.state = CharacterState.SIT_IDLE
+          ch.frame = 0
+          ch.frameTimer = 0
+          // Preserve seatTimer if already set (e.g. by idle zone delay)
+          if (ch.seatTimer <= 0) ch.seatTimer = 0
+        }
+      }
+      break
+    }
+
+    case CharacterState.SIT_IDLE: {
+      // Sitting at seat, not working — no animation, static pose
+      ch.frame = 0
+      // If became active, start working
+      if (ch.isActive) {
+        ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
+        ch.frame = 0
+        ch.frameTimer = 0
+        break
+      }
+      // After sitting idle for a while, stand up and wander
+      // seatTimer counts down from a pre-set value (set on state entry)
+      if (ch.seatTimer > 0) {
+        ch.seatTimer -= dt
+        break
+      }
+      ch.state = CharacterState.IDLE
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+      ch.wanderCount = 0
+      ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
+      break
+    }
+
+    case CharacterState.SIT_WAIT: {
+      // Sitting at seat, waiting for user response — slow reading animation
+      if (ch.frameTimer >= SIT_WAIT_FRAME_DURATION_SEC) {
+        ch.frameTimer -= SIT_WAIT_FRAME_DURATION_SEC
+        ch.frame = (ch.frame + 1) % 2
+      }
+      // If became active again, start working
+      if (ch.isActive) {
+        ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
+        ch.frame = 0
+        ch.frameTimer = 0
+        break
+      }
+      // If no longer waiting (dismissed), transition to sitting idle
+      if (!ch.isWaiting) {
+        ch.state = CharacterState.SIT_IDLE
+        ch.frame = 0
+        ch.frameTimer = 0
+        ch.seatTimer = 0
       }
       break
     }
@@ -117,12 +221,12 @@ export function updateCharacter(
     case CharacterState.IDLE: {
       // No idle animation — static pose
       ch.frame = 0
-      if (ch.seatTimer < 0) ch.seatTimer = 0 // clear turn-end sentinel
       // If became active, pathfind to seat
       if (ch.isActive) {
+        const activeState = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
         if (!ch.seatId) {
-          // No seat assigned — type in place
-          ch.state = CharacterState.TYPE
+          // No seat assigned — work in place
+          ch.state = activeState
           ch.frame = 0
           ch.frameTimer = 0
           break
@@ -138,7 +242,7 @@ export function updateCharacter(
             ch.frameTimer = 0
           } else {
             // Already at seat or no path — sit down
-            ch.state = CharacterState.TYPE
+            ch.state = activeState
             ch.dir = seat.facingDir
             ch.frame = 0
             ch.frameTimer = 0
@@ -195,30 +299,28 @@ export function updateCharacter(
         ch.y = center.y
 
         if (ch.isActive) {
+          const activeState = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
           if (!ch.seatId) {
-            // No seat — type in place
-            ch.state = CharacterState.TYPE
+            // No seat — work in place
+            ch.state = activeState
           } else {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
-              ch.state = CharacterState.TYPE
+              ch.state = activeState
               ch.dir = seat.facingDir
             } else {
               ch.state = CharacterState.IDLE
             }
           }
         } else {
-          // Check if arrived at assigned seat — sit down for a rest before wandering again
+          // Check if arrived at assigned seat — sit down for a rest
           if (ch.seatId) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
-              ch.state = CharacterState.TYPE
               ch.dir = seat.facingDir
-              // seatTimer < 0 is a sentinel from setAgentActive(false) meaning
-              // "turn just ended" — skip the long rest so idle transition is immediate
-              if (ch.seatTimer < 0) {
-                ch.seatTimer = 0
-              } else {
+              ch.state = ch.isWaiting ? CharacterState.SIT_WAIT : CharacterState.SIT_IDLE
+              // Rest at seat before wandering again
+              if (!ch.isWaiting && ch.seatTimer <= 0) {
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
               }
               ch.wanderCount = 0
@@ -285,6 +387,15 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
         return sprites.reading[ch.dir][ch.frame % 2]
       }
       return sprites.typing[ch.dir][ch.frame % 2]
+    case CharacterState.BUILD:
+      // Build: cycle through walk frames 0-2 while seated (looking around animatedly)
+      return sprites.walk[ch.dir][ch.frame % 3]
+    case CharacterState.SIT_IDLE:
+      // Sitting idle: static standing pose (walk frame 1)
+      return sprites.walk[ch.dir][1]
+    case CharacterState.SIT_WAIT:
+      // Waiting: slow reading animation (casually looking around)
+      return sprites.reading[ch.dir][ch.frame % 2]
     case CharacterState.WALK:
       return sprites.walk[ch.dir][ch.frame % 4]
     case CharacterState.IDLE:

@@ -74,14 +74,17 @@ export async function launchNewTerminal(
 		isWaiting: false,
 		permissionSent: false,
 		hadToolsInTurn: false,
+		agentDefinitionId: null,
 		folderName,
 	};
 
 	agents.set(id, agent);
 	activeAgentIdRef.current = id;
 	persistAgents();
+	const customName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
+	const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
 	console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
-	webview?.postMessage({ type: 'agentCreated', id, folderName });
+	webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
 
 	ensureProjectScan(
 		projectDir, knownJsonlFiles, projectScanTimerRef, activeAgentIdRef,
@@ -102,6 +105,56 @@ export async function launchNewTerminal(
 		} catch { /* file may not exist yet */ }
 	}, JSONL_POLL_INTERVAL_MS);
 	jsonlPollTimers.set(id, pollTimer);
+}
+
+/**
+ * Unbind a detected agent from its terminal without removing it.
+ * The agent stays in the map (character stays idle) but all file watching stops.
+ */
+export function unbindAgent(
+	agentId: number,
+	agents: Map<number, AgentState>,
+	fileWatchers: Map<number, fs.FSWatcher>,
+	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
+	waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
+	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
+	jsonlPollTimers: Map<number, ReturnType<typeof setInterval>>,
+): void {
+	const agent = agents.get(agentId);
+	if (!agent) return;
+
+	// Stop JSONL poll timer
+	const jpTimer = jsonlPollTimers.get(agentId);
+	if (jpTimer) { clearInterval(jpTimer); }
+	jsonlPollTimers.delete(agentId);
+
+	// Stop file watching
+	fileWatchers.get(agentId)?.close();
+	fileWatchers.delete(agentId);
+	const pt = pollingTimers.get(agentId);
+	if (pt) { clearInterval(pt); }
+	pollingTimers.delete(agentId);
+	try { fs.unwatchFile(agent.jsonlFile); } catch { /* ignore */ }
+
+	// Cancel timers
+	cancelWaitingTimer(agentId, waitingTimers);
+	cancelPermissionTimer(agentId, permissionTimers);
+
+	// Clear session state but keep agent in the map
+	agent.terminalRef = null;
+	agent.jsonlFile = '';
+	agent.fileOffset = 0;
+	agent.lineBuffer = '';
+	agent.activeToolIds.clear();
+	agent.activeToolStatuses.clear();
+	agent.activeToolNames.clear();
+	agent.activeSubagentToolIds.clear();
+	agent.activeSubagentToolNames.clear();
+	agent.isWaiting = false;
+	agent.permissionSent = false;
+	agent.hadToolsInTurn = false;
+
+	console.log(`[Pixel Agents] Agent ${agentId}: unbound from terminal (returning to idle)`);
 }
 
 export function removeAgent(
@@ -147,9 +200,10 @@ export function persistAgents(
 	for (const agent of agents.values()) {
 		persisted.push({
 			id: agent.id,
-			terminalName: agent.terminalRef.name,
+			terminalName: agent.terminalRef?.name ?? '',
 			jsonlFile: agent.jsonlFile,
 			projectDir: agent.projectDir,
+			agentDefinitionId: agent.agentDefinitionId,
 			folderName: agent.folderName,
 		});
 	}
@@ -184,6 +238,19 @@ export function restoreAgents(
 		const terminal = liveTerminals.find(t => t.name === p.terminalName);
 		if (!terminal) continue;
 
+		// Skip if agent is already in the map (webview was reopened)
+		if (agents.has(p.id)) {
+			knownJsonlFiles.add(p.jsonlFile);
+			if (p.id > maxId) maxId = p.id;
+			const match = p.terminalName.match(/#(\d+)$/);
+			if (match) {
+				const idx = parseInt(match[1], 10);
+				if (idx > maxIdx) maxIdx = idx;
+			}
+			restoredProjectDir = p.projectDir;
+			continue;
+		}
+
 		const agent: AgentState = {
 			id: p.id,
 			terminalRef: terminal,
@@ -199,6 +266,7 @@ export function restoreAgents(
 			isWaiting: false,
 			permissionSent: false,
 			hadToolsInTurn: false,
+			agentDefinitionId: p.agentDefinitionId ?? null,
 			folderName: p.folderName,
 		};
 
@@ -284,6 +352,8 @@ export function sendExistingAgents(
 			folderNames[id] = agent.folderName;
 		}
 	}
+	const customProjectName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
+	const projectName = customProjectName || vscode.workspace.workspaceFolders?.[0]?.name;
 	console.log(`[Pixel Agents] sendExistingAgents: agents=${JSON.stringify(agentIds)}, meta=${JSON.stringify(agentMeta)}`);
 
 	webview.postMessage({
@@ -291,6 +361,7 @@ export function sendExistingAgents(
 		agents: agentIds,
 		agentMeta,
 		folderNames,
+		projectName,
 	});
 
 	sendCurrentAgentStatuses(agents, webview);

@@ -38,6 +38,9 @@ export const CharacterState = {
   IDLE: 'idle',
   WALK: 'walk',
   TYPE: 'type',
+  SIT_IDLE: 'sit_idle',
+  SIT_WAIT: 'sit_wait',
+  BUILD: 'build',
 } as const
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState]
 
@@ -94,6 +97,14 @@ export const FurnitureType = {
 } as const
 export type FurnitureType = (typeof FurnitureType)[keyof typeof FurnitureType]
 
+export const ZoneType = {
+  WORKSPACE: 'workspace',
+  KITCHEN: 'kitchen',
+  REST_AREA: 'rest_area',
+  MEETING_ROOM: 'meeting_room',
+} as const
+export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType]
+
 export const EditTool = {
   TILE_PAINT: 'tile_paint',
   WALL_PAINT: 'wall_paint',
@@ -102,6 +113,7 @@ export const EditTool = {
   SELECT: 'select',
   EYEDROPPER: 'eyedropper',
   ERASE: 'erase',
+  ZONE_PAINT: 'zone_paint',
 } as const
 export type EditTool = (typeof EditTool)[keyof typeof EditTool]
 
@@ -140,6 +152,8 @@ export interface OfficeLayout {
   furniture: PlacedFurniture[]
   /** Per-tile color settings, parallel to tiles array. null = wall/no color */
   tileColors?: Array<FloorColor | null>
+  /** Per-tile zone designation, parallel to tiles array. null = unzoned */
+  zones?: Array<ZoneType | null>
 }
 
 export interface Character {
@@ -175,10 +189,12 @@ export interface Character {
   wanderLimit: number
   /** Whether the agent is actively working */
   isActive: boolean
+  /** Whether the agent is waiting for user response (turn complete) */
+  isWaiting: boolean
   /** Assigned seat uid, or null if no seat */
   seatId: string | null
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | null
+  bubbleType: 'permission' | 'waiting' | 'talking' | null
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
@@ -193,6 +209,30 @@ export interface Character {
   matrixEffectTimer: number
   /** Per-column random seeds (16 values) for staggered rain timing */
   matrixEffectSeeds: number[]
+  /** Countdown timer before idle character transitions to idle zone (seconds) */
+  idleZoneTimer: number
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
+  /** Display name shown as nametag above character */
+  nametag?: string
+  /** Agent definition ID from .pixel_agents config (e.g., 'main', 'backend') */
+  definitionId?: string
+  /** Color string for project indicator dot in nametag (derived from workspace folder) */
+  projectColor?: string
+  /** Whether this character is from a remote VS Code window (cross-window sync) */
+  isRemote?: boolean
+  /** Full tool status from the source window (e.g., "Edit: src/foo.ts") for remote display */
+  remoteToolStatus?: string | null
+  /** Target state from the source window — remote characters animate locally using synced path */
+  syncTarget?: {
+    x: number
+    y: number
+    tileCol: number
+    tileRow: number
+    state: string
+    dir: number
+    frame: number
+    moveProgress: number
+    path?: Array<{ col: number; row: number }>
+  }
 }

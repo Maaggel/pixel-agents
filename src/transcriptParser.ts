@@ -15,7 +15,10 @@ import {
 	TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from './constants.js';
 
-export const PERMISSION_EXEMPT_TOOLS = new Set(['Task', 'AskUserQuestion']);
+export const PERMISSION_EXEMPT_TOOLS = new Set([
+	'Task', 'Agent', 'AskUserQuestion', 'TaskOutput', 'TaskStop',
+	'TodoWrite', 'ToolSearch', 'EnterPlanMode', 'ExitPlanMode', 'Skill',
+]);
 
 export function formatToolStatus(toolName: string, input: Record<string, unknown>): string {
 	const base = (p: unknown) => typeof p === 'string' ? path.basename(p) : '';
@@ -31,7 +34,8 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
 		case 'Grep': return 'Searching code';
 		case 'WebFetch': return 'Fetching web content';
 		case 'WebSearch': return 'Searching the web';
-		case 'Task': {
+		case 'Task':
+		case 'Agent': {
 			const desc = typeof input.description === 'string' ? input.description : '';
 			return desc ? `Subtask: ${desc.length > TASK_DESCRIPTION_DISPLAY_MAX_LENGTH ? desc.slice(0, TASK_DESCRIPTION_DISPLAY_MAX_LENGTH) + '\u2026' : desc}` : 'Running subtask';
 		}
@@ -89,12 +93,17 @@ export function processTranscriptLine(
 				if (hasNonExemptTool) {
 					startPermissionTimer(agentId, agents, permissionTimers, PERMISSION_EXEMPT_TOOLS, webview);
 				}
-			} else if (blocks.some(b => b.type === 'text') && !agent.hadToolsInTurn) {
-				// Text-only response in a turn that hasn't used any tools.
-				// turn_duration handles tool-using turns reliably but is never
-				// emitted for text-only turns, so we use a silence-based timer:
-				// if no new JSONL data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
-				startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+			} else if (blocks.some(b => b.type === 'text')) {
+				// Assistant is generating text — mark as active (thinking)
+				agent.isWaiting = false;
+				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+				if (!agent.hadToolsInTurn) {
+					// Text-only response in a turn that hasn't used any tools.
+					// turn_duration handles tool-using turns reliably but is never
+					// emitted for text-only turns, so we use a silence-based timer:
+					// if no new JSONL data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
+					startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+				}
 			}
 		} else if (record.type === 'progress') {
 			processProgressRecord(agentId, record, agents, waitingTimers, permissionTimers, webview);
@@ -109,7 +118,8 @@ export function processTranscriptLine(
 							console.log(`[Pixel Agents] Agent ${agentId} tool done: ${block.tool_use_id}`);
 							const completedToolId = block.tool_use_id;
 							// If the completed tool was a Task, clear its subagent tools
-							if (agent.activeToolNames.get(completedToolId) === 'Task') {
+							const completedToolName = agent.activeToolNames.get(completedToolId);
+							if (completedToolName === 'Task' || completedToolName === 'Agent') {
 								agent.activeSubagentToolIds.delete(completedToolId);
 								agent.activeSubagentToolNames.delete(completedToolId);
 								webview?.postMessage({
@@ -131,36 +141,40 @@ export function processTranscriptLine(
 							}, TOOL_DONE_DELAY_MS);
 						}
 					}
-					// All tools completed — allow text-idle timer as fallback
-					// for turn-end detection when turn_duration is not emitted
+					// All tools completed — start silence-based idle timer as fallback
+					// for turn-end detection when turn_duration is not emitted.
+					// If no new data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
 					if (agent.activeToolIds.size === 0) {
 						agent.hadToolsInTurn = false;
+						startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
 					}
 				} else {
 					// New user text prompt — new turn starting
 					cancelWaitingTimer(agentId, waitingTimers);
 					clearAgentActivity(agent, agentId, permissionTimers, webview);
 					agent.hadToolsInTurn = false;
+					agent.isWaiting = false;
+					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				}
 			} else if (typeof content === 'string' && content.trim()) {
 				// New user text prompt — new turn starting
 				cancelWaitingTimer(agentId, waitingTimers);
 				clearAgentActivity(agent, agentId, permissionTimers, webview);
 				agent.hadToolsInTurn = false;
+				agent.isWaiting = false;
+				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 			}
 		} else if (record.type === 'system' && record.subtype === 'turn_duration') {
 			cancelWaitingTimer(agentId, waitingTimers);
 			cancelPermissionTimer(agentId, permissionTimers);
 
 			// Definitive turn-end: clean up any stale tool state
-			if (agent.activeToolIds.size > 0) {
-				agent.activeToolIds.clear();
-				agent.activeToolStatuses.clear();
-				agent.activeToolNames.clear();
-				agent.activeSubagentToolIds.clear();
-				agent.activeSubagentToolNames.clear();
-				webview?.postMessage({ type: 'agentToolsClear', id: agentId });
-			}
+			agent.activeToolIds.clear();
+			agent.activeToolStatuses.clear();
+			agent.activeToolNames.clear();
+			agent.activeSubagentToolIds.clear();
+			agent.activeSubagentToolNames.clear();
+			webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 
 			agent.isWaiting = true;
 			agent.permissionSent = false;
@@ -203,8 +217,12 @@ function processProgressRecord(
 		return;
 	}
 
-	// Verify parent is an active Task tool (agent_progress handling)
-	if (agent.activeToolNames.get(parentToolId) !== 'Task') return;
+	// Verify parent is an active Task/Agent tool (agent_progress handling)
+	const parentToolName = agent.activeToolNames.get(parentToolId);
+	if (parentToolName !== 'Task' && parentToolName !== 'Agent') {
+		console.log(`[Pixel Agents] Agent ${agentId} progress SKIPPED: parentToolId=${parentToolId} parentToolName=${parentToolName || 'NOT_FOUND'} activeToolNames=[${[...agent.activeToolNames.entries()].map(([k, v]) => `${v}:${k.slice(-8)}`)}]`);
+		return;
+	}
 
 	const msg = data.message as Record<string, unknown> | undefined;
 	if (!msg) return;

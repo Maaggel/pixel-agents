@@ -3,13 +3,13 @@ import type { OfficeState } from '../office/engine/officeState.js'
 import type { EditorState } from '../office/editor/editorState.js'
 import { EditTool } from '../office/types.js'
 import { TileType } from '../office/types.js'
-import type { OfficeLayout, EditTool as EditToolType, TileType as TileTypeVal, FloorColor, PlacedFurniture } from '../office/types.js'
-import { paintTile, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout } from '../office/editor/editorActions.js'
+import type { OfficeLayout, EditTool as EditToolType, TileType as TileTypeVal, ZoneType as ZoneTypeVal, FloorColor, PlacedFurniture } from '../office/types.js'
+import { paintTile, paintZone, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout } from '../office/editor/editorActions.js'
 import type { ExpandDirection } from '../office/editor/editorActions.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js'
 import { defaultZoom } from '../office/toolUtils.js'
 import { vscode } from '../vscodeApi.js'
-import { LAYOUT_SAVE_DEBOUNCE_MS, ZOOM_MIN, ZOOM_MAX } from '../constants.js'
+import { LAYOUT_SAVE_DEBOUNCE_MS, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '../constants.js'
 
 export interface EditorActions {
   isEditMode: boolean
@@ -19,7 +19,6 @@ export interface EditorActions {
   panRef: React.MutableRefObject<{ x: number; y: number }>
   saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   setLastSavedLayout: (layout: OfficeLayout) => void
-  handleOpenClaude: () => void
   handleToggleEditMode: () => void
   handleToolChange: (tool: EditToolType) => void
   handleTileTypeChange: (type: TileTypeVal) => void
@@ -27,6 +26,7 @@ export interface EditorActions {
   handleWallColorChange: (color: FloorColor) => void
   handleSelectedFurnitureColorChange: (color: FloorColor | null) => void
   handleFurnitureTypeChange: (type: string) => void // FurnitureType enum or asset ID
+  handleZoneTypeChange: (type: ZoneTypeVal) => void
   handleDeleteSelected: () => void
   handleRotateSelected: () => void
   handleToggleState: () => void
@@ -77,10 +77,6 @@ export function useEditorActions(
     saveLayout(newLayout)
     setEditorTick((n) => n + 1)
   }, [getOfficeState, editorState, saveLayout])
-
-  const handleOpenClaude = useCallback(() => {
-    vscode.postMessage({ type: 'openClaude' })
-  }, [])
 
   const handleToggleEditMode = useCallback(() => {
     setIsEditMode((prev) => {
@@ -208,6 +204,11 @@ export function useEditorActions(
     setEditorTick((n) => n + 1)
   }, [editorState])
 
+  const handleZoneTypeChange = useCallback((type: ZoneTypeVal) => {
+    editorState.selectedZoneType = type
+    setEditorTick((n) => n + 1)
+  }, [editorState])
+
   const handleDeleteSelected = useCallback(() => {
     const uid = editorState.selectedFurnitureUid
     if (!uid) return
@@ -315,7 +316,9 @@ export function useEditorActions(
   }, [])
 
   const handleZoomChange = useCallback((newZoom: number) => {
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom)))
+    // Round to nearest step to avoid floating-point drift
+    const rounded = Math.round(newZoom / ZOOM_STEP) * ZOOM_STEP
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, rounded)))
   }, [])
 
   const handleDragMove = useCallback((uid: string, newCol: number, newRow: number) => {
@@ -471,6 +474,12 @@ export function useEditorActions(
         editorState.activeTool = EditTool.WALL_PAINT
       }
       setEditorTick((n) => n + 1)
+    } else if (editorState.activeTool === EditTool.ZONE_PAINT) {
+      if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return
+      const newLayout = paintZone(layout, col, row, editorState.selectedZoneType)
+      if (newLayout !== layout) {
+        applyEdit(newLayout)
+      }
     } else if (editorState.activeTool === EditTool.SELECT) {
       const hit = layout.furniture.find((f) => {
         const entry = getCatalogEntry(f.type)
@@ -486,6 +495,16 @@ export function useEditorActions(
     const os = getOfficeState()
     const layout = os.getLayout()
     if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return
+
+    // Zone tool: right-click clears zone
+    if (editorState.activeTool === EditTool.ZONE_PAINT) {
+      const newLayout = paintZone(layout, col, row, null)
+      if (newLayout !== layout) {
+        applyEdit(newLayout)
+      }
+      return
+    }
+
     const idx = row * layout.cols + col
     // Only erase non-VOID tiles
     if (layout.tiles[idx] === TileType.VOID) return
@@ -493,7 +512,7 @@ export function useEditorActions(
     if (newLayout !== layout) {
       applyEdit(newLayout)
     }
-  }, [getOfficeState, applyEdit])
+  }, [getOfficeState, editorState, applyEdit])
 
   return {
     isEditMode,
@@ -503,7 +522,6 @@ export function useEditorActions(
     panRef,
     saveTimerRef,
     setLastSavedLayout,
-    handleOpenClaude,
     handleToggleEditMode,
     handleToolChange,
     handleTileTypeChange,
@@ -511,6 +529,7 @@ export function useEditorActions(
     handleWallColorChange,
     handleSelectedFurnitureColorChange,
     handleFurnitureTypeChange,
+    handleZoneTypeChange,
     handleDeleteSelected,
     handleRotateSelected,
     handleToggleState,

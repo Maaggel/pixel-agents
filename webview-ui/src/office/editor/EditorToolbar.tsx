@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { EditTool } from '../types.js'
-import type { TileType as TileTypeVal, FloorColor } from '../types.js'
+import { EditTool, ZoneType } from '../types.js'
+import type { TileType as TileTypeVal, ZoneType as ZoneTypeVal, FloorColor } from '../types.js'
 import { getCatalogByCategory, buildDynamicCatalog, getActiveCategories } from '../layout/furnitureCatalog.js'
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
+import { ZONE_COLORS, ZONE_LABELS } from '../../constants.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -46,6 +47,7 @@ interface EditorToolbarProps {
   selectedFurnitureType: string
   selectedFurnitureUid: string | null
   selectedFurnitureColor: FloorColor | null
+  selectedZoneType: ZoneTypeVal
   floorColor: FloorColor
   wallColor: FloorColor
   onToolChange: (tool: EditTool) => void
@@ -54,6 +56,7 @@ interface EditorToolbarProps {
   onWallColorChange: (color: FloorColor) => void
   onSelectedFurnitureColorChange: (color: FloorColor | null) => void
   onFurnitureTypeChange: (type: string) => void
+  onZoneTypeChange: (type: ZoneTypeVal) => void
   loadedAssets?: LoadedAssetData
 }
 
@@ -145,6 +148,7 @@ export function EditorToolbar({
   selectedFurnitureType,
   selectedFurnitureUid,
   selectedFurnitureColor,
+  selectedZoneType,
   floorColor,
   wallColor,
   onToolChange,
@@ -153,6 +157,7 @@ export function EditorToolbar({
   onWallColorChange,
   onSelectedFurnitureColorChange,
   onFurnitureTypeChange,
+  onZoneTypeChange,
   loadedAssets,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurnitureCategory>('desks')
@@ -209,6 +214,9 @@ export function EditorToolbar({
   const isWallActive = activeTool === EditTool.WALL_PAINT
   const isEraseActive = activeTool === EditTool.ERASE
   const isFurnitureActive = activeTool === EditTool.FURNITURE_PLACE || activeTool === EditTool.FURNITURE_PICK
+  const isZoneActive = activeTool === EditTool.ZONE_PAINT
+
+  const allZoneTypes = Object.values(ZoneType) as ZoneTypeVal[]
 
   return (
     <div
@@ -257,6 +265,13 @@ export function EditorToolbar({
           title="Place furniture"
         >
           Furniture
+        </button>
+        <button
+          style={isZoneActive ? activeBtnStyle : btnStyle}
+          onClick={() => onToolChange(EditTool.ZONE_PAINT)}
+          title="Paint room zones (right-click to clear)"
+        >
+          Zone
         </button>
       </div>
 
@@ -417,6 +432,38 @@ export function EditorToolbar({
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Sub-panel: Zone types — horizontal buttons */}
+      {isZoneActive && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {allZoneTypes.map((zt) => (
+            <button
+              key={zt}
+              style={{
+                ...(selectedZoneType === zt ? activeBtnStyle : btnStyle),
+                fontSize: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+              onClick={() => onZoneTypeChange(zt)}
+              title={`${ZONE_LABELS[zt]} — right-click to erase zones`}
+            >
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 10,
+                  height: 10,
+                  background: ZONE_COLORS[zt],
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  flexShrink: 0,
+                }}
+              />
+              {ZONE_LABELS[zt]}
+            </button>
+          ))}
         </div>
       )}
 

@@ -7,6 +7,8 @@ interface SettingsModalProps {
   onClose: () => void
   isDebugMode: boolean
   onToggleDebugMode: () => void
+  showNametags: boolean
+  onToggleNametags: () => void
 }
 
 const menuItemBase: React.CSSProperties = {
@@ -24,9 +26,10 @@ const menuItemBase: React.CSSProperties = {
   textAlign: 'left',
 }
 
-export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode, showNametags, onToggleNametags }: SettingsModalProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
+  const [showDefaultConfirm, setShowDefaultConfirm] = useState(false)
 
   if (!isOpen) return null
 
@@ -166,6 +169,84 @@ export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode 
             }}
           >
             {soundLocal ? 'X' : ''}
+          </span>
+        </button>
+        {!showDefaultConfirm ? (
+          <button
+            onClick={() => setShowDefaultConfirm(true)}
+            onMouseEnter={() => setHovered('default')}
+            onMouseLeave={() => setHovered(null)}
+            style={{
+              ...menuItemBase,
+              background: hovered === 'default' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+            }}
+          >
+            Use Default Layout
+          </button>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px' }}>
+            <span style={{ fontSize: '22px', color: 'rgba(255, 200, 100, 0.9)' }}>Reset layout?</span>
+            <button
+              onClick={() => {
+                setShowDefaultConfirm(false)
+                vscode.postMessage({ type: 'useDefaultLayout' })
+                onClose()
+              }}
+              style={{
+                padding: '3px 8px',
+                fontSize: '22px',
+                background: 'rgba(200, 50, 50, 0.7)',
+                color: '#fff',
+                border: '2px solid transparent',
+                borderRadius: 0,
+                cursor: 'pointer',
+              }}
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => setShowDefaultConfirm(false)}
+              style={{
+                padding: '3px 8px',
+                fontSize: '22px',
+                background: 'var(--pixel-btn-bg)',
+                color: 'var(--pixel-text)',
+                border: '2px solid transparent',
+                borderRadius: 0,
+                cursor: 'pointer',
+              }}
+            >
+              No
+            </button>
+          </div>
+        )}
+        <button
+          onClick={onToggleNametags}
+          onMouseEnter={() => setHovered('nametags')}
+          onMouseLeave={() => setHovered(null)}
+          style={{
+            ...menuItemBase,
+            background: hovered === 'nametags' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+          }}
+        >
+          <span>Show Nametags</span>
+          <span
+            style={{
+              width: 14,
+              height: 14,
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: 0,
+              background: showNametags ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              lineHeight: 1,
+              color: '#fff',
+            }}
+          >
+            {showNametags ? 'X' : ''}
           </span>
         </button>
         <button

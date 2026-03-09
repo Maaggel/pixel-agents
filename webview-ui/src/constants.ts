@@ -11,6 +11,8 @@ export const MAX_ROWS = 64
 export const WALK_SPEED_PX_PER_SEC = 48
 export const WALK_FRAME_DURATION_SEC = 0.15
 export const TYPE_FRAME_DURATION_SEC = 0.3
+export const BUILD_FRAME_DURATION_SEC = 0.4
+export const SIT_WAIT_FRAME_DURATION_SEC = 0.8
 export const WANDER_PAUSE_MIN_SEC = 2.0
 export const WANDER_PAUSE_MAX_SEC = 20.0
 export const WANDER_MOVES_BEFORE_REST_MIN = 3
@@ -50,6 +52,18 @@ export const BUBBLE_FADE_DURATION_SEC = 0.5
 export const BUBBLE_SITTING_OFFSET_PX = 10
 export const BUBBLE_VERTICAL_OFFSET_PX = 24
 export const FALLBACK_FLOOR_COLOR = '#808080'
+export const NAMETAG_VERTICAL_OFFSET_PX = 26
+export const NAMETAG_BG_COLOR = 'rgba(30, 30, 46, 0.75)'
+export const NAMETAG_TEXT_COLOR = '#ccccdd'
+export const NAMETAG_SUB_TEXT_COLOR = '#88aacc'
+export const NAMETAG_PADDING_H = 3
+export const NAMETAG_PADDING_V = 1
+export const NAMETAG_MAX_CHARS = 20
+export const NAMETAG_DOT_GAP = 3
+export const NAMETAG_PROJECT_COLORS = [
+  '#e06c75', '#e5c07b', '#98c379', '#56b6c2', '#61afef', '#c678dd',
+  '#d19a66', '#be5046', '#7ec8e3', '#b8bb26',
+] as const
 
 // ── Rendering - Overlay Colors (canvas, not CSS) ─────────────
 export const SEAT_OWN_COLOR = 'rgba(0, 127, 212, 0.35)'
@@ -74,6 +88,7 @@ export const CAMERA_FOLLOW_SNAP_THRESHOLD = 0.5
 // ── Zoom ─────────────────────────────────────────────────────
 export const ZOOM_MIN = 1
 export const ZOOM_MAX = 10
+export const ZOOM_STEP = 0.5
 export const ZOOM_DEFAULT_DPR_FACTOR = 2
 export const ZOOM_LEVEL_FADE_DELAY_MS = 1500
 export const ZOOM_LEVEL_HIDE_DELAY_MS = 2000
@@ -96,9 +111,51 @@ export const NOTIFICATION_NOTE_2_START_SEC = 0.1
 export const NOTIFICATION_NOTE_DURATION_SEC = 0.18
 export const NOTIFICATION_VOLUME = 0.14
 
+// ── Zones ───────────────────────────────────────────────────
+export const ZONE_OVERLAY_ALPHA = 0.2
+export const ZONE_COLORS: Record<string, string> = {
+  workspace: 'rgba(50, 140, 255, 0.18)',
+  kitchen: 'rgba(255, 160, 40, 0.18)',
+  rest_area: 'rgba(80, 200, 80, 0.18)',
+  meeting_room: 'rgba(200, 80, 220, 0.18)',
+}
+export const ZONE_BORDER_COLORS: Record<string, string> = {
+  workspace: 'rgba(50, 140, 255, 0.7)',
+  kitchen: 'rgba(255, 160, 40, 0.7)',
+  rest_area: 'rgba(80, 200, 80, 0.7)',
+  meeting_room: 'rgba(200, 80, 220, 0.7)',
+}
+export const ZONE_LABEL_COLORS: Record<string, string> = {
+  workspace: 'rgba(100, 180, 255, 0.85)',
+  kitchen: 'rgba(255, 190, 80, 0.85)',
+  rest_area: 'rgba(120, 230, 120, 0.85)',
+  meeting_room: 'rgba(220, 130, 240, 0.85)',
+}
+export const ZONE_LABELS: Record<string, string> = {
+  workspace: 'Workspace',
+  kitchen: 'Kitchen',
+  rest_area: 'Rest Area',
+  meeting_room: 'Meeting Room',
+}
+export const ZONE_ICONS: Record<string, string> = {
+  workspace: '\u{1F4BB}',
+  kitchen: '\u{2615}',
+  rest_area: '\u{1F6CB}',
+  meeting_room: '\u{1F4AC}',
+}
+/** Probability (0-1) that an idle character picks a zone-appropriate tile vs random */
+export const ZONE_WANDER_PREFERENCE = 0.7
+/** Seconds to wait at current position before transitioning to idle zone */
+export const IDLE_ZONE_DELAY_SEC = 10.0
+
+// ── Cross-Window Sync ───────────────────────────────────────
+/** Interval (ms) for reporting local character visual states to the extension */
+export const CHAR_VISUAL_REPORT_INTERVAL_MS = 250
+
 // ── Game Logic ───────────────────────────────────────────────
 export const MAX_DELTA_TIME_SEC = 0.1
 export const WAITING_BUBBLE_DURATION_SEC = 2.0
+export const TALKING_BUBBLE_DURATION_SEC = 3.0
 export const DISMISS_BUBBLE_FAST_FADE_SEC = 0.3
 export const INACTIVE_SEAT_TIMER_MIN_SEC = 3.0
 export const INACTIVE_SEAT_TIMER_RANGE_SEC = 2.0

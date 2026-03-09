@@ -1,6 +1,6 @@
 import { TileType, MAX_COLS, MAX_ROWS } from '../types.js'
 import { DEFAULT_NEUTRAL_COLOR } from '../../constants.js'
-import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
+import type { TileType as TileTypeVal, ZoneType, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../layout/furnitureCatalog.js'
 import { getPlacementBlockedTiles } from '../layout/layoutSerializer.js'
 
@@ -26,7 +26,26 @@ export function paintTile(layout: OfficeLayout, col: number, row: number, tileTy
   tiles[idx] = tileType
   const tileColors = [...existingColors]
   tileColors[idx] = newColor
+  // Clear zone when painting wall or void
+  if ((tileType === TileType.WALL || tileType === TileType.VOID) && layout.zones) {
+    const zones = [...layout.zones]
+    zones[idx] = null
+    return { ...layout, tiles, tileColors, zones }
+  }
   return { ...layout, tiles, tileColors }
+}
+
+/** Paint a zone designation on a tile. Pass null to clear. Returns new layout (immutable). */
+export function paintZone(layout: OfficeLayout, col: number, row: number, zone: ZoneType | null): OfficeLayout {
+  const idx = row * layout.cols + col
+  if (idx < 0 || idx >= layout.tiles.length) return layout
+  // Only allow zones on floor tiles
+  if (layout.tiles[idx] === TileType.WALL || layout.tiles[idx] === TileType.VOID) return layout
+  const existingZones = layout.zones || new Array(layout.tiles.length).fill(null)
+  if (existingZones[idx] === zone) return layout
+  const zones = [...existingZones]
+  zones[idx] = zone
+  return { ...layout, zones }
 }
 
 /** Place furniture. Returns new layout (immutable). */
@@ -170,8 +189,9 @@ export function expandLayout(
   layout: OfficeLayout,
   direction: ExpandDirection,
 ): { layout: OfficeLayout; shift: { col: number; row: number } } | null {
-  const { cols, rows, tiles, furniture, tileColors } = layout
+  const { cols, rows, tiles, furniture, tileColors, zones } = layout
   const existingColors = tileColors || new Array(tiles.length).fill(null)
+  const existingZones = zones || new Array(tiles.length).fill(null)
 
   let newCols = cols
   let newRows = rows
@@ -195,6 +215,7 @@ export function expandLayout(
   // Build new tile array
   const newTiles: TileTypeVal[] = new Array(newCols * newRows).fill(TileType.VOID as TileTypeVal)
   const newColors: Array<FloorColor | null> = new Array(newCols * newRows).fill(null)
+  const newZones: Array<ZoneType | null> = new Array(newCols * newRows).fill(null)
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -202,6 +223,7 @@ export function expandLayout(
       const newIdx = (r + shiftRow) * newCols + (c + shiftCol)
       newTiles[newIdx] = tiles[oldIdx]
       newColors[newIdx] = existingColors[oldIdx]
+      newZones[newIdx] = existingZones[oldIdx]
     }
   }
 
@@ -213,7 +235,7 @@ export function expandLayout(
   }))
 
   return {
-    layout: { ...layout, cols: newCols, rows: newRows, tiles: newTiles, tileColors: newColors, furniture: newFurniture },
+    layout: { ...layout, cols: newCols, rows: newRows, tiles: newTiles, tileColors: newColors, zones: newZones, furniture: newFurniture },
     shift: { col: shiftCol, row: shiftRow },
   }
 }

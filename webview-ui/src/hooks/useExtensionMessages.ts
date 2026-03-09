@@ -9,6 +9,16 @@ import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
 import { playDoneSound, setSoundEnabled } from '../notificationSound.js'
+import { NAMETAG_PROJECT_COLORS } from '../constants.js'
+
+/** Derive a stable color from a workspace folder path. */
+function projectColorFromFolder(folder: string): string {
+  let hash = 0
+  for (let i = 0; i < folder.length; i++) {
+    hash = ((hash << 5) - hash + folder.charCodeAt(i)) | 0
+  }
+  return NAMETAG_PROJECT_COLORS[Math.abs(hash) % NAMETAG_PROJECT_COLORS.length]
+}
 
 export interface SubagentCharacter {
   id: number
@@ -40,6 +50,17 @@ export interface WorkspaceFolder {
   path: string
 }
 
+export interface DetectedAgentInfo {
+  definitionId: string
+  name: string
+  source: string
+  workspaceFolder: string
+  id: number
+  palette: number
+  hueShift: number
+  seatId: string | null
+}
+
 export interface ExtensionMessageState {
   agents: number[]
   selectedAgent: number | null
@@ -50,6 +71,10 @@ export interface ExtensionMessageState {
   layoutReady: boolean
   loadedAssets?: { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> }
   workspaceFolders: WorkspaceFolder[]
+  claudeExtAvailable: boolean
+  showNametags: boolean
+  setShowNametags: (enabled: boolean) => void
+  detectedAgents: DetectedAgentInfo[]
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -75,13 +100,20 @@ export function useExtensionMessages(
   const [layoutReady, setLayoutReady] = useState(false)
   const [loadedAssets, setLoadedAssets] = useState<{ catalog: FurnitureAsset[]; sprites: Record<string, string[][]> } | undefined>()
   const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([])
+  const [claudeExtAvailable, setClaudeExtAvailable] = useState(false)
+  const [showNametags, setShowNametags] = useState(false)
+  const [detectedAgents, setDetectedAgents] = useState<DetectedAgentInfo[]>([])
+
+  // Ref for accessing agentTools inside message handler without stale closure
+  const agentToolsRef = useRef(agentTools)
+  agentToolsRef.current = agentTools
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false)
 
   useEffect(() => {
     // Buffer agents from existingAgents until layout is loaded
-    let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string }> = []
+    let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; projectName?: string }> = []
 
     const handler = (e: MessageEvent) => {
       const msg = e.data
@@ -104,7 +136,7 @@ export function useExtensionMessages(
         }
         // Add buffered agents now that layout (and seats) are correct
         for (const p of pendingAgents) {
-          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName)
+          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, false, p.projectName)
         }
         pendingAgents = []
         layoutReadyRef.current = true
@@ -115,9 +147,10 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number
         const folderName = msg.folderName as string | undefined
+        const projectName = msg.projectName as string | undefined
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         setSelectedAgent(id)
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName)
+        os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
         saveAgentSeats(os)
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number
@@ -149,10 +182,11 @@ export function useExtensionMessages(
         const incoming = msg.agents as number[]
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
+        const pName = msg.projectName as string | undefined
         // Buffer agents — they'll be added in layoutLoaded after seats are built
         for (const id of incoming) {
           const m = meta[id]
-          pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id] })
+          pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], projectName: pName })
         }
         setAgents((prev) => {
           const ids = new Set(prev)
@@ -177,15 +211,6 @@ export function useExtensionMessages(
         os.setAgentTool(id, toolName)
         os.setAgentActive(id, true)
         os.clearPermissionBubble(id)
-        // Create sub-agent character for Task tool subtasks
-        if (status.startsWith('Subtask:')) {
-          const label = status.slice('Subtask:'.length).trim()
-          const subId = os.addSubagent(id, toolId)
-          setSubagentCharacters((prev) => {
-            if (prev.some((s) => s.id === subId)) return prev
-            return [...prev, { id: subId, parentAgentId: id, parentToolId: toolId, label }]
-          })
-        }
       } else if (msg.type === 'agentToolDone') {
         const id = msg.id as number
         const toolId = msg.toolId as string
@@ -215,6 +240,7 @@ export function useExtensionMessages(
         os.removeAllSubagents(id)
         setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
         os.setAgentTool(id, null)
+        os.setAgentActive(id, false)
         os.clearPermissionBubble(id)
       } else if (msg.type === 'agentSelected') {
         const id = msg.id as number
@@ -279,19 +305,36 @@ export function useExtensionMessages(
         const parentToolId = msg.parentToolId as string
         const toolId = msg.toolId as string
         const status = msg.status as string
+        console.log(`[Webview] subagentToolStart: agent=${id} parent=${parentToolId.slice(-8)} tool=${toolId.slice(-8)} status=${status}`)
         setSubagentTools((prev) => {
           const agentSubs = prev[id] || {}
           const list = agentSubs[parentToolId] || []
           if (list.some((t) => t.toolId === toolId)) return prev
           return { ...prev, [id]: { ...agentSubs, [parentToolId]: [...list, { toolId, status, done: false }] } }
         })
-        // Update sub-agent character's tool and active state
-        const subId = os.getSubagentId(id, parentToolId)
-        if (subId !== null) {
-          const subToolName = extractToolName(status)
-          os.setAgentTool(subId, subToolName)
-          os.setAgentActive(subId, true)
+        // Create sub-agent character on first actual activity (if not already created)
+        let subId = os.getSubagentId(id, parentToolId)
+        if (subId === null) {
+          // Derive label from parent tool's status (contains task description)
+          const parentTools = agentToolsRef.current[id] || []
+          const parentTool = parentTools.find((t) => t.toolId === parentToolId)
+          const label = parentTool?.status?.startsWith('Subtask:')
+            ? parentTool.status.slice('Subtask:'.length).trim()
+            : parentTool?.status || 'Subtask'
+          subId = os.addSubagent(id, parentToolId)
+          console.log(`[Webview] Created sub-agent character: subId=${subId} parent=${id} parentToolId=${parentToolId.slice(-8)} label=${label}`)
+          // Set nametag from task description
+          const subCh = os.characters.get(subId)
+          if (subCh) subCh.nametag = label
+          setSubagentCharacters((prev) => {
+            if (prev.some((s) => s.id === subId)) return prev
+            return [...prev, { id: subId!, parentAgentId: id, parentToolId, label }]
+          })
         }
+        // Update sub-agent character's tool and active state
+        const subToolName = extractToolName(status)
+        os.setAgentTool(subId, subToolName)
+        os.setAgentActive(subId, true)
       } else if (msg.type === 'subagentToolDone') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string
@@ -342,6 +385,12 @@ export function useExtensionMessages(
       } else if (msg.type === 'settingsLoaded') {
         const soundOn = msg.soundEnabled as boolean
         setSoundEnabled(soundOn)
+        if (msg.showNametags !== undefined) {
+          setShowNametags(msg.showNametags as boolean)
+        }
+        if (msg.claudeExtAvailable) {
+          setClaudeExtAvailable(true)
+        }
       } else if (msg.type === 'furnitureAssetsLoaded') {
         try {
           const catalog = msg.catalog as FurnitureAsset[]
@@ -353,6 +402,187 @@ export function useExtensionMessages(
         } catch (err) {
           console.error(`❌ Webview: Error processing furnitureAssetsLoaded:`, err)
         }
+      } else if (msg.type === 'detectedAgents') {
+        const incoming = msg.agents as DetectedAgentInfo[]
+        console.log(`[Webview] Detected ${incoming.length} agent definitions`)
+        setDetectedAgents(incoming)
+
+        // Create idle characters for each detected agent
+        const incomingIds: number[] = []
+        for (const agent of incoming) {
+          incomingIds.push(agent.id)
+          if (!os.characters.has(agent.id)) {
+            os.addAgent(agent.id, agent.palette, agent.hueShift, agent.seatId ?? undefined, true, agent.name)
+            // Set the character as inactive and immediately move to a rest zone
+            os.setAgentActive(agent.id, false)
+            os.sendToRestZone(agent.id)
+            const ch = os.characters.get(agent.id)
+            if (ch) {
+              ch.nametag = agent.name
+              ch.definitionId = agent.definitionId
+              ch.projectColor = projectColorFromFolder(agent.workspaceFolder)
+            }
+          }
+        }
+        setAgents((prev) => {
+          const ids = new Set(prev)
+          const merged = [...prev]
+          for (const id of incomingIds) {
+            if (!ids.has(id)) merged.push(id)
+          }
+          return merged.sort((a, b) => a - b)
+        })
+        saveAgentSeats(os)
+      } else if (msg.type === 'agentBound') {
+        const id = msg.id as number
+        const definitionId = msg.definitionId as string
+        console.log(`[Webview] Agent ${id} bound to definition ${definitionId}`)
+        os.setAgentActive(id, true)
+      } else if (msg.type === 'agentUnbound') {
+        const id = msg.id as number
+        const definitionId = msg.definitionId as string
+        console.log(`[Webview] Agent ${id} unbound from definition ${definitionId}`)
+        // Clear all tool state
+        setAgentTools((prev) => {
+          if (!(id in prev)) return prev
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        setAgentStatuses((prev) => {
+          if (!(id in prev)) return prev
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        setSubagentTools((prev) => {
+          if (!(id in prev)) return prev
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        // Remove all sub-agent characters belonging to this agent
+        os.removeAllSubagents(id)
+        setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
+        // Set agent to idle (don't remove!)
+        os.setAgentTool(id, null)
+        os.setAgentActive(id, false)
+        os.clearPermissionBubble(id)
+      } else if (msg.type === 'remoteAgents') {
+        const remoteList = msg.agents as Array<{
+          id: number
+          name: string
+          palette: number
+          hueShift: number
+          seatId: string | null
+          isActive: boolean
+          currentTool: string | null
+          currentToolStatus: string | null
+          isWaiting: boolean
+          bubbleType: 'permission' | 'waiting' | null
+          workspaceName: string
+          workspaceFolder: string
+          visual?: { x: number; y: number; tileCol: number; tileRow: number; state: string; dir: number; frame: number; moveProgress: number; path?: Array<{ col: number; row: number }> }
+        }>
+        const remoteIds = new Set(remoteList.map((a) => a.id))
+
+        // Remove remote characters that are no longer present
+        for (const [charId, ch] of os.characters) {
+          if (ch.isRemote && !remoteIds.has(charId)) {
+            os.removeAgent(charId)
+          }
+        }
+
+        // Add or update remote characters — source window is authority
+        for (const ra of remoteList) {
+          const existing = os.characters.get(ra.id)
+          if (existing) {
+            existing.nametag = ra.name
+            existing.palette = ra.palette
+            existing.hueShift = ra.hueShift
+            existing.currentTool = ra.currentTool
+            existing.remoteToolStatus = ra.currentToolStatus
+            existing.isActive = ra.isActive
+            existing.isWaiting = ra.isWaiting
+            // Update seat reservation if it changed
+            if (existing.seatId !== ra.seatId) {
+              // Release old seat
+              if (existing.seatId) {
+                const oldSeat = os.seats.get(existing.seatId)
+                if (oldSeat) oldSeat.assigned = false
+              }
+              // Claim new seat
+              if (ra.seatId) {
+                const newSeat = os.seats.get(ra.seatId)
+                if (newSeat && !newSeat.assigned) {
+                  newSeat.assigned = true
+                  existing.seatId = ra.seatId
+                }
+              } else {
+                existing.seatId = null
+              }
+            }
+            // Bubble state from source
+            if (ra.bubbleType === 'permission') {
+              existing.bubbleType = 'permission'
+            } else if (ra.bubbleType === 'waiting') {
+              existing.bubbleType = 'waiting'
+            } else if (!ra.bubbleType && existing.bubbleType === 'permission') {
+              existing.bubbleType = null
+            }
+            // Set sync target — game loop animates toward this
+            if (ra.visual) {
+              existing.syncTarget = ra.visual
+              // Evict any local agent sitting at the remote agent's visual tile
+              for (const [localId, localCh] of os.characters) {
+                if (localCh.isRemote || localCh.isSubagent) continue
+                if (localCh.id === ra.id) continue
+                if (localCh.tileCol === ra.visual.tileCol && localCh.tileRow === ra.visual.tileRow) {
+                  // Local agent is at the same tile — reassign them to a free seat
+                  const freeSeat = os.findFreeSeatAwayFrom(ra.visual.tileCol, ra.visual.tileRow)
+                  if (freeSeat) {
+                    os.reassignSeat(localId, freeSeat)
+                  }
+                }
+              }
+            }
+            os.rebuildFurnitureInstances()
+          } else {
+            // Create new remote character — claim seat so locals don't sit there
+            os.addAgent(ra.id, ra.palette, ra.hueShift, ra.seatId ?? undefined, true, ra.name, true)
+            const ch = os.characters.get(ra.id)
+            if (ch) {
+              ch.nametag = ra.name
+              ch.projectColor = projectColorFromFolder(ra.workspaceFolder)
+              ch.currentTool = ra.currentTool
+              ch.remoteToolStatus = ra.currentToolStatus
+              ch.isActive = ra.isActive
+              ch.isWaiting = ra.isWaiting
+              // Snap to initial position on first appearance
+              if (ra.visual) {
+                ch.x = ra.visual.x
+                ch.y = ra.visual.y
+                ch.tileCol = ra.visual.tileCol
+                ch.tileRow = ra.visual.tileRow
+                ch.state = ra.visual.state as typeof ch.state
+                ch.dir = ra.visual.dir as typeof ch.dir
+                ch.frame = ra.visual.frame
+                ch.syncTarget = ra.visual
+                // Evict any local agent sitting at the remote agent's tile
+                for (const [localId, localCh] of os.characters) {
+                  if (localCh.isRemote || localCh.isSubagent) continue
+                  if (localCh.id === ra.id) continue
+                  if (localCh.tileCol === ra.visual.tileCol && localCh.tileRow === ra.visual.tileRow) {
+                    const freeSeat = os.findFreeSeatAwayFrom(ra.visual.tileCol, ra.visual.tileRow)
+                    if (freeSeat) {
+                      os.reassignSeat(localId, freeSeat)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
     window.addEventListener('message', handler)
@@ -360,5 +590,5 @@ export function useExtensionMessages(
     return () => window.removeEventListener('message', handler)
   }, [getOfficeState])
 
-  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders }
+  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents }
 }

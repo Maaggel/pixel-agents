@@ -1,8 +1,8 @@
-import { TileType, TILE_SIZE, CharacterState } from '../types.js'
+import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js'
-import { getCharacterSprite } from './characters.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_TALKING_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
@@ -23,6 +23,14 @@ import {
   BUBBLE_FADE_DURATION_SEC,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
+  NAMETAG_VERTICAL_OFFSET_PX,
+  NAMETAG_BG_COLOR,
+  NAMETAG_TEXT_COLOR,
+  NAMETAG_SUB_TEXT_COLOR,
+  NAMETAG_PADDING_H,
+  NAMETAG_PADDING_V,
+  NAMETAG_MAX_CHARS,
+  NAMETAG_DOT_GAP,
   FALLBACK_FLOOR_COLOR,
   SEAT_OWN_COLOR,
   SEAT_AVAILABLE_COLOR,
@@ -38,6 +46,10 @@ import {
   SELECTION_HIGHLIGHT_COLOR,
   DELETE_BUTTON_BG,
   ROTATE_BUTTON_BG,
+  ZONE_COLORS,
+  ZONE_BORDER_COLORS,
+  ZONE_LABEL_COLORS,
+  ZONE_LABELS,
 } from '../../constants.js'
 
 // ── Render functions ────────────────────────────────────────────
@@ -125,7 +137,7 @@ export function renderScene(
     const spriteData = getCharacterSprite(ch, sprites)
     const cached = getCachedSprite(spriteData, zoom)
     // Sitting offset: shift character down when seated so they visually sit in the chair
-    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
+    const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0
     // Anchor at bottom-center of character — round to integer device pixels
     const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
     const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - cached.height)
@@ -459,11 +471,13 @@ export function renderBubbles(
 
     const sprite = ch.bubbleType === 'permission'
       ? BUBBLE_PERMISSION_SPRITE
-      : BUBBLE_WAITING_SPRITE
+      : ch.bubbleType === 'talking'
+        ? BUBBLE_TALKING_SPRITE
+        : BUBBLE_WAITING_SPRITE
 
     // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0
-    if (ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
@@ -471,13 +485,76 @@ export function renderBubbles(
     // Position: centered above the character's head
     // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
     // Place bubble above head with a small gap; follow sitting offset
-    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
+    const sittingOff = isSittingState(ch.state) ? BUBBLE_SITTING_OFFSET_PX : 0
     const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
     const bubbleY = Math.round(offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom)
 
     ctx.save()
     if (alpha < 1.0) ctx.globalAlpha = alpha
     ctx.drawImage(cached, bubbleX, bubbleY)
+    ctx.restore()
+  }
+}
+
+// ── Nametags ─────────────────────────────────────────────────
+
+export function renderNametags(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const ch of characters) {
+    if (!ch.nametag) continue
+    if (ch.matrixEffect === 'despawn') continue
+
+    let label = ch.nametag
+    if (label.length > NAMETAG_MAX_CHARS) {
+      label = label.slice(0, NAMETAG_MAX_CHARS - 1) + '\u2026'
+    }
+
+    const fontSize = Math.max(7, Math.round(zoom * 3.5))
+    ctx.font = `${fontSize}px sans-serif`
+    const metrics = ctx.measureText(label)
+    const textW = metrics.width
+    const textH = fontSize
+
+    // Project dot dimensions
+    const hasDot = !!ch.projectColor
+    const dotRadius = Math.max(2, Math.round(fontSize * 0.25))
+    const dotExtra = hasDot ? dotRadius * 2 + NAMETAG_DOT_GAP : 0
+
+    const sittingOff = isSittingState(ch.state) ? BUBBLE_SITTING_OFFSET_PX : 0
+    const cx = Math.round(offsetX + ch.x * zoom)
+    const cy = Math.round(offsetY + (ch.y + sittingOff - NAMETAG_VERTICAL_OFFSET_PX) * zoom)
+
+    const totalW = textW + dotExtra
+    const bgX = cx - totalW / 2 - NAMETAG_PADDING_H * zoom / 2
+    const bgY = cy - textH - NAMETAG_PADDING_V * zoom / 2
+    const bgW = totalW + NAMETAG_PADDING_H * zoom
+    const bgH = textH + NAMETAG_PADDING_V * zoom
+
+    ctx.save()
+    ctx.fillStyle = NAMETAG_BG_COLOR
+    ctx.fillRect(bgX, bgY, bgW, bgH)
+
+    // Draw project color dot
+    if (hasDot) {
+      const dotX = bgX + NAMETAG_PADDING_H * zoom / 2 + dotRadius
+      const dotY = bgY + bgH / 2
+      ctx.beginPath()
+      ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2)
+      ctx.fillStyle = ch.projectColor!
+      ctx.fill()
+    }
+
+    ctx.fillStyle = ch.isSubagent ? NAMETAG_SUB_TEXT_COLOR : NAMETAG_TEXT_COLOR
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    // Offset text right by half the dot space so it centers in remaining area
+    const textCx = cx + dotExtra / 2
+    ctx.fillText(label, textCx, cy + NAMETAG_PADDING_V * zoom / 4)
     ctx.restore()
   }
 }
@@ -516,6 +593,10 @@ export interface EditorRenderState {
   ghostBorderHoverCol: number
   /** Hovered ghost border tile row (-1 to rows) */
   ghostBorderHoverRow: number
+  /** Zone overlay data (parallel to tiles array, null = unzoned) */
+  zones?: Array<string | null>
+  /** Number of columns in the zone grid */
+  zoneCols?: number
 }
 
 export interface SelectionRenderState {
@@ -524,6 +605,78 @@ export interface SelectionRenderState {
   hoveredTile: { col: number; row: number } | null
   seats: Map<string, Seat>
   characters: Map<number, Character>
+  showNametags?: boolean
+}
+
+// ── Zone overlay ─────────────────────────────────────────────
+
+function renderZoneOverlay(
+  ctx: CanvasRenderingContext2D,
+  zones: Array<string | null>,
+  cols: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const ts = TILE_SIZE * zoom
+  const rows = Math.ceil(zones.length / cols)
+  const borderWidth = Math.max(1, Math.floor(zoom * 0.5))
+
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i]
+    if (!zone) continue
+    const color = ZONE_COLORS[zone]
+    if (!color) continue
+    const c = i % cols
+    const r = Math.floor(i / cols)
+    const x = offsetX + c * ts
+    const y = offsetY + r * ts
+
+    // Fill zone tile
+    ctx.fillStyle = color
+    ctx.fillRect(x, y, ts, ts)
+
+    // Draw borders on edges where the zone changes
+    const borderColor = ZONE_BORDER_COLORS[zone] || color
+    ctx.fillStyle = borderColor
+    // Top edge
+    if (r === 0 || zones[(r - 1) * cols + c] !== zone) {
+      ctx.fillRect(x, y, ts, borderWidth)
+    }
+    // Bottom edge
+    if (r === rows - 1 || zones[(r + 1) * cols + c] !== zone) {
+      ctx.fillRect(x, y + ts - borderWidth, ts, borderWidth)
+    }
+    // Left edge
+    if (c === 0 || zones[r * cols + (c - 1)] !== zone) {
+      ctx.fillRect(x, y, borderWidth, ts)
+    }
+    // Right edge
+    if (c === cols - 1 || zones[r * cols + (c + 1)] !== zone) {
+      ctx.fillRect(x + ts - borderWidth, y, borderWidth, ts)
+    }
+  }
+
+  // Second pass: draw labels (so they're on top of all fills/borders)
+  if (zoom >= 3) {
+    for (let i = 0; i < zones.length; i++) {
+      const zone = zones[i]
+      if (!zone) continue
+      const c = i % cols
+      const r = Math.floor(i / cols)
+      const x = offsetX + c * ts
+      const y = offsetY + r * ts
+      const label = ZONE_LABELS[zone]
+      if (label) {
+        const fontSize = Math.max(8, Math.floor(zoom * 2.5))
+        ctx.font = `bold ${fontSize}px sans-serif`
+        ctx.fillStyle = ZONE_LABEL_COLORS[zone] || 'rgba(255,255,255,0.7)'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, x + ts / 2, y + ts / 2, ts - 2)
+      }
+    }
+  }
 }
 
 export function renderFrame(
@@ -558,6 +711,11 @@ export function renderFrame(
   // Draw tiles (floor + wall base color)
   renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols)
 
+  // Zone overlay (below furniture, on top of floor)
+  if (editor?.zones && editor.zoneCols) {
+    renderZoneOverlay(ctx, editor.zones, editor.zoneCols, offsetX, offsetY, zoom)
+  }
+
   // Seat indicators (below furniture/characters, on top of floor)
   if (selection) {
     renderSeatIndicators(ctx, selection.seats, selection.characters, selection.selectedAgentId, selection.hoveredTile, offsetX, offsetY, zoom)
@@ -578,6 +736,11 @@ export function renderFrame(
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom)
+
+  // Nametags (above characters, below bubbles would overlap — render after bubbles)
+  if (selection?.showNametags) {
+    renderNametags(ctx, characters, offsetX, offsetY, zoom)
+  }
 
   // Editor overlays
   if (editor) {

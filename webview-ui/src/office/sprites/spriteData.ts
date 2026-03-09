@@ -318,6 +318,28 @@ export const BUBBLE_WAITING_SPRITE: SpriteData = (() => {
   ]
 })()
 
+/** Talking bubble: white square with two blue text lines (plan exchange), and a tail pointer (11x13) */
+export const BUBBLE_TALKING_SPRITE: SpriteData = (() => {
+  const B = '#555566' // border
+  const F = '#EEEEFF' // fill
+  const C = '#4488CC' // blue text lines
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, C, C, C, C, C, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, C, C, C, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 // ── Character Sprites ───────────────────────────────────────────
 // 16x24 characters with palette substitution
 

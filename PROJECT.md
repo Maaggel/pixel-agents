@@ -200,10 +200,112 @@ node standalone/server.mjs --port 8080
 
 ---
 
-## Priority Order (Remaining)
+## 8. Standalone Browser — Project Color Dots Missing
 
-1. **Thought Bubbles** — Visual complement to thinking grace period, makes thinking state visible at a glance
-2. **Rich Idle Behaviors** — Brings the office to life, highest "wow factor"
-3. **Sub-Agent Persistence Setting** — Nice-to-have, simple toggle
-4. **Item Editor Improvements** — Developer tooling, lower user-facing priority
-5. **Cross-Window Layout Sync** — Already works, improvements are polish
+**Problem**: In the standalone browser, the project color dots (colored circle next to agent name in nameplates) are not showing. These work in the VS Code webview.
+
+**Investigation needed**:
+- Check if `projectColor` is set on characters created via `existingAgents` in the standalone browser
+- The standalone server may not be passing workspace folder info needed for `projectColorFromFolder()`
+- Or the nametag rendering code may skip the dot when `isRemote` or when certain fields are missing
+
+---
+
+## 9. Always-Visible Tool Indicators Above Characters
+
+**Problem**: The current tool activity overlay (ToolOverlay) only shows on hover or when the character is selected. Users want to see at a glance what each agent is doing without hovering.
+
+**Solution**: Render lightweight tool indicators directly on the canvas above character heads (not as HTML overlays):
+- **Thinking**: Animated thought bubble sprite (cloud with cycling "..." dots) — currently described in feature #4
+- **Tool-specific**: Small icon or short label — "Reading", "Edit", "Grep", "Bash", etc.
+- Should be toggleable via view options (see #10)
+- Only shown for non-idle agents (active + working)
+
+**Implementation notes**:
+- Render in `renderer.ts` after character sprites, using the canvas 2D context
+- Use small pixel-font text or mini tool icons above the character's head position
+- Different from ToolOverlay (HTML) — this is canvas-native for performance and pixel-art consistency
+- The thought bubble (#4) is a subset of this feature
+
+---
+
+## 10. Toggleable View Options Panel
+
+**Problem**: The UI has zoom buttons and bottom toolbar that may clutter the view, especially in the standalone browser used as an ambient display.
+
+**Solution**: Add a toggleable view options panel in the upper-right corner with checkboxes for:
+- **Zoom buttons** — show/hide the +/- zoom controls
+- **Bottom menu** — show/hide the bottom toolbar (+ Agent, Layout, Settings)
+- **Nameplates** — show/hide the name labels below characters
+- **Activities** — show/hide tool activity indicators; when enabled, show permanently for non-idle agents (not just on hover)
+
+**Design**:
+- Small gear/eye icon in top-right corner
+- Panel appears on click, fades/becomes semi-transparent when not focused
+- Non-intrusive — pixel art aesthetic, minimal opacity when collapsed
+- Settings persisted (globalState for VS Code, localStorage for standalone)
+
+**Implementation notes**:
+- New React component `ViewOptionsPanel.tsx` in `webview-ui/src/components/`
+- State: `{ showZoom, showBottomBar, showNameplates, showActivities }`
+- Pass visibility flags down to `OfficeCanvas`, `ZoomControls`, `BottomToolbar`, `ToolOverlay`
+- For "Activities always visible": when enabled, render ToolOverlay for all non-idle characters without requiring hover/selection
+- CSS: use `opacity` transition, `pointer-events: none` when faded
+
+---
+
+## 11. Standalone Browser — All Avatars Look the Same
+
+**Problem**: In the standalone browser, all spawned agents appear with the same palette/skin color, even though they have different palette and hueShift values in the sync data.
+
+**Investigation needed**:
+- Check if `palette` and `hueShift` from the sync file are correctly passed through `existingAgents` → `addAgent()`
+- The standalone server's `existingAgents` message includes `agentMeta` with palette/hueShift — verify the webview reads and applies these
+- May be a sprite cache issue: if all characters share the same cache key, they'd render identically
+- Could also be that the standalone browser doesn't receive character sprite PNGs, falling back to identical templates
+
+---
+
+## 12. Duplicate Agent Entries in Backend Map (Root Cause)
+
+**Problem**: The `agents` Map in the extension backend can contain multiple entries for the same logical agent — e.g., a definition-based agent (from `.pixel_agents` config) AND a file-adopted agent (from JSONL detection) for the same active session. This causes duplicate characters in the sync file and standalone browser.
+
+**Current workaround**: Name-based dedup in `writeSyncState()` merges display state from duplicates onto the lowest-ID entry. This is stable (no flip-flopping) but is a band-aid.
+
+**Root cause**: Agent creation happens through multiple paths (config restore, terminal creation, JSONL adoption) without checking for existing entries that represent the same logical session. When an agent is restored from config AND its JSONL file is separately detected by the file watcher, two entries are created.
+
+**Proper fix**: When adopting a JSONL file or terminal, check if an existing agent (by definitionId or jsonlFile) already covers this session. If so, merge into the existing entry rather than creating a new one. This should happen in `agentManager.ts` (restore) and `fileWatcher.ts` (adoption).
+
+---
+
+## 13. Idle Characters Stay Static — Should Occasionally Roam
+
+**Problem**: In the standalone browser, idle agents stay in the same location and never move. They should occasionally get up and wander — to the kitchen, rest area, or just around the office.
+
+**Existing infrastructure**: The VS Code webview already has a full idle roaming system:
+- `SIT_IDLE` → after `seatTimer` expires → `IDLE` state with `wanderLimit` (3-6) random moves
+- `ZONE_WANDER_PREFERENCE` (0.7) — 70% chance idle wander targets come from kitchen/rest zones
+- `IDLE_ZONE_DELAY_SEC` (10s) — after 10s idle, reassign to a kitchen/rest zone seat
+- `reassignToZoneSeat()` — picks a seat in the target zones
+- `getZoneWalkableTiles()` — filters walkable tiles by zone type
+
+**Investigation needed**: This system works in the VS Code webview's game loop (`officeState.update()`). For the standalone browser:
+- Check if the zone tiles are being loaded/parsed from the layout (zones are part of the layout data)
+- Verify the FSM is running correctly — characters may be stuck in `SIT_IDLE` without `seatTimer` being set
+- The wander pause timing (2-20s between moves) may feel too infrequent — consider tuning
+- Could add more varied destinations: water cooler, windows, bookshelves (weighted by furniture type proximity)
+
+---
+
+## Priority Order (Remaining) — easiest first
+
+1. **Standalone Avatars Same Palette (#11)** — Likely just passing palette/hueShift through `addAgent()` correctly; small fix
+2. **Project Color Dots (#8)** — Pass `workspaceFolder` through standalone server so `projectColorFromFolder()` works; small fix
+3. **Duplicate Agent Root Cause (#12)** — Merge logic in `agentManager.ts`/`fileWatcher.ts`; moderate but high-value
+4. **Idle Roaming in Standalone (#13)** — FSM already works in VS Code; likely just missing seatTimer init or zone data; debug + small fix
+5. **Thought Bubbles (#4)** — New sprite + render in canvas; self-contained, no architecture changes
+6. **Always-Visible Tool Indicators (#9)** — Canvas text above characters + toggle flag; moderate
+7. **Toggleable View Options (#10)** — New React component + visibility flags; moderate, mostly UI wiring
+8. **Rich Idle Behaviors (#5)** — Interactions, coffee runs, etc.; larger feature, depends on zone system
+9. **Sub-Agent Persistence Setting (#3)** — Nice-to-have toggle; simple but low priority
+10. **Item Editor Improvements (#2)** — Developer tooling; low user-facing priority

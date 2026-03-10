@@ -803,25 +803,27 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			});
 		}
 
-		// Dedup by display name: if two agents share the same name, keep the
-		// more relevant one (active > idle, has-terminal > no-terminal).
+		// Dedup by display name: if two agents share the same name, keep the one
+		// with the lowest localId (stable — no flip-flopping) but merge display
+		// state from the more active duplicate so the kept agent reflects reality.
 		const nameMap = new Map<string, number>();
 		for (let i = 0; i < agents.length; i++) {
 			const a = agents[i];
 			const prev = nameMap.get(a.name);
 			if (prev !== undefined) {
-				const prevAgent = agents[prev];
-				// Prefer active over idle, then terminal-backed over file-only
-				const prevBetter = prevAgent.isActive || (!a.isActive && !!this.agents.get(prevAgent.localId)?.terminalRef);
-				if (prevBetter) {
-					agents.splice(i, 1);
-					i--;
-				} else {
-					agents.splice(prev, 1);
-					// Fix indices after splice
-					nameMap.set(a.name, i - 1);
-					i--;
+				const kept = agents[prev];
+				const dropped = a;
+				// Merge: if the dropped agent is more active, copy its display state
+				if (dropped.isActive && !kept.isActive) {
+					kept.isActive = dropped.isActive;
+					kept.currentTool = dropped.currentTool;
+					kept.currentToolStatus = dropped.currentToolStatus;
+					kept.isWaiting = dropped.isWaiting;
+					kept.bubbleType = dropped.bubbleType;
+					kept.idleHint = dropped.idleHint;
 				}
+				agents.splice(i, 1);
+				i--;
 			} else {
 				nameMap.set(a.name, i);
 			}

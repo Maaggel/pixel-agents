@@ -340,6 +340,228 @@ export const BUBBLE_TALKING_SPRITE: SpriteData = (() => {
   ]
 })()
 
+// ── Tool-specific bubble icons (11x13 speech bubbles with unique icons) ──
+
+/** Helper: create a speech bubble with a 7x6 icon drawn in the center area */
+function makeBubbleIcon(icon: string[][]): SpriteData {
+  const B = '#555566'
+  const F = '#EEEEFF'
+  // Start with standard speech bubble frame
+  const rows: string[][] = [
+    [_, B, B, B, B, B, B, B, B, B, _],   // row 0: top border
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 1
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 2: icon row 0
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 3: icon row 1
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 4: icon row 2
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 5: icon row 3
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 6: icon row 4
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 7: icon row 5
+    [B, F, F, F, F, F, F, F, F, F, B],   // row 8
+    [_, B, B, B, B, B, B, B, B, B, _],   // row 9: bottom border
+    [_, _, _, _, B, B, B, _, _, _, _],   // row 10: tail
+    [_, _, _, _, _, B, _, _, _, _, _],   // row 11: tail tip
+    [_, _, _, _, _, _, _, _, _, _, _],   // row 12
+  ]
+  // Stamp the icon into rows 2-7, columns 2-8 (7 cols, 6 rows)
+  for (let r = 0; r < icon.length && r < 6; r++) {
+    for (let c = 0; c < icon[r].length && c < 7; c++) {
+      if (icon[r][c] !== _) {
+        rows[r + 2][c + 2] = icon[r][c]
+      }
+    }
+  }
+  return rows
+}
+
+/** Read tool: open book icon (blue) */
+export const BUBBLE_TOOL_READ: SpriteData = (() => {
+  const C = '#4488CC'
+  return makeBubbleIcon([
+    [_, _, C, C, C, _, _],
+    [_, C, _, _, _, C, _],
+    [_, C, C, C, C, C, _],
+    [_, C, _, _, _, C, _],
+    [_, C, C, C, C, C, _],
+    [_, _, _, _, _, _, _],
+  ])
+})()
+
+/** Write tool: pencil icon (orange) */
+export const BUBBLE_TOOL_WRITE: SpriteData = (() => {
+  const C = '#DD8833'
+  return makeBubbleIcon([
+    [_, _, _, _, _, C, _],
+    [_, _, _, _, C, C, _],
+    [_, _, _, C, C, _, _],
+    [_, _, C, C, _, _, _],
+    [_, C, C, _, _, _, _],
+    [_, C, _, _, _, _, _],
+  ])
+})()
+
+/** Edit tool: wrench/tool icon (teal) */
+export const BUBBLE_TOOL_EDIT: SpriteData = (() => {
+  const C = '#44AA88'
+  return makeBubbleIcon([
+    [_, _, _, _, C, C, _],
+    [_, _, _, C, C, C, _],
+    [_, _, C, C, _, _, _],
+    [_, C, C, _, _, _, _],
+    [_, C, C, _, _, _, _],
+    [_, _, C, _, _, _, _],
+  ])
+})()
+
+/** Bash/Run tool: terminal prompt "> _" (green) */
+export const BUBBLE_TOOL_BASH: SpriteData = (() => {
+  const C = '#44BB66'
+  return makeBubbleIcon([
+    [_, _, _, _, _, _, _],
+    [_, C, _, _, _, _, _],
+    [_, _, C, _, _, _, _],
+    [_, C, _, _, _, _, _],
+    [_, _, _, C, C, C, _],
+    [_, _, _, _, _, _, _],
+  ])
+})()
+
+/** Grep/Search tool: magnifying glass (purple) */
+export const BUBBLE_TOOL_GREP: SpriteData = (() => {
+  const C = '#8855CC'
+  return makeBubbleIcon([
+    [_, _, C, C, C, _, _],
+    [_, C, _, _, _, C, _],
+    [_, C, _, _, _, C, _],
+    [_, _, C, C, C, _, _],
+    [_, _, _, _, _, C, _],
+    [_, _, _, _, _, _, C],
+  ])
+})()
+
+/** Glob/Find tool: folder icon (yellow) */
+export const BUBBLE_TOOL_GLOB: SpriteData = (() => {
+  const C = '#CCAA33'
+  return makeBubbleIcon([
+    [_, C, C, C, _, _, _],
+    [_, C, C, C, C, C, _],
+    [_, C, _, _, _, C, _],
+    [_, C, _, _, _, C, _],
+    [_, C, C, C, C, C, _],
+    [_, _, _, _, _, _, _],
+  ])
+})()
+
+/** Task/Agent tool: person silhouette (blue) */
+export const BUBBLE_TOOL_TASK: SpriteData = (() => {
+  const C = '#4466AA'
+  return makeBubbleIcon([
+    [_, _, _, C, _, _, _],
+    [_, _, C, C, C, _, _],
+    [_, _, _, C, _, _, _],
+    [_, _, C, C, C, _, _],
+    [_, _, C, _, C, _, _],
+    [_, _, _, _, _, _, _],
+  ])
+})()
+
+/** WebFetch tool: download arrow (cyan) */
+export const BUBBLE_TOOL_FETCH: SpriteData = (() => {
+  const C = '#33AACC'
+  return makeBubbleIcon([
+    [_, _, _, C, _, _, _],
+    [_, _, _, C, _, _, _],
+    [_, _, _, C, _, _, _],
+    [_, _, C, C, C, _, _],
+    [_, _, _, C, _, _, _],
+    [_, C, C, C, C, C, _],
+  ])
+})()
+
+/** WebSearch tool: globe icon (teal) */
+export const BUBBLE_TOOL_SEARCH: SpriteData = (() => {
+  const C = '#33AA99'
+  return makeBubbleIcon([
+    [_, _, C, C, C, _, _],
+    [_, C, _, C, _, C, _],
+    [_, C, C, C, C, C, _],
+    [_, C, _, C, _, C, _],
+    [_, _, C, C, C, _, _],
+    [_, _, _, _, _, _, _],
+  ])
+})()
+
+/** Bash:build tool: hammer icon (orange) */
+export const BUBBLE_TOOL_BUILD: SpriteData = (() => {
+  const C = '#DD8833'
+  return makeBubbleIcon([
+    [_, _, _, _, C, C, _],
+    [_, _, _, _, C, C, _],
+    [_, _, _, C, C, _, _],
+    [_, _, C, C, _, _, _],
+    [_, C, C, _, _, _, _],
+    [_, C, _, _, _, _, _],
+  ])
+})()
+
+/** Bash:test tool: checkmark in a box (green) */
+export const BUBBLE_TOOL_TEST: SpriteData = (() => {
+  const C = '#44BB66'
+  const B = '#338855'
+  return makeBubbleIcon([
+    [B, B, B, B, B, B, B],
+    [B, _, _, _, _, C, B],
+    [B, _, _, _, C, _, B],
+    [B, C, _, C, _, _, B],
+    [B, _, C, _, _, _, B],
+    [B, B, B, B, B, B, B],
+  ])
+})()
+
+/** Bash:git tool: branch/fork icon (red-orange) */
+export const BUBBLE_TOOL_GIT: SpriteData = (() => {
+  const C = '#DD5533'
+  return makeBubbleIcon([
+    [_, C, _, _, _, C, _],
+    [_, C, _, _, _, C, _],
+    [_, _, C, _, C, _, _],
+    [_, _, _, C, _, _, _],
+    [_, _, _, C, _, _, _],
+    [_, _, _, C, _, _, _],
+  ])
+})()
+
+/** Bash:install tool: package/box icon (blue) */
+export const BUBBLE_TOOL_INSTALL: SpriteData = (() => {
+  const C = '#4488CC'
+  const D = '#3366AA'
+  return makeBubbleIcon([
+    [_, _, _, C, _, _, _],
+    [_, _, C, C, C, _, _],
+    [_, C, C, C, C, C, _],
+    [_, C, _, D, _, C, _],
+    [_, C, _, D, _, C, _],
+    [_, C, C, C, C, C, _],
+  ])
+})()
+
+/** Map tool names to their bubble icon sprites */
+export const TOOL_BUBBLE_SPRITES: Record<string, SpriteData> = {
+  Read: BUBBLE_TOOL_READ,
+  Grep: BUBBLE_TOOL_GREP,
+  Glob: BUBBLE_TOOL_GLOB,
+  Write: BUBBLE_TOOL_WRITE,
+  Edit: BUBBLE_TOOL_EDIT,
+  Bash: BUBBLE_TOOL_BASH,
+  'Bash:build': BUBBLE_TOOL_BUILD,
+  'Bash:test': BUBBLE_TOOL_TEST,
+  'Bash:git': BUBBLE_TOOL_GIT,
+  'Bash:install': BUBBLE_TOOL_INSTALL,
+  Task: BUBBLE_TOOL_TASK,
+  Agent: BUBBLE_TOOL_TASK,
+  WebFetch: BUBBLE_TOOL_FETCH,
+  WebSearch: BUBBLE_TOOL_SEARCH,
+}
+
 /** Thinking bubble: cloud shape with thought trail (11x14) */
 export const BUBBLE_THINKING_SPRITE: SpriteData = (() => {
   const B = '#555566' // border

@@ -37,7 +37,7 @@ export function isReadingTool(tool: string | null): boolean {
 
 export function isBuildTool(tool: string | null): boolean {
   if (!tool) return false
-  return BUILD_TOOLS.has(tool)
+  return BUILD_TOOLS.has(tool) || tool.startsWith('Bash:')
 }
 
 /** Pixel center of a tile */

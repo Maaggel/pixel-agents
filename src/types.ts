@@ -38,22 +38,69 @@ export interface AgentState {
 	jsonlFile: string;
 	fileOffset: number;
 	lineBuffer: string;
+	// ── Active tool tracking (real-time) ──
 	activeToolIds: Set<string>;
 	activeToolStatuses: Map<string, string>;
 	activeToolNames: Map<string, string>;
 	activeSubagentToolIds: Map<string, Set<string>>; // parentToolId → active sub-tool IDs
 	activeSubagentToolNames: Map<string, Map<string, string>>; // parentToolId → (subToolId → toolName)
-	isWaiting: boolean;
-	permissionSent: boolean;
-	hadToolsInTurn: boolean;
-	/** True once the agent has processed any tool_use in this session (survives turn resets) */
-	hasBeenActive: boolean;
-	/** Last tool status string — persists through grace period for sync display */
+	// ── Timestamp-based state (replaces boolean flags) ──
+	/** When the last JSONL data was received (any record type) */
+	lastDataAt: number;
+	/** When the last tool_use was seen (for "was recently working" detection) */
+	lastToolUseAt: number | null;
+	/** When turn_duration fired (definitive turn end) */
+	turnEndedAt: number | null;
+	/** When a user prompt was detected (turn start) */
+	userPromptAt: number | null;
+	/** Last tool status string for display during grace period */
 	lastToolStatus: string | null;
+	/** Name of the most recently completed tool (for brief icon hold after fast tools) */
+	lastToolName: string | null;
+	/** When the last tool_result was processed */
+	lastToolDoneAt: number | null;
+	/** Whether permission prompt was detected */
+	permissionSent: boolean;
+	// ── Identity ──
 	/** Links to DetectedAgentDefinition.definitionId, or null for ad-hoc agents */
 	agentDefinitionId: string | null;
 	/** Workspace folder name (only set for multi-root workspaces) */
 	folderName?: string;
+}
+
+/** Create a new AgentState with sensible defaults. Only id, projectDir, jsonlFile are required. */
+export function createAgentState(opts: {
+	id: number;
+	projectDir: string;
+	jsonlFile: string;
+	terminalRef?: vscode.Terminal | null;
+	fileOffset?: number;
+	agentDefinitionId?: string | null;
+	folderName?: string;
+}): AgentState {
+	return {
+		id: opts.id,
+		terminalRef: opts.terminalRef ?? null,
+		projectDir: opts.projectDir,
+		jsonlFile: opts.jsonlFile,
+		fileOffset: opts.fileOffset ?? 0,
+		lineBuffer: '',
+		activeToolIds: new Set(),
+		activeToolStatuses: new Map(),
+		activeToolNames: new Map(),
+		activeSubagentToolIds: new Map(),
+		activeSubagentToolNames: new Map(),
+		lastDataAt: 0,
+		lastToolUseAt: null,
+		turnEndedAt: null,
+		userPromptAt: null,
+		lastToolStatus: null,
+		lastToolName: null,
+		lastToolDoneAt: null,
+		permissionSent: false,
+		agentDefinitionId: opts.agentDefinitionId ?? null,
+		folderName: opts.folderName,
+	};
 }
 
 export interface PersistedAgent {

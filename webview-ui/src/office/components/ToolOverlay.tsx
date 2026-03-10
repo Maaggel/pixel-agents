@@ -172,6 +172,9 @@ export function ToolOverlay({
           dotColor = 'var(--pixel-status-active)'
         }
 
+        // Show bubble indicator above the text panel when canvas bubbles are occluded
+        const showBubbleIndicator = ch.bubbleType === 'permission' || ch.bubbleType === 'thinking' || ch.bubbleType === 'talking'
+
         return (
           <div
             key={id}
@@ -187,6 +190,23 @@ export function ToolOverlay({
               zIndex: isSelected ? 'var(--pixel-overlay-selected-z)' : 'var(--pixel-overlay-z)',
             }}
           >
+            {showBubbleIndicator && (
+              <div
+                style={{
+                  fontSize: ch.bubbleType === 'permission' ? '18px' : '11px',
+                  lineHeight: 1,
+                  marginBottom: 2,
+                  fontWeight: 'bold',
+                  color: ch.bubbleType === 'permission'
+                    ? 'var(--pixel-status-permission)'
+                    : 'var(--pixel-status-active)',
+                }}
+              >
+                {ch.bubbleType === 'permission' ? '...'
+                  : ch.bubbleType === 'talking' && ch.currentTool ? ch.currentTool.toLowerCase()
+                  : '\u2026'}
+              </div>
+            )}
             <div
               style={{
                 display: 'flex',

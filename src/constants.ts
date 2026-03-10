@@ -5,7 +5,8 @@ export const PROJECT_SCAN_INTERVAL_MS = 1000;
 export const TOOL_DONE_DELAY_MS = 300;
 export const PERMISSION_TIMER_DELAY_MS = 7000;
 export const TEXT_IDLE_DELAY_MS = 5000;
-export const THINKING_GRACE_MS = 8000;
+export const THINKING_GRACE_MS = 30000;
+export const TOOL_ICON_HOLD_MS = 1200;
 
 // ── Display Truncation ──────────────────────────────────────
 export const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;

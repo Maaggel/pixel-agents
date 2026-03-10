@@ -17,7 +17,7 @@ This is the source code for the free [Pixel Agents extension for VS Code](https:
 - **Cross-window sync** — agents from other VS Code windows appear in your office with a colored project indicator dot
 - **Open in editor tab** — run `Pixel Agents: Open in Editor Tab` from the command palette for a full-size view
 - **Office layout editor** — design your office with floors, walls, and furniture using a built-in editor
-- **Speech bubbles** — visual indicators when an agent is waiting for input or needs permission
+- **Speech bubbles with tool icons** — pixel art bubbles show what each agent is doing: a book for reading, a pencil for writing, a terminal prompt for running commands, a magnifying glass for searching, and more
 - **Sound notifications** — optional chime when an agent finishes its turn
 - **Sub-agent visualization** — Task tool sub-agents spawn as separate characters linked to their parent
 - **Persistent layouts** — your office design is saved and shared across VS Code windows
@@ -90,6 +90,52 @@ npm run import-tileset
 Fair warning: the import pipeline is not exactly straightforward — the out-of-the-box tileset assets aren't the easiest to work with, and while I've done my best to make the process as smooth as possible, it may require some manual tweaking. If you have experience creating pixel art office assets and would like to contribute freely usable tilesets for the community, that would be hugely appreciated.
 
 The extension will still work without the tileset — you'll get the default characters and basic layout, but the full furniture catalog requires the imported assets.
+
+## Speech Bubbles & Tool Icons
+
+Characters show different speech bubbles depending on their state:
+
+- **No bubble** — the agent is idle
+- **Thought cloud** (grey dots) — the agent is thinking, processing text, or waiting to start
+- **Speech bubble with tool icon** — the agent is actively using a specific tool
+- **Amber dots** — the agent needs permission to proceed (click to focus)
+
+Each tool gets its own pixel art icon inside the speech bubble:
+
+| Tool | Icon | Color | Description |
+|------|------|-------|-------------|
+| Read | Book | Blue | Reading files |
+| Write | Pencil | Orange | Writing new files |
+| Edit | Wrench | Teal | Editing existing files |
+| Bash | `> _` | Green | Running terminal commands |
+| Bash:build | Hammer | Orange | Building (`npm run build`, `tsc`, `make`, `cargo build`, etc.) |
+| Bash:test | Checkmark | Green | Testing (`npm test`, `jest`, `vitest`, `pytest`, etc.) |
+| Bash:git | Branch | Red-orange | Git commands (`git commit`, `git push`, etc.) |
+| Bash:install | Package | Blue | Installing dependencies (`npm install`, `pip install`, etc.) |
+| Grep | Magnifying glass | Purple | Searching file contents |
+| Glob | Folder | Yellow | Finding files by pattern |
+| Task | Person | Blue | Running sub-agent tasks |
+| WebFetch | Download arrow | Cyan | Fetching web content |
+| WebSearch | Globe | Teal | Searching the web |
+
+Bash commands are automatically categorized by matching the command against known patterns (see `refineBashToolName()` in `src/transcriptParser.ts`). Unrecognized commands fall back to the generic terminal icon.
+
+When the "Always show activities" view option is enabled, the activity text panel appears below the character. If a bubble would be hidden behind this panel, a compact indicator is shown above the panel instead.
+
+### Customizing tool icons
+
+Tool icons are defined as 7x6 pixel art sprites in `webview-ui/src/office/sprites/spriteData.ts`. Each icon is a simple 2D array of hex color strings (or `''` for transparent), stamped into the standard 11x13 speech bubble frame by `makeBubbleIcon()`.
+
+To add or modify an icon:
+
+1. Find the `BUBBLE_TOOL_*` constants in `spriteData.ts`
+2. Edit the 7x6 pixel grid — each row is an array of 7 color values
+3. Add new tools to the `TOOL_BUBBLE_SPRITES` map at the bottom
+4. Rebuild with `npm run build`
+
+The tool names in `TOOL_BUBBLE_SPRITES` must match the tool names that Claude Code reports in its JSONL transcript (e.g. `Read`, `Write`, `Bash`). Bash subcategories use the `Bash:*` naming convention (e.g. `Bash:build`, `Bash:test`). Unknown tools fall back to the generic talking bubble with text lines.
+
+To add new Bash subcategories, edit `refineBashToolName()` in `src/transcriptParser.ts` and add a matching icon sprite + entry in `TOOL_BUBBLE_SPRITES`.
 
 ## How It Works
 

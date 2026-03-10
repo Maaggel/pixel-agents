@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_TALKING_SPRITE, BUBBLE_THINKING_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -469,27 +469,35 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue
 
-    const sprite = ch.bubbleType === 'permission'
-      ? BUBBLE_PERMISSION_SPRITE
-      : ch.bubbleType === 'talking'
-        ? BUBBLE_TALKING_SPRITE
-        : ch.bubbleType === 'thinking'
-          ? BUBBLE_THINKING_SPRITE
-          : BUBBLE_WAITING_SPRITE
-
-    // Compute opacity: permission = full, waiting = fade in last 0.5s
+    // Compute opacity: permission = full, talking/waiting = fade in last 0.5s
     let alpha = 1.0
     if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
-    const cached = getCachedSprite(sprite, zoom)
-    // Position: centered above the character's head
-    // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
-    // Place bubble above head with a small gap; follow sitting offset
+    // Character anchor position
     const sittingOff = isSittingState(ch.state) ? BUBBLE_SITTING_OFFSET_PX : 0
-    const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
-    const bubbleY = Math.round(offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom)
+    const charCenterX = offsetX + ch.x * zoom
+    const charTopY = offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom
+
+    // Select sprite based on bubble type
+    let sprite: SpriteData
+    if (ch.bubbleType === 'talking' && ch.currentTool) {
+      // Tool-specific icon bubble (falls back to generic talking sprite)
+      sprite = TOOL_BUBBLE_SPRITES[ch.currentTool] ?? BUBBLE_TALKING_SPRITE
+    } else if (ch.bubbleType === 'permission') {
+      sprite = BUBBLE_PERMISSION_SPRITE
+    } else if (ch.bubbleType === 'thinking') {
+      sprite = BUBBLE_THINKING_SPRITE
+    } else if (ch.bubbleType === 'talking') {
+      sprite = BUBBLE_TALKING_SPRITE
+    } else {
+      sprite = BUBBLE_WAITING_SPRITE
+    }
+
+    const cached = getCachedSprite(sprite, zoom)
+    const bubbleX = Math.round(charCenterX - cached.width / 2)
+    const bubbleY = Math.round(charTopY - cached.height - 1 * zoom)
 
     ctx.save()
     if (alpha < 1.0) ctx.globalAlpha = alpha

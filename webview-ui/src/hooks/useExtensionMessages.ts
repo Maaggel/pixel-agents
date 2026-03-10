@@ -8,8 +8,8 @@ import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
-import { playDoneSound, setSoundEnabled } from '../notificationSound.js'
-import { NAMETAG_PROJECT_COLORS } from '../constants.js'
+import { setSoundEnabled } from '../notificationSound.js'
+import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS } from '../constants.js'
 
 /** Derive a stable color from a workspace folder path. */
 function projectColorFromFolder(folder: string): string {
@@ -85,6 +85,10 @@ function saveAgentSeats(os: OfficeState): void {
   }
   vscode.postMessage({ type: 'saveAgentSeats', seats })
 }
+
+/** Tracks when each agent last showed a tool icon bubble (talking).
+ *  Used to enforce a minimum display time before downgrading to thinking. */
+const toolBubbleTimestamps = new Map<number, number>()
 
 export function useExtensionMessages(
   getOfficeState: () => OfficeState,
@@ -279,14 +283,23 @@ export function useExtensionMessages(
 
         if (bubbleType === 'permission') {
           os.showPermissionBubble(id)
-        } else if (bubbleType === 'waiting') {
-          os.showWaitingBubble(id)
-          playDoneSound()
-        } else if (isActive && idleHint === 'thinking' && !currentTool) {
-          // Active but no tools yet — show thinking bubble
-          os.showThinkingBubble(id)
+          toolBubbleTimestamps.delete(id)
+        } else if (isActive && currentTool) {
+          // Active with tools → talking bubble (speech box with tool icon)
+          os.showTalkingBubble(id)
+          toolBubbleTimestamps.set(id, Date.now())
+        } else if (isActive) {
+          // Active but no tools → thinking bubble, unless a tool icon was shown recently
+          const lastToolAt = toolBubbleTimestamps.get(id)
+          if (lastToolAt && (Date.now() - lastToolAt) < TOOL_BUBBLE_MIN_DISPLAY_MS) {
+            // Keep the tool icon visible a bit longer — don't downgrade to thinking yet
+          } else {
+            os.showThinkingBubble(id)
+            toolBubbleTimestamps.delete(id)
+          }
         } else {
           os.clearPermissionBubble(id)
+          toolBubbleTimestamps.delete(id)
         }
       } else if (msg.type === 'agentStatus') {
         const id = msg.id as number
@@ -567,9 +580,9 @@ export function useExtensionMessages(
             // Bubble state from source
             if (ra.bubbleType === 'permission') {
               existing.bubbleType = 'permission'
-            } else if (ra.bubbleType === 'waiting') {
-              existing.bubbleType = 'waiting'
-            } else if (!ra.bubbleType && existing.bubbleType === 'permission') {
+            } else if (ra.isActive) {
+              existing.bubbleType = 'thinking'
+            } else if (!ra.bubbleType && (existing.bubbleType === 'permission' || existing.bubbleType === 'thinking')) {
               existing.bubbleType = null
             }
             // Set sync target — game loop animates toward this

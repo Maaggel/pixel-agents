@@ -915,7 +915,8 @@ export class OfficeState {
 
   showTalkingBubble(id: number): void {
     const ch = this.characters.get(id)
-    if (ch) {
+    if (ch && ch.bubbleType !== 'permission') {
+      // Don't override permission bubble; talking is lower priority
       ch.bubbleType = 'talking'
       ch.bubbleTimer = TALKING_BUBBLE_DURATION_SEC
     }

@@ -2,16 +2,11 @@ import * as path from 'path';
 import type * as vscode from 'vscode';
 import type { AgentState } from './types.js';
 import {
-	cancelWaitingTimer,
-	startWaitingTimer,
-	clearAgentActivity,
-	startPermissionTimer,
 	cancelPermissionTimer,
+	startPermissionTimer,
 } from './timerManager.js';
 import {
 	TOOL_DONE_DELAY_MS,
-	TEXT_IDLE_DELAY_MS,
-	THINKING_GRACE_MS,
 	BASH_COMMAND_DISPLAY_MAX_LENGTH,
 	TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from './constants.js';
@@ -21,6 +16,21 @@ export const PERMISSION_EXEMPT_TOOLS = new Set([
 	'Task', 'Agent', 'AskUserQuestion', 'TaskOutput', 'TaskStop',
 	'TodoWrite', 'ToolSearch', 'EnterPlanMode', 'ExitPlanMode', 'Skill',
 ]);
+
+/** Refine Bash tool name based on the command being run */
+export function refineBashToolName(command: string): string {
+	const cmd = command.trim().toLowerCase();
+	// Build / compile commands
+	if (/^(npm run build|yarn build|pnpm build|make\b|cmake\b|cargo build|go build|dotnet build|gradle build|mvn (compile|package)|tsc\b|esbuild\b|vite build|webpack|rollup|turbo build)/.test(cmd)) return 'Bash:build';
+	if (/^npx (vsce|tsc)\b/.test(cmd)) return 'Bash:build';
+	// Test commands
+	if (/^(npm (run )?test|yarn test|pnpm test|jest\b|vitest\b|pytest\b|cargo test|go test|dotnet test|mvn test)/.test(cmd)) return 'Bash:test';
+	// Git commands
+	if (/^git\b/.test(cmd)) return 'Bash:git';
+	// Install / dependency commands
+	if (/^(npm (install|i|ci)|yarn (install)?$|pnpm (install|i)|pip install|cargo add|go get)/.test(cmd)) return 'Bash:install';
+	return 'Bash';
+}
 
 export function formatToolStatus(toolName: string, input: Record<string, unknown>): string {
 	const base = (p: unknown) => typeof p === 'string' ? path.basename(p) : '';
@@ -52,12 +62,15 @@ export function processTranscriptLine(
 	agentId: number,
 	line: string,
 	agents: Map<number, AgentState>,
-	waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
 	webview: vscode.Webview | undefined,
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;
+
+	const now = Date.now();
+	agent.lastDataAt = now;
+
 	try {
 		const record = JSON.parse(line);
 
@@ -68,22 +81,24 @@ export function processTranscriptLine(
 			const hasToolUse = blocks.some(b => b.type === 'tool_use');
 
 			if (hasToolUse) {
-				cancelWaitingTimer(agentId, waitingTimers);
-				agent.isWaiting = false;
-				agent.hadToolsInTurn = true;
-				agent.hasBeenActive = true;
-				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+				// Tools starting → clear turn-ended state, set active
+				agent.turnEndedAt = null;
+				agent.lastToolUseAt = now;
 				let hasNonExemptTool = false;
 				for (const block of blocks) {
 					if (block.type === 'tool_use' && block.id) {
-						const toolName = block.name || '';
-						const status = formatToolStatus(toolName, block.input || {});
+						const rawToolName = block.name || '';
+						const status = formatToolStatus(rawToolName, block.input || {});
+						// Refine Bash into subcategories (build, test, git, install)
+						const toolName = rawToolName === 'Bash'
+							? refineBashToolName((block.input?.command as string) || '')
+							: rawToolName;
 						console.log(`[Pixel Agents] Agent ${agentId} tool start: ${block.id} ${status}`);
 						agent.activeToolIds.add(block.id);
 						agent.activeToolStatuses.set(block.id, status);
 						agent.activeToolNames.set(block.id, toolName);
 						agent.lastToolStatus = status;
-						if (!PERMISSION_EXEMPT_TOOLS.has(toolName)) {
+						if (!PERMISSION_EXEMPT_TOOLS.has(rawToolName)) {
 							hasNonExemptTool = true;
 						}
 						webview?.postMessage({
@@ -97,22 +112,15 @@ export function processTranscriptLine(
 				if (hasNonExemptTool) {
 					startPermissionTimer(agentId, agents, permissionTimers, PERMISSION_EXEMPT_TOOLS, webview);
 				}
-				sendAgentStateUpdate(agentId, agents, webview);
-			} else if (blocks.some(b => b.type === 'text')) {
-				// Assistant is generating text — mark as active (thinking)
-				agent.isWaiting = false;
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				sendAgentStateUpdate(agentId, agents, webview);
-				if (!agent.hadToolsInTurn) {
-					// Text-only response in a turn that hasn't used any tools.
-					// turn_duration handles tool-using turns reliably but is never
-					// emitted for text-only turns, so we use a silence-based timer:
-					// if no new JSONL data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
-					startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
-				}
+			} else if (blocks.some(b => b.type === 'text')) {
+				// Assistant text — agent is thinking
+				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+				sendAgentStateUpdate(agentId, agents, webview);
 			}
 		} else if (record.type === 'progress') {
-			processProgressRecord(agentId, record, agents, waitingTimers, permissionTimers, webview);
+			processProgressRecord(agentId, record, agents, permissionTimers, webview);
 		} else if (record.type === 'user') {
 			const content = record.message?.content;
 			if (Array.isArray(content)) {
@@ -123,7 +131,6 @@ export function processTranscriptLine(
 						if (block.type === 'tool_result' && block.tool_use_id) {
 							console.log(`[Pixel Agents] Agent ${agentId} tool done: ${block.tool_use_id}`);
 							const completedToolId = block.tool_use_id;
-							// If the completed tool was a Task, clear its subagent tools
 							const completedToolName = agent.activeToolNames.get(completedToolId);
 							if (completedToolName === 'Task' || completedToolName === 'Agent') {
 								agent.activeSubagentToolIds.delete(completedToolId);
@@ -134,6 +141,8 @@ export function processTranscriptLine(
 									parentToolId: completedToolId,
 								});
 							}
+							agent.lastToolName = agent.activeToolNames.get(completedToolId) ?? null;
+							agent.lastToolDoneAt = now;
 							agent.activeToolIds.delete(completedToolId);
 							agent.activeToolStatuses.delete(completedToolId);
 							agent.activeToolNames.delete(completedToolId);
@@ -147,57 +156,53 @@ export function processTranscriptLine(
 							}, TOOL_DONE_DELAY_MS);
 						}
 					}
-					// All tools completed — start grace-period idle timer as fallback
-					// for turn-end detection when turn_duration is not emitted.
-					// Uses THINKING_GRACE_MS (longer) since agent was just actively working.
-					if (agent.activeToolIds.size === 0) {
-						agent.hadToolsInTurn = false;
-						startWaitingTimer(agentId, THINKING_GRACE_MS, agents, waitingTimers, webview);
-					}
 					sendAgentStateUpdate(agentId, agents, webview);
 				} else {
 					// New user text prompt — new turn starting
-					cancelWaitingTimer(agentId, waitingTimers);
-					clearAgentActivity(agent, agentId, permissionTimers, webview);
-					agent.hadToolsInTurn = false;
-					agent.hasBeenActive = false;
-					agent.isWaiting = false;
+					agent.userPromptAt = now;
+					agent.turnEndedAt = null;
 					agent.lastToolStatus = null;
+					agent.permissionSent = false;
+					cancelPermissionTimer(agentId, permissionTimers);
+					agent.activeToolIds.clear();
+					agent.activeToolStatuses.clear();
+					agent.activeToolNames.clear();
+					agent.activeSubagentToolIds.clear();
+					agent.activeSubagentToolNames.clear();
+					webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 					sendAgentStateUpdate(agentId, agents, webview);
 				}
 			} else if (typeof content === 'string' && content.trim()) {
 				// New user text prompt — new turn starting
-				cancelWaitingTimer(agentId, waitingTimers);
-				clearAgentActivity(agent, agentId, permissionTimers, webview);
-				agent.hadToolsInTurn = false;
-				agent.hasBeenActive = false;
-				agent.isWaiting = false;
+				agent.userPromptAt = now;
+				agent.turnEndedAt = null;
 				agent.lastToolStatus = null;
+				agent.permissionSent = false;
+				cancelPermissionTimer(agentId, permissionTimers);
+				agent.activeToolIds.clear();
+				agent.activeToolStatuses.clear();
+				agent.activeToolNames.clear();
+				agent.activeSubagentToolIds.clear();
+				agent.activeSubagentToolNames.clear();
+				webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				sendAgentStateUpdate(agentId, agents, webview);
 			}
 		} else if (record.type === 'system' && record.subtype === 'turn_duration') {
-			cancelWaitingTimer(agentId, waitingTimers);
+			// Definitive turn-end signal
+			agent.turnEndedAt = now;
+			agent.userPromptAt = null;
+			agent.lastToolStatus = null;
+			agent.permissionSent = false;
 			cancelPermissionTimer(agentId, permissionTimers);
 
-			// Definitive turn-end: clean up any stale tool state
 			agent.activeToolIds.clear();
 			agent.activeToolStatuses.clear();
 			agent.activeToolNames.clear();
 			agent.activeSubagentToolIds.clear();
 			agent.activeSubagentToolNames.clear();
 			webview?.postMessage({ type: 'agentToolsClear', id: agentId });
-
-			agent.permissionSent = false;
-			agent.hadToolsInTurn = false;
-			agent.lastToolStatus = null;
-
-			// Grace period: delay the "waiting" transition to absorb brief gaps
-			// in agentic loops. If a new turn starts within THINKING_GRACE_MS,
-			// cancelWaitingTimer() fires and the agent stays active without
-			// a visible idle flash. Character keeps typing at desk during grace.
-			startWaitingTimer(agentId, THINKING_GRACE_MS, agents, waitingTimers, webview);
 			sendAgentStateUpdate(agentId, agents, webview);
 		}
 	} catch {
@@ -209,7 +214,6 @@ function processProgressRecord(
 	agentId: number,
 	record: Record<string, unknown>,
 	agents: Map<number, AgentState>,
-	waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
 	webview: vscode.Webview | undefined,
 ): void {
@@ -222,8 +226,6 @@ function processProgressRecord(
 	const data = record.data as Record<string, unknown> | undefined;
 	if (!data) return;
 
-	// bash_progress / mcp_progress: tool is actively executing, not stuck on permission.
-	// Restart the permission timer to give the running tool another window.
 	const dataType = data.type as string | undefined;
 	if (dataType === 'bash_progress' || dataType === 'mcp_progress') {
 		if (agent.activeToolIds.has(parentToolId)) {
@@ -232,12 +234,8 @@ function processProgressRecord(
 		return;
 	}
 
-	// Verify parent is an active Task/Agent tool (agent_progress handling)
 	const parentToolName = agent.activeToolNames.get(parentToolId);
-	if (parentToolName !== 'Task' && parentToolName !== 'Agent') {
-		console.log(`[Pixel Agents] Agent ${agentId} progress SKIPPED: parentToolId=${parentToolId} parentToolName=${parentToolName || 'NOT_FOUND'} activeToolNames=[${[...agent.activeToolNames.entries()].map(([k, v]) => `${v}:${k.slice(-8)}`)}]`);
-		return;
-	}
+	if (parentToolName !== 'Task' && parentToolName !== 'Agent') return;
 
 	const msg = data.message as Record<string, unknown> | undefined;
 	if (!msg) return;
@@ -255,7 +253,6 @@ function processProgressRecord(
 				const status = formatToolStatus(toolName, block.input || {});
 				console.log(`[Pixel Agents] Agent ${agentId} subagent tool start: ${block.id} ${status} (parent: ${parentToolId})`);
 
-				// Track sub-tool IDs
 				let subTools = agent.activeSubagentToolIds.get(parentToolId);
 				if (!subTools) {
 					subTools = new Set();
@@ -263,7 +260,6 @@ function processProgressRecord(
 				}
 				subTools.add(block.id);
 
-				// Track sub-tool names (for permission checking)
 				let subNames = agent.activeSubagentToolNames.get(parentToolId);
 				if (!subNames) {
 					subNames = new Map();
@@ -292,15 +288,10 @@ function processProgressRecord(
 			if (block.type === 'tool_result' && block.tool_use_id) {
 				console.log(`[Pixel Agents] Agent ${agentId} subagent tool done: ${block.tool_use_id} (parent: ${parentToolId})`);
 
-				// Remove from tracking
 				const subTools = agent.activeSubagentToolIds.get(parentToolId);
-				if (subTools) {
-					subTools.delete(block.tool_use_id);
-				}
+				if (subTools) subTools.delete(block.tool_use_id);
 				const subNames = agent.activeSubagentToolNames.get(parentToolId);
-				if (subNames) {
-					subNames.delete(block.tool_use_id);
-				}
+				if (subNames) subNames.delete(block.tool_use_id);
 
 				const toolId = block.tool_use_id;
 				setTimeout(() => {
@@ -313,8 +304,6 @@ function processProgressRecord(
 				}, 300);
 			}
 		}
-		// If there are still active non-exempt sub-agent tools, restart the permission timer
-		// (handles the case where one sub-agent completes but another is still stuck)
 		let stillHasNonExempt = false;
 		for (const [, subNames] of agent.activeSubagentToolNames) {
 			for (const [, toolName] of subNames) {

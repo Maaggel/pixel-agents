@@ -35,6 +35,36 @@ export function createSyncManager(
 		}
 	} catch { /* ignore */ }
 
+	/** Clean up orphaned .json.tmp files and stale sync files from dead processes. */
+	function cleanupStaleFiles(): void {
+		try {
+			const files = fs.readdirSync(syncDir);
+			for (const f of files) {
+				const filePath = path.join(syncDir, f);
+				if (f.endsWith('.json.tmp')) {
+					// Orphaned temp file — remove unconditionally
+					try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+					continue;
+				}
+				if (!f.endsWith('.json')) continue;
+				// Check if the process that wrote this file is still alive
+				try {
+					const raw = fs.readFileSync(filePath, 'utf-8');
+					const state = JSON.parse(raw) as SyncWindowState;
+					try {
+						process.kill(state.pid, 0);
+					} catch {
+						// Process is dead — remove stale file
+						try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+					}
+				} catch {
+					// Corrupt file — remove
+					try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+				}
+			}
+		} catch { /* dir may not exist */ }
+	}
+
 	function readOtherWindows(): SyncWindowState[] {
 		const windows: SyncWindowState[] = [];
 		try {
@@ -73,6 +103,9 @@ export function createSyncManager(
 			onRemoteChange(windows);
 		}
 	}
+
+	// Clean up stale files from dead processes on startup
+	cleanupStaleFiles();
 
 	// Start watching sync directory
 	try {
@@ -114,7 +147,13 @@ export function createSyncManager(
 				}
 				const tmpPath = ownFile + '.tmp';
 				fs.writeFileSync(tmpPath, JSON.stringify(state), 'utf-8');
-				fs.renameSync(tmpPath, ownFile);
+				try {
+					fs.renameSync(tmpPath, ownFile);
+				} catch {
+					// On Windows, rename can fail if target is locked — write directly
+					fs.writeFileSync(ownFile, JSON.stringify(state), 'utf-8');
+					try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+				}
 			} catch { /* ignore */ }
 		},
 

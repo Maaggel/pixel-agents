@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { createAgentState } from './types.js';
 import type { AgentState, DetectedAgentDefinition, SyncAgentState, SyncWindowState } from './types.js';
 import { createSyncManager } from './syncManager.js';
 import type { SyncManager } from './syncManager.js';
@@ -22,7 +23,7 @@ import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layout
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, updateAgentConfig, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
 import type { AgentDefinitionWatcher } from './agentDetector.js';
-import { computeAgentDisplayState, registerDisplayStateCallback } from './agentDisplayState.js';
+import { computeAgentDisplayState, registerDisplayStateCallback, tickAllAgents } from './agentDisplayState.js';
 
 export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	nextAgentId = { current: 1 };
@@ -33,7 +34,6 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	// Per-agent timers
 	fileWatchers = new Map<number, fs.FSWatcher>();
 	pollingTimers = new Map<number, ReturnType<typeof setInterval>>();
-	waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
 	jsonlPollTimers = new Map<number, ReturnType<typeof setInterval>>();
 	permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
@@ -54,8 +54,11 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 	// Cross-window sync
 	private syncManager: SyncManager | null = null;
-	private readonly windowId = crypto.randomUUID();
+	// Deterministic sync file ID based on workspace folder — ensures the same
+	// workspace always writes to the same sync file, even across window reloads.
+	private readonly windowId = PixelAgentsViewProvider.workspaceSyncId();
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
+	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
 	private remoteIdMap = new Map<string, number>();
 	private nextRemoteId = REMOTE_ID_BASE;
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
@@ -82,6 +85,20 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	} as unknown as vscode.Webview;
 
 	constructor(private readonly context: vscode.ExtensionContext) {}
+
+	/** Deterministic sync ID from workspace folder path. Same workspace = same file. */
+	private static workspaceSyncId(): string {
+		const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'unknown';
+		// Simple hash to create a short, filesystem-safe identifier
+		let hash = 0;
+		for (let i = 0; i < folder.length; i++) {
+			hash = ((hash << 5) - hash + folder.charCodeAt(i)) | 0;
+		}
+		// Convert to unsigned hex + include folder basename for readability
+		const hex = (hash >>> 0).toString(16).padStart(8, '0');
+		const base = folder.replace(/[\\/]/g, '-').replace(/[^a-zA-Z0-9-]/g, '').slice(-30);
+		return `${base}-${hex}`;
+	}
 
 	private get extensionUri(): vscode.Uri {
 		return this.context.extensionUri;
@@ -123,7 +140,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			this.context,
 			this.nextAgentId, this.nextTerminalIndex,
 			this.agents, this.knownJsonlFiles,
-			this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+			this.fileWatchers, this.pollingTimers, this.permissionTimers,
 			this.jsonlPollTimers, this.projectScanTimer, this.activeAgentId,
 			this.webviewProxy, this.persistAgents,
 		);
@@ -133,13 +150,13 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			ensureProjectScan(
 				projectDir, this.knownJsonlFiles, this.projectScanTimer, this.activeAgentId,
 				this.nextAgentId, this.agents,
-				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.fileWatchers, this.pollingTimers, this.permissionTimers,
 				this.webviewProxy, this.persistAgents,
 			);
 			autoAdoptActiveConversations(
 				projectDir, this.knownJsonlFiles,
 				this.nextAgentId, this.agents, this.activeAgentId,
-				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.fileWatchers, this.pollingTimers, this.permissionTimers,
 				this.webviewProxy, this.persistAgents,
 			);
 		}
@@ -178,14 +195,14 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					if (agent.agentDefinitionId) {
 						unbindAgent(
 							id, this.agents,
-							this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+							this.fileWatchers, this.pollingTimers, this.permissionTimers,
 							this.jsonlPollTimers,
 						);
 						this.webview?.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
 					} else {
 						removeAgent(
 							id, this.agents,
-							this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+							this.fileWatchers, this.pollingTimers, this.permissionTimers,
 							this.jsonlPollTimers, this.persistAgents,
 						);
 						this.webview?.postMessage({ type: 'agentClosed', id });
@@ -215,7 +232,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			await launchNewTerminal(
 				this.nextAgentId, this.nextTerminalIndex,
 				this.agents, this.activeAgentId, this.knownJsonlFiles,
-				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.fileWatchers, this.pollingTimers, this.permissionTimers,
 				this.jsonlPollTimers, this.projectScanTimer,
 				this.webviewProxy, this.persistAgents,
 				message.folderPath as string | undefined,
@@ -239,7 +256,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				} else {
 					removeAgent(
 						message.id as number, this.agents,
-						this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+						this.fileWatchers, this.pollingTimers, this.permissionTimers,
 						this.jsonlPollTimers, this.persistAgents,
 					);
 					this.webview?.postMessage({ type: 'agentClosed', id: message.id });
@@ -279,7 +296,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					this.context,
 					this.nextAgentId, this.nextTerminalIndex,
 					this.agents, this.knownJsonlFiles,
-					this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+					this.fileWatchers, this.pollingTimers, this.permissionTimers,
 					this.jsonlPollTimers, this.projectScanTimer, this.activeAgentId,
 					this.webviewProxy, this.persistAgents,
 				);
@@ -307,7 +324,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					ensureProjectScan(
 						projectDir, this.knownJsonlFiles, this.projectScanTimer, this.activeAgentId,
 						this.nextAgentId, this.agents,
-						this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+						this.fileWatchers, this.pollingTimers, this.permissionTimers,
 						this.webviewProxy, this.persistAgents,
 					);
 				}
@@ -411,7 +428,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				autoAdoptActiveConversations(
 					projectDir2, this.knownJsonlFiles,
 					this.nextAgentId, this.agents, this.activeAgentId,
-					this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+					this.fileWatchers, this.pollingTimers, this.permissionTimers,
 					this.webviewProxy, this.persistAgents,
 				);
 				// Re-run binding after adoption — newly adopted agents may match definitions
@@ -469,25 +486,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		const id = this.nextAgentId.current++;
-		const agent: AgentState = {
-			id,
-			terminalRef: null,
-			projectDir,
-			jsonlFile: '', // will be set when detected
-			fileOffset: 0,
-			lineBuffer: '',
-			activeToolIds: new Set(),
-			activeToolStatuses: new Map(),
-			activeToolNames: new Map(),
-			activeSubagentToolIds: new Map(),
-			activeSubagentToolNames: new Map(),
-			isWaiting: false,
-			permissionSent: false,
-			hadToolsInTurn: false,
-			hasBeenActive: false,
-			lastToolStatus: null,
-			agentDefinitionId: null,
-		};
+		const agent = createAgentState({ id, projectDir, jsonlFile: '' });
 
 		this.agents.set(id, agent);
 		this.activeAgentId.current = id;
@@ -511,8 +510,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 						clearInterval(pollTimer);
 						this.jsonlPollTimers.delete(id);
 						this.persistAgents();
-						startFileWatching(id, file, this.agents, this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers, this.webviewProxy);
-						readNewLines(id, this.agents, this.waitingTimers, this.permissionTimers, this.webviewProxy);
+						startFileWatching(id, file, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.webviewProxy);
+						readNewLines(id, this.agents, this.permissionTimers, this.webviewProxy);
 						return;
 					}
 				}
@@ -704,6 +703,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		// Sync file writes whenever any agent's display state changes
 		// (timer fires, tool starts/ends, permission detected, etc.)
 		registerDisplayStateCallback(() => this.scheduleSyncWrite());
+		// Periodic tick: re-evaluate all agents for timestamp-based state transitions
+		// (idle/grace/thinking) and send updates to webview + sync file.
+		this.stateTickInterval = setInterval(() => {
+			tickAllAgents(this.agents, this.webview);
+			this.scheduleSyncWrite();
+		}, 1000);
 		// Write initial state
 		this.scheduleSyncWrite();
 	}
@@ -741,15 +746,16 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		// Count unnamed agents per project folder for Lead/#N naming
 		const unnamedCounts = new Map<string, number>();
 
+		const now = Date.now();
 		for (const agent of this.agents.values()) {
-			// Skip agents with no session at all
+			// Skip agents with no session at all (no terminal AND no JSONL file)
 			if (!agent.terminalRef && !agent.jsonlFile) continue;
 			// Dedup by jsonlFile: keep the more recently active agent
 			if (agent.jsonlFile) {
 				const existing = seenJsonlFiles.get(agent.jsonlFile);
 				if (existing) {
-					// Prefer the one that's not waiting, or has a terminal
-					const keepExisting = !existing.isWaiting || (existing.terminalRef && !agent.terminalRef);
+					// Prefer the one with more recent activity, or has a terminal
+					const keepExisting = existing.lastDataAt >= agent.lastDataAt || (existing.terminalRef && !agent.terminalRef);
 					if (keepExisting) continue;
 					// Remove previously added entry for the duplicate
 					const idx = agents.findIndex(a => a.localId === existing.id);
@@ -795,7 +801,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				isActive: displayState.isActive,
 				currentTool: displayState.currentTool,
 				currentToolStatus: displayState.toolStatus,
-				isWaiting: agent.isWaiting,
+				isWaiting: !displayState.isActive,
 				bubbleType: displayState.bubbleType,
 				idleHint: displayState.idleHint,
 				folderName: agent.folderName,
@@ -938,7 +944,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		for (const id of [...this.agents.keys()]) {
 			removeAgent(
 				id, this.agents,
-				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.fileWatchers, this.pollingTimers, this.permissionTimers,
 				this.jsonlPollTimers, this.persistAgents,
 			);
 		}

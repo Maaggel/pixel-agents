@@ -3,61 +3,6 @@ import type { AgentState } from './types.js';
 import { PERMISSION_TIMER_DELAY_MS } from './constants.js';
 import { sendAgentStateUpdate } from './agentDisplayState.js';
 
-export function clearAgentActivity(
-	agent: AgentState | undefined,
-	agentId: number,
-	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
-): void {
-	if (!agent) return;
-	agent.activeToolIds.clear();
-	agent.activeToolStatuses.clear();
-	agent.activeToolNames.clear();
-	agent.activeSubagentToolIds.clear();
-	agent.activeSubagentToolNames.clear();
-	agent.isWaiting = false;
-	agent.permissionSent = false;
-	cancelPermissionTimer(agentId, permissionTimers);
-	webview?.postMessage({ type: 'agentToolsClear', id: agentId });
-	webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
-}
-
-export function cancelWaitingTimer(
-	agentId: number,
-	waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
-): void {
-	const timer = waitingTimers.get(agentId);
-	if (timer) {
-		clearTimeout(timer);
-		waitingTimers.delete(agentId);
-	}
-}
-
-export function startWaitingTimer(
-	agentId: number,
-	delayMs: number,
-	agents: Map<number, AgentState>,
-	waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
-): void {
-	cancelWaitingTimer(agentId, waitingTimers);
-	const timer = setTimeout(() => {
-		waitingTimers.delete(agentId);
-		const agent = agents.get(agentId);
-		if (agent) {
-			agent.isWaiting = true;
-			agent.lastToolStatus = null;
-		}
-		webview?.postMessage({
-			type: 'agentStatus',
-			id: agentId,
-			status: 'waiting',
-		});
-		sendAgentStateUpdate(agentId, agents, webview);
-	}, delayMs);
-	waitingTimers.set(agentId, timer);
-}
-
 export function cancelPermissionTimer(
 	agentId: number,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
@@ -111,7 +56,6 @@ export function startPermissionTimer(
 				type: 'agentToolPermission',
 				id: agentId,
 			});
-			// Also notify stuck sub-agents
 			for (const parentToolId of stuckSubagentParentToolIds) {
 				webview?.postMessage({
 					type: 'subagentToolPermission',

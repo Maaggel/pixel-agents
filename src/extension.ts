@@ -12,6 +12,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(VIEW_ID, provider)
 	);
 
+	// Headless init: restore agents and start sync writing even when the
+	// webview panel isn't visible (needed for standalone browser view).
+	provider.initHeadless();
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand(COMMAND_SHOW_PANEL, () => {
 			vscode.commands.executeCommand(`${VIEW_ID}.focus`);

@@ -412,7 +412,7 @@ export class OfficeState {
       for (const c of this.characters.values()) {
         if (!c.isSubagent && !c.isRemote) mainCount++
       }
-      ch.nametag = mainCount === 0 ? `${prefix} Lead` : `${prefix} #${mainCount + 1}`
+      ch.nametag = mainCount === 0 ? `${prefix} Main` : `${prefix} #${mainCount + 1}`
     }
     if (folderName) {
       ch.folderName = folderName

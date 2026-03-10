@@ -224,41 +224,89 @@ function dispatch(data) {
   window.postMessage(data, '*');
 }
 
-let lastSyncSnapshot = '';
 let lastLayoutSnapshot = '';
+// Track known agents: id → last state JSON (for change detection)
+const knownAgents = new Map();
 
 function startSyncPolling() {
   setInterval(() => {
-    // Poll sync state (agent positions from all VS Code windows)
+    // Poll sync state — treat agents as LOCAL characters with full FSM
     fetch('/api/sync').then(r => r.json()).then(data => {
-      const snap = JSON.stringify(data);
-      if (snap === lastSyncSnapshot) return;
-      lastSyncSnapshot = snap;
-
-      // Collect all agents from all windows
-      const remoteAgents = [];
+      // Build map of all current agents across all windows
+      const currentAgents = new Map();
       for (const win of data) {
         if (!win.agents) continue;
         for (const agent of win.agents) {
-          remoteAgents.push({
-            id: agent.localId + (win.windowId ? hashCode(win.windowId) * 1000 : 0),
+          const id = agent.localId + (win.windowId ? hashCode(win.windowId) * 1000 : 0);
+          currentAgents.set(id, {
+            id,
             name: agent.name || 'Agent',
             palette: agent.palette || 0,
             hueShift: agent.hueShift || 0,
             seatId: agent.seatId,
             isActive: agent.isActive || false,
             currentTool: agent.currentTool,
-            currentToolStatus: agent.currentToolStatus,
+            toolStatus: agent.currentToolStatus,
             isWaiting: agent.isWaiting || false,
             bubbleType: agent.bubbleType,
+            idleHint: agent.idleHint || null,
             workspaceName: win.workspaceName || '',
-            workspaceFolder: win.workspaceFolder || '',
-            visual: agent.visual || null,
           });
         }
       }
-      if (remoteAgents.length > 0) {
-        dispatch({ type: 'remoteAgents', agents: remoteAgents });
+
+      // Detect new agents — send existingAgents in the format the webview expects
+      const newAgentIds = [];
+      const newAgentMeta = {};
+      const newFolderNames = {};
+      let projectName = '';
+      for (const [id, agent] of currentAgents) {
+        if (!knownAgents.has(id)) {
+          newAgentIds.push(id);
+          newAgentMeta[id] = { palette: agent.palette, hueShift: agent.hueShift, seatId: agent.seatId };
+          newFolderNames[id] = agent.name;
+          if (agent.workspaceName) projectName = agent.workspaceName;
+        }
+      }
+      if (newAgentIds.length > 0) {
+        dispatch({
+          type: 'existingAgents',
+          agents: newAgentIds,
+          agentMeta: newAgentMeta,
+          folderNames: newFolderNames,
+          projectName: projectName,
+        });
+      }
+
+      // Detect removed agents — send agentClosed to despawn them
+      for (const id of knownAgents.keys()) {
+        if (!currentAgents.has(id)) {
+          dispatch({ type: 'agentClosed', id });
+        }
+      }
+
+      // Send agentStateUpdate for all current agents (drives character FSM)
+      for (const [id, agent] of currentAgents) {
+        const snap = JSON.stringify(agent);
+        if (knownAgents.get(id) !== snap) {
+          dispatch({
+            type: 'agentStateUpdate',
+            id: agent.id,
+            isActive: agent.isActive,
+            currentTool: agent.currentTool,
+            toolStatus: agent.toolStatus,
+            bubbleType: agent.bubbleType,
+            idleHint: agent.idleHint,
+          });
+        }
+        knownAgents.set(id, snap);
+      }
+
+      // Clean up removed agents from tracking
+      for (const id of knownAgents.keys()) {
+        if (!currentAgents.has(id)) {
+          knownAgents.delete(id);
+        }
       }
     }).catch(() => {});
 

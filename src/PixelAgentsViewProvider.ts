@@ -22,6 +22,7 @@ import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layout
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, updateAgentConfig, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
 import type { AgentDefinitionWatcher } from './agentDetector.js';
+import { computeAgentDisplayState, registerDisplayStateCallback } from './agentDisplayState.js';
 
 export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	nextAgentId = { current: 1 };
@@ -61,6 +62,25 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	// WebviewPanel support (editor tab)
 	private panels = new Set<vscode.WebviewPanel>();
 
+	/**
+	 * Stable proxy that always delegates postMessage to the current broadcaster.
+	 * Pass this instead of `this.webview` to functions that capture the webview
+	 * reference in closures (file watchers, timers, etc.) — it always resolves
+	 * to the live webview(s) at call time, even if they didn't exist when the
+	 * closure was created.
+	 */
+	private readonly webviewProxy: vscode.Webview = {
+		postMessage: (msg: unknown) => {
+			// Trigger sync write when agent display state changes so the
+			// standalone browser (which polls sync files) sees activity.
+			const m = msg as { type?: string };
+			if (m.type === 'agentStateUpdate') {
+				this.scheduleSyncWrite();
+			}
+			return this.broadcaster?.postMessage(msg) ?? Promise.resolve(false);
+		},
+	} as unknown as vscode.Webview;
+
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
 	private get extensionUri(): vscode.Uri {
@@ -90,14 +110,52 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		this.scheduleSyncWrite();
 	};
 
-	resolveWebviewView(webviewView: vscode.WebviewView) {
-		this.webviewView = webviewView;
-		webviewView.webview.options = { enableScripts: true };
-		webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
+	/**
+	 * Headless init: restore agents + start sync without a webview.
+	 * Called from activate() so sync files are written even when the panel isn't visible.
+	 */
+	initHeadless(): void {
+		// Register terminal lifecycle events so agent tracking works
+		// even when the webview panel is not visible.
+		this.registerTerminalEvents();
 
-		webviewView.webview.onDidReceiveMessage(async (message) => {
-			await this.handleWebviewMessage(message, webviewView.webview);
-		});
+		restoreAgents(
+			this.context,
+			this.nextAgentId, this.nextTerminalIndex,
+			this.agents, this.knownJsonlFiles,
+			this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+			this.jsonlPollTimers, this.projectScanTimer, this.activeAgentId,
+			this.webviewProxy, this.persistAgents,
+		);
+
+		const projectDir = getProjectDirPath();
+		if (projectDir) {
+			ensureProjectScan(
+				projectDir, this.knownJsonlFiles, this.projectScanTimer, this.activeAgentId,
+				this.nextAgentId, this.agents,
+				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.webviewProxy, this.persistAgents,
+			);
+			autoAdoptActiveConversations(
+				projectDir, this.knownJsonlFiles,
+				this.nextAgentId, this.agents, this.activeAgentId,
+				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
+				this.webviewProxy, this.persistAgents,
+			);
+		}
+
+		// Detect agent definitions so writeSyncState includes them
+		this.detectAndSendAgents();
+		this.bindActiveAgentsToDefinitions();
+
+		this.startSyncManager();
+	}
+
+	/** Register terminal lifecycle events. Safe to call multiple times. */
+	private terminalEventsRegistered = false;
+	private registerTerminalEvents(): void {
+		if (this.terminalEventsRegistered) return;
+		this.terminalEventsRegistered = true;
 
 		vscode.window.onDidChangeActiveTerminal((terminal) => {
 			this.activeAgentId.current = null;
@@ -138,6 +196,19 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
+	resolveWebviewView(webviewView: vscode.WebviewView) {
+		this.webviewView = webviewView;
+		webviewView.webview.options = { enableScripts: true };
+		webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
+
+		webviewView.webview.onDidReceiveMessage(async (message) => {
+			await this.handleWebviewMessage(message, webviewView.webview);
+		});
+
+		// Terminal events are registered in initHeadless() which runs
+		// from activate() — no need to register them here again.
+	}
+
 	/** Shared message handler for sidebar and panel webviews. */
 	private async handleWebviewMessage(message: Record<string, unknown>, senderWebview: vscode.Webview): Promise<void> {
 		if (message.type === 'openClaude') {
@@ -146,7 +217,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				this.agents, this.activeAgentId, this.knownJsonlFiles,
 				this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
 				this.jsonlPollTimers, this.projectScanTimer,
-				this.webview, this.persistAgents,
+				this.webviewProxy, this.persistAgents,
 				message.folderPath as string | undefined,
 			);
 		} else if (message.type === 'openClaudeExtension') {
@@ -210,7 +281,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					this.agents, this.knownJsonlFiles,
 					this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
 					this.jsonlPollTimers, this.projectScanTimer, this.activeAgentId,
-					this.webview, this.persistAgents,
+					this.webviewProxy, this.persistAgents,
 				);
 			}
 
@@ -237,7 +308,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 						projectDir, this.knownJsonlFiles, this.projectScanTimer, this.activeAgentId,
 						this.nextAgentId, this.agents,
 						this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
-						this.webview, this.persistAgents,
+						this.webviewProxy, this.persistAgents,
 					);
 				}
 
@@ -341,7 +412,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					projectDir2, this.knownJsonlFiles,
 					this.nextAgentId, this.agents, this.activeAgentId,
 					this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers,
-					this.webview, this.persistAgents,
+					this.webviewProxy, this.persistAgents,
 				);
 				// Re-run binding after adoption — newly adopted agents may match definitions
 				this.bindActiveAgentsToDefinitions();
@@ -413,6 +484,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			isWaiting: false,
 			permissionSent: false,
 			hadToolsInTurn: false,
+			hasBeenActive: false,
+			lastToolStatus: null,
 			agentDefinitionId: null,
 		};
 
@@ -438,8 +511,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 						clearInterval(pollTimer);
 						this.jsonlPollTimers.delete(id);
 						this.persistAgents();
-						startFileWatching(id, file, this.agents, this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers, this.webview);
-						readNewLines(id, this.agents, this.waitingTimers, this.permissionTimers, this.webview);
+						startFileWatching(id, file, this.agents, this.fileWatchers, this.pollingTimers, this.waitingTimers, this.permissionTimers, this.webviewProxy);
+						readNewLines(id, this.agents, this.waitingTimers, this.permissionTimers, this.webviewProxy);
 						return;
 					}
 				}
@@ -623,11 +696,14 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 	// ── Cross-window sync ──────────────────────────────────────
 
-	private startSyncManager(): void {
+	startSyncManager(): void {
 		if (this.syncManager) return;
 		this.syncManager = createSyncManager(this.windowId, (windows) => {
 			this.handleRemoteWindowChange(windows);
 		});
+		// Sync file writes whenever any agent's display state changes
+		// (timer fires, tool starts/ends, permission detected, etc.)
+		registerDisplayStateCallback(() => this.scheduleSyncWrite());
 		// Write initial state
 		this.scheduleSyncWrite();
 	}
@@ -659,10 +735,28 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		// Track which definitionIds are covered by active agents
 		const coveredDefinitions = new Set<string>();
 
+		// Dedup by jsonlFile: if multiple agents track the same file, prefer the active one
+		const seenJsonlFiles = new Map<string, AgentState>();
+
 		// Count unnamed agents per project folder for Lead/#N naming
 		const unnamedCounts = new Map<string, number>();
 
 		for (const agent of this.agents.values()) {
+			// Skip agents with no session at all
+			if (!agent.terminalRef && !agent.jsonlFile) continue;
+			// Dedup by jsonlFile: keep the more recently active agent
+			if (agent.jsonlFile) {
+				const existing = seenJsonlFiles.get(agent.jsonlFile);
+				if (existing) {
+					// Prefer the one that's not waiting, or has a terminal
+					const keepExisting = !existing.isWaiting || (existing.terminalRef && !agent.terminalRef);
+					if (keepExisting) continue;
+					// Remove previously added entry for the duplicate
+					const idx = agents.findIndex(a => a.localId === existing.id);
+					if (idx !== -1) agents.splice(idx, 1);
+				}
+				seenJsonlFiles.set(agent.jsonlFile, agent);
+			}
 			// Use workspace folder name for naming (folderName is set for multi-root workspaces)
 			const agentProjectName = agent.folderName || this.getProjectName();
 			// Get appearance from .pixel_agents config or workspaceState
@@ -670,14 +764,14 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			let hueShift = 0;
 			let seatId: string | null = null;
 			const unnamedIdx = unnamedCounts.get(agentProjectName) ?? 0;
-			let name = unnamedIdx === 0 ? `${agentProjectName} Lead` : `${agentProjectName} #${unnamedIdx + 1}`;
+			let name = unnamedIdx === 0 ? `${agentProjectName} Main` : `${agentProjectName} #${unnamedIdx + 1}`;
 
 			if (agent.agentDefinitionId && config?.agents[agent.agentDefinitionId]) {
 				const ac = config.agents[agent.agentDefinitionId];
 				palette = ac.palette;
 				hueShift = ac.hueShift;
 				seatId = ac.seatId;
-				name = ac.name;
+				name = `${agentProjectName} ${ac.name}`;
 				coveredDefinitions.add(agent.agentDefinitionId);
 			} else {
 				unnamedCounts.set(agentProjectName, unnamedIdx + 1);
@@ -689,14 +783,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				}
 			}
 
-			let currentTool: string | null = null;
-			let currentToolStatus: string | null = null;
-			if (agent.activeToolNames.size > 0) {
-				currentTool = [...agent.activeToolNames.values()][0] ?? null;
-			}
-			if (agent.activeToolStatuses.size > 0) {
-				currentToolStatus = [...agent.activeToolStatuses.values()][0] ?? null;
-			}
+			const displayState = computeAgentDisplayState(agent);
 
 			agents.push({
 				localId: agent.id,
@@ -705,39 +792,45 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				palette,
 				hueShift,
 				seatId,
-				isActive: !!(agent.terminalRef || agent.jsonlFile),
-				currentTool,
-				currentToolStatus,
+				isActive: displayState.isActive,
+				currentTool: displayState.currentTool,
+				currentToolStatus: displayState.toolStatus,
 				isWaiting: agent.isWaiting,
-				bubbleType: agent.permissionSent ? 'permission' : (agent.isWaiting ? 'waiting' : null),
+				bubbleType: displayState.bubbleType,
+				idleHint: displayState.idleHint,
 				folderName: agent.folderName,
 				visual: this.characterVisuals.get(agent.id),
 			});
 		}
 
-		// Include detected agents that don't have an active terminal (idle agents)
-		if (config) {
-			for (const def of this.detectedDefinitions) {
-				if (def.workspaceFolder !== folder.uri.fsPath) continue;
-				if (coveredDefinitions.has(def.definitionId)) continue;
-				const ac = config.agents[def.definitionId];
-				if (!ac) continue;
-				agents.push({
-					localId: ac.id,
-					definitionId: def.definitionId,
-					name: ac.name,
-					palette: ac.palette,
-					hueShift: ac.hueShift,
-					seatId: ac.seatId,
-					isActive: false,
-					currentTool: null,
-					currentToolStatus: null,
-					isWaiting: false,
-					bubbleType: null,
-					visual: this.characterVisuals.get(ac.id),
-				});
+		// Dedup by display name: if two agents share the same name, keep the
+		// more relevant one (active > idle, has-terminal > no-terminal).
+		const nameMap = new Map<string, number>();
+		for (let i = 0; i < agents.length; i++) {
+			const a = agents[i];
+			const prev = nameMap.get(a.name);
+			if (prev !== undefined) {
+				const prevAgent = agents[prev];
+				// Prefer active over idle, then terminal-backed over file-only
+				const prevBetter = prevAgent.isActive || (!a.isActive && !!this.agents.get(prevAgent.localId)?.terminalRef);
+				if (prevBetter) {
+					agents.splice(i, 1);
+					i--;
+				} else {
+					agents.splice(prev, 1);
+					// Fix indices after splice
+					nameMap.set(a.name, i - 1);
+					i--;
+				}
+			} else {
+				nameMap.set(a.name, i);
 			}
 		}
+
+		// Only include detected definitions that have an active terminal/JSONL in the
+		// sync file — they show as idle characters in the webview when open, but
+		// shouldn't appear in the standalone browser without an active session.
+		// (Covered definitions with active agents are already included above.)
 
 		const state: SyncWindowState = {
 			windowId: this.windowId,
@@ -772,6 +865,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			currentToolStatus: string | null;
 			isWaiting: boolean;
 			bubbleType: 'permission' | 'waiting' | null;
+			idleHint: 'thinking' | 'between-turns' | null;
 			workspaceName: string;
 			workspaceFolder: string;
 			visual?: import('./types.js').SyncCharacterVisual;
@@ -790,6 +884,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					currentToolStatus: agent.currentToolStatus,
 					isWaiting: agent.isWaiting,
 					bubbleType: agent.bubbleType,
+					idleHint: agent.idleHint,
 					workspaceName: win.workspaceName,
 					workspaceFolder: win.workspaceFolder,
 					visual: agent.visual,

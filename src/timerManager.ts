@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import type { AgentState } from './types.js';
 import { PERMISSION_TIMER_DELAY_MS } from './constants.js';
+import { sendAgentStateUpdate } from './agentDisplayState.js';
 
 export function clearAgentActivity(
 	agent: AgentState | undefined,
@@ -45,12 +46,14 @@ export function startWaitingTimer(
 		const agent = agents.get(agentId);
 		if (agent) {
 			agent.isWaiting = true;
+			agent.lastToolStatus = null;
 		}
 		webview?.postMessage({
 			type: 'agentStatus',
 			id: agentId,
 			status: 'waiting',
 		});
+		sendAgentStateUpdate(agentId, agents, webview);
 	}, delayMs);
 	waitingTimers.set(agentId, timer);
 }
@@ -116,6 +119,7 @@ export function startPermissionTimer(
 					parentToolId,
 				});
 			}
+			sendAgentStateUpdate(agentId, agents, webview);
 		}
 	}, PERMISSION_TIMER_DELAY_MS);
 	permissionTimers.set(agentId, timer);

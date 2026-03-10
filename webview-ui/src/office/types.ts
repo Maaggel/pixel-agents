@@ -223,6 +223,8 @@ export interface Character {
   isRemote?: boolean
   /** Full tool status from the source window (e.g., "Edit: src/foo.ts") for remote display */
   remoteToolStatus?: string | null
+  /** Hint from backend: 'thinking' (fresh prompt) vs 'between-turns' (grace period) */
+  idleHint?: 'thinking' | 'between-turns' | null
   /** Target state from the source window — remote characters animate locally using synced path */
   syncTarget?: {
     x: number

@@ -11,9 +11,11 @@ import {
 import {
 	TOOL_DONE_DELAY_MS,
 	TEXT_IDLE_DELAY_MS,
+	THINKING_GRACE_MS,
 	BASH_COMMAND_DISPLAY_MAX_LENGTH,
 	TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from './constants.js';
+import { sendAgentStateUpdate } from './agentDisplayState.js';
 
 export const PERMISSION_EXEMPT_TOOLS = new Set([
 	'Task', 'Agent', 'AskUserQuestion', 'TaskOutput', 'TaskStop',
@@ -69,6 +71,7 @@ export function processTranscriptLine(
 				cancelWaitingTimer(agentId, waitingTimers);
 				agent.isWaiting = false;
 				agent.hadToolsInTurn = true;
+				agent.hasBeenActive = true;
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				let hasNonExemptTool = false;
 				for (const block of blocks) {
@@ -79,6 +82,7 @@ export function processTranscriptLine(
 						agent.activeToolIds.add(block.id);
 						agent.activeToolStatuses.set(block.id, status);
 						agent.activeToolNames.set(block.id, toolName);
+						agent.lastToolStatus = status;
 						if (!PERMISSION_EXEMPT_TOOLS.has(toolName)) {
 							hasNonExemptTool = true;
 						}
@@ -93,10 +97,12 @@ export function processTranscriptLine(
 				if (hasNonExemptTool) {
 					startPermissionTimer(agentId, agents, permissionTimers, PERMISSION_EXEMPT_TOOLS, webview);
 				}
+				sendAgentStateUpdate(agentId, agents, webview);
 			} else if (blocks.some(b => b.type === 'text')) {
 				// Assistant is generating text — mark as active (thinking)
 				agent.isWaiting = false;
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+				sendAgentStateUpdate(agentId, agents, webview);
 				if (!agent.hadToolsInTurn) {
 					// Text-only response in a turn that hasn't used any tools.
 					// turn_duration handles tool-using turns reliably but is never
@@ -141,13 +147,14 @@ export function processTranscriptLine(
 							}, TOOL_DONE_DELAY_MS);
 						}
 					}
-					// All tools completed — start silence-based idle timer as fallback
+					// All tools completed — start grace-period idle timer as fallback
 					// for turn-end detection when turn_duration is not emitted.
-					// If no new data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
+					// Uses THINKING_GRACE_MS (longer) since agent was just actively working.
 					if (agent.activeToolIds.size === 0) {
 						agent.hadToolsInTurn = false;
-						startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+						startWaitingTimer(agentId, THINKING_GRACE_MS, agents, waitingTimers, webview);
 					}
+					sendAgentStateUpdate(agentId, agents, webview);
 				} else {
 					// New user text prompt — new turn starting
 					cancelWaitingTimer(agentId, waitingTimers);
@@ -155,6 +162,7 @@ export function processTranscriptLine(
 					agent.hadToolsInTurn = false;
 					agent.isWaiting = false;
 					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+					sendAgentStateUpdate(agentId, agents, webview);
 				}
 			} else if (typeof content === 'string' && content.trim()) {
 				// New user text prompt — new turn starting
@@ -163,6 +171,7 @@ export function processTranscriptLine(
 				agent.hadToolsInTurn = false;
 				agent.isWaiting = false;
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
+				sendAgentStateUpdate(agentId, agents, webview);
 			}
 		} else if (record.type === 'system' && record.subtype === 'turn_duration') {
 			cancelWaitingTimer(agentId, waitingTimers);
@@ -176,14 +185,15 @@ export function processTranscriptLine(
 			agent.activeSubagentToolNames.clear();
 			webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 
-			agent.isWaiting = true;
 			agent.permissionSent = false;
 			agent.hadToolsInTurn = false;
-			webview?.postMessage({
-				type: 'agentStatus',
-				id: agentId,
-				status: 'waiting',
-			});
+
+			// Grace period: delay the "waiting" transition to absorb brief gaps
+			// in agentic loops. If a new turn starts within THINKING_GRACE_MS,
+			// cancelWaitingTimer() fires and the agent stays active without
+			// a visible idle flash. Character keeps typing at desk during grace.
+			startWaitingTimer(agentId, THINKING_GRACE_MS, agents, waitingTimers, webview);
+			sendAgentStateUpdate(agentId, agents, webview);
 		}
 	} catch {
 		// Ignore malformed lines

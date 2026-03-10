@@ -183,10 +183,18 @@ export function useExtensionMessages(
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
         const pName = msg.projectName as string | undefined
-        // Buffer agents — they'll be added in layoutLoaded after seats are built
-        for (const id of incoming) {
-          const m = meta[id]
-          pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], projectName: pName })
+        if (layoutReadyRef.current) {
+          // Layout already loaded — add agents immediately with spawn effect
+          for (const id of incoming) {
+            const m = meta[id]
+            os.addAgent(id, m?.palette, m?.hueShift, m?.seatId, false, folderNames[id], false, pName)
+          }
+        } else {
+          // Buffer agents — they'll be added in layoutLoaded after seats are built
+          for (const id of incoming) {
+            const m = meta[id]
+            pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], projectName: pName })
+          }
         }
         setAgents((prev) => {
           const ids = new Set(prev)
@@ -207,10 +215,7 @@ export function useExtensionMessages(
           if (list.some((t) => t.toolId === toolId)) return prev
           return { ...prev, [id]: [...list, { toolId, status, done: false }] }
         })
-        const toolName = extractToolName(status)
-        os.setAgentTool(id, toolName)
-        os.setAgentActive(id, true)
-        os.clearPermissionBubble(id)
+        // Character FSM is now driven by agentStateUpdate — don't call setAgentTool/setAgentActive here
       } else if (msg.type === 'agentToolDone') {
         const id = msg.id as number
         const toolId = msg.toolId as string
@@ -239,12 +244,36 @@ export function useExtensionMessages(
         // Remove all sub-agent characters belonging to this agent
         os.removeAllSubagents(id)
         setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
-        os.setAgentTool(id, null)
-        os.setAgentActive(id, false)
-        os.clearPermissionBubble(id)
+        // Character FSM is now driven by agentStateUpdate — don't touch active/tool/bubble here
       } else if (msg.type === 'agentSelected') {
         const id = msg.id as number
         setSelectedAgent(id)
+      } else if (msg.type === 'agentStateUpdate') {
+        // ── Consolidated display state from backend (single source of truth) ──
+        const id = msg.id as number
+        const isActive = msg.isActive as boolean
+        const currentTool = msg.currentTool as string | null
+        const toolStatus = msg.toolStatus as string | null
+        const bubbleType = msg.bubbleType as 'permission' | 'waiting' | null
+        const idleHint = (msg.idleHint as 'thinking' | 'between-turns' | null) ?? null
+
+        os.setAgentActive(id, isActive)
+        os.setAgentTool(id, currentTool)
+        // Store overlay text and idle hint on character for rendering (ToolOverlay reads these)
+        const ch = os.characters.get(id)
+        if (ch) {
+          ch.remoteToolStatus = toolStatus
+          ch.idleHint = idleHint
+        }
+
+        if (bubbleType === 'permission') {
+          os.showPermissionBubble(id)
+        } else if (bubbleType === 'waiting') {
+          os.showWaitingBubble(id)
+          playDoneSound()
+        } else {
+          os.clearPermissionBubble(id)
+        }
       } else if (msg.type === 'agentStatus') {
         const id = msg.id as number
         const status = msg.status as string
@@ -257,11 +286,7 @@ export function useExtensionMessages(
           }
           return { ...prev, [id]: status }
         })
-        os.setAgentActive(id, status === 'active')
-        if (status === 'waiting') {
-          os.showWaitingBubble(id)
-          playDoneSound()
-        }
+        // Character FSM is now driven by agentStateUpdate — agentStatus only updates React state
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number
         setAgentTools((prev) => {
@@ -272,7 +297,7 @@ export function useExtensionMessages(
             [id]: list.map((t) => (t.done ? t : { ...t, permissionWait: true })),
           }
         })
-        os.showPermissionBubble(id)
+        // Character bubble is now driven by agentStateUpdate
       } else if (msg.type === 'subagentToolPermission') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string
@@ -293,7 +318,7 @@ export function useExtensionMessages(
             [id]: list.map((t) => (t.permissionWait ? { ...t, permissionWait: false } : t)),
           }
         })
-        os.clearPermissionBubble(id)
+        // Character bubble is now driven by agentStateUpdate
         // Also clear permission bubbles on all sub-agent characters of this parent
         for (const [subId, meta] of os.subagentMeta) {
           if (meta.parentAgentId === id) {
@@ -437,7 +462,7 @@ export function useExtensionMessages(
         const id = msg.id as number
         const definitionId = msg.definitionId as string
         console.log(`[Webview] Agent ${id} bound to definition ${definitionId}`)
-        os.setAgentActive(id, true)
+        // Character FSM will be updated by agentStateUpdate from the backend
       } else if (msg.type === 'agentUnbound') {
         const id = msg.id as number
         const definitionId = msg.definitionId as string
@@ -464,7 +489,8 @@ export function useExtensionMessages(
         // Remove all sub-agent characters belonging to this agent
         os.removeAllSubagents(id)
         setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
-        // Set agent to idle (don't remove!)
+        // Agent goes idle — agentStateUpdate will also fire, but set idle immediately
+        // so the character doesn't briefly stay at desk
         os.setAgentTool(id, null)
         os.setAgentActive(id, false)
         os.clearPermissionBubble(id)
@@ -480,6 +506,7 @@ export function useExtensionMessages(
           currentToolStatus: string | null
           isWaiting: boolean
           bubbleType: 'permission' | 'waiting' | null
+          idleHint?: 'thinking' | 'between-turns' | null
           workspaceName: string
           workspaceFolder: string
           visual?: { x: number; y: number; tileCol: number; tileRow: number; state: string; dir: number; frame: number; moveProgress: number; path?: Array<{ col: number; row: number }> }
@@ -502,6 +529,7 @@ export function useExtensionMessages(
             existing.hueShift = ra.hueShift
             existing.currentTool = ra.currentTool
             existing.remoteToolStatus = ra.currentToolStatus
+            existing.idleHint = ra.idleHint ?? null
             existing.isActive = ra.isActive
             existing.isWaiting = ra.isWaiting
             // Update seat reservation if it changed
@@ -548,8 +576,8 @@ export function useExtensionMessages(
             }
             os.rebuildFurnitureInstances()
           } else {
-            // Create new remote character — claim seat so locals don't sit there
-            os.addAgent(ra.id, ra.palette, ra.hueShift, ra.seatId ?? undefined, true, ra.name, true)
+            // Create new remote character — spawn effect + claim seat so locals don't sit there
+            os.addAgent(ra.id, ra.palette, ra.hueShift, ra.seatId ?? undefined, false, ra.name, true)
             const ch = os.characters.get(ra.id)
             if (ch) {
               ch.nametag = ra.name

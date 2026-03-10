@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { AgentState } from './types.js';
-import { cancelWaitingTimer, cancelPermissionTimer, clearAgentActivity } from './timerManager.js';
+import { cancelWaitingTimer, cancelPermissionTimer, clearAgentActivity, startWaitingTimer } from './timerManager.js';
 import { processTranscriptLine } from './transcriptParser.js';
-import { FILE_WATCHER_POLL_INTERVAL_MS, PROJECT_SCAN_INTERVAL_MS } from './constants.js';
+import { FILE_WATCHER_POLL_INTERVAL_MS, PROJECT_SCAN_INTERVAL_MS, TEXT_IDLE_DELAY_MS } from './constants.js';
 import { readSessionMarker } from './agentDetector.js';
 
 export function startFileWatching(
@@ -91,8 +91,35 @@ export function readNewLines(
 	}
 }
 
-/** How recently a JSONL file must have been modified to be considered "active" (10 minutes) */
-const ACTIVE_FILE_MAX_AGE_MS = 600_000;
+/** How recently a JSONL file must have been modified to be considered "active" (2 minutes) */
+const ACTIVE_FILE_MAX_AGE_MS = 120_000;
+
+/** Check if a JSONL file's last record indicates the session ended (not mid-conversation). */
+function isSessionEnded(filePath: string): boolean {
+	try {
+		const fd = fs.openSync(filePath, 'r');
+		try {
+			const stat = fs.fstatSync(fd);
+			// Read the last ~4KB to find the final line
+			const tailSize = Math.min(4096, stat.size);
+			const buf = Buffer.alloc(tailSize);
+			fs.readSync(fd, buf, 0, tailSize, stat.size - tailSize);
+			const text = buf.toString('utf-8');
+			const lines = text.split('\n').filter(l => l.trim());
+			const lastLine = lines[lines.length - 1];
+			if (!lastLine) return false;
+			const record = JSON.parse(lastLine);
+			// turn_duration = turn ended; result = session complete
+			if (record.type === 'system' && record.subtype === 'turn_duration') return true;
+			if (record.type === 'result') return true;
+			return false;
+		} finally {
+			fs.closeSync(fd);
+		}
+	} catch {
+		return false;
+	}
+}
 
 /**
  * Scan for JSONL files that are active but not tracked by any agent.
@@ -123,25 +150,45 @@ export function autoAdoptActiveConversations(
 			.filter(f => f.endsWith('.jsonl'))
 			.map(f => path.join(projectDir, f));
 		console.log(`[Pixel Agents] autoAdopt: ${files.length} JSONL files, ${trackedFiles.size} already tracked`);
+
+		// Sort by modification time (most recent first) so we can limit adoption
+		const candidates: Array<{ file: string; ageMs: number }> = [];
 		for (const f of files) {
-			if (!trackedFiles.has(f)) {
-				try {
-					const stat = fs.statSync(f);
-					const ageMs = now - stat.mtimeMs;
-					if (ageMs < ACTIVE_FILE_MAX_AGE_MS) {
-						console.log(`[Pixel Agents] Auto-adopting active JSONL: ${path.basename(f)} (age: ${Math.round(ageMs / 1000)}s)`);
-						adoptFileWithoutTerminal(
-							f, projectDir,
-							nextAgentIdRef, agents, activeAgentIdRef,
-							fileWatchers, pollingTimers, waitingTimers, permissionTimers,
-							webview, persistAgents,
-							true,
-						);
-					} else {
-						console.log(`[Pixel Agents] Skipping stale JSONL: ${path.basename(f)} (age: ${Math.round(ageMs / 1000)}s)`);
-					}
-				} catch { /* stat error — skip */ }
+			if (trackedFiles.has(f)) continue;
+			try {
+				const stat = fs.statSync(f);
+				const ageMs = now - stat.mtimeMs;
+				if (ageMs < ACTIVE_FILE_MAX_AGE_MS && !isSessionEnded(f)) {
+					candidates.push({ file: f, ageMs });
+				} else {
+					console.log(`[Pixel Agents] Skipping stale JSONL: ${path.basename(f)} (age: ${Math.round(ageMs / 1000)}s)`);
+				}
+			} catch { /* stat error — skip */ }
+		}
+		candidates.sort((a, b) => a.ageMs - b.ageMs);
+
+		// Count live Claude terminals to limit adoption.
+		// If no terminals are found (headless startup), adopt at most 1 (most recent).
+		const liveTerminalCount = vscode.window.terminals.filter(t =>
+			t.name.startsWith('Claude') || t.name.startsWith('claude')
+		).length;
+		const maxAdopt = Math.max(liveTerminalCount - trackedFiles.size, liveTerminalCount === 0 ? 1 : 0);
+
+		let adopted = 0;
+		for (const c of candidates) {
+			if (adopted >= maxAdopt) {
+				console.log(`[Pixel Agents] Skipping JSONL (adoption limit ${maxAdopt}): ${path.basename(c.file)} (age: ${Math.round(c.ageMs / 1000)}s)`);
+				continue;
 			}
+			console.log(`[Pixel Agents] Auto-adopting active JSONL: ${path.basename(c.file)} (age: ${Math.round(c.ageMs / 1000)}s)`);
+			adoptFileWithoutTerminal(
+				c.file, projectDir,
+				nextAgentIdRef, agents, activeAgentIdRef,
+				fileWatchers, pollingTimers, waitingTimers, permissionTimers,
+				webview, persistAgents,
+				true,
+			);
+			adopted++;
 		}
 	} catch (e) {
 		console.log(`[Pixel Agents] autoAdopt: error reading dir: ${e}`);
@@ -338,6 +385,8 @@ function adoptTerminalForFile(
 		isWaiting: false,
 		permissionSent: false,
 		hadToolsInTurn: false,
+		hasBeenActive: false,
+		lastToolStatus: null,
 		agentDefinitionId: definitionId,
 	};
 
@@ -395,6 +444,9 @@ function adoptFileWithoutTerminal(
 				webview?.postMessage({ type: 'agentBound', id: existingId, definitionId: marker.definitionId });
 				startFileWatching(existingId, jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
 				readNewLines(existingId, agents, waitingTimers, permissionTimers, webview);
+				if (!waitingTimers.has(existingId)) {
+					startWaitingTimer(existingId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+				}
 				return;
 			}
 		}
@@ -416,6 +468,8 @@ function adoptFileWithoutTerminal(
 		isWaiting: false,
 		permissionSent: false,
 		hadToolsInTurn: false,
+		hasBeenActive: false,
+		lastToolStatus: null,
 		agentDefinitionId: marker?.definitionId ?? null,
 	};
 
@@ -429,6 +483,11 @@ function adoptFileWithoutTerminal(
 
 	startFileWatching(id, jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
 	readNewLines(id, agents, waitingTimers, permissionTimers, webview);
+	// If no new data arrives within TEXT_IDLE_DELAY_MS, mark as waiting.
+	// Handles stale JSONL files from previous sessions.
+	if (!waitingTimers.has(id)) {
+		startWaitingTimer(id, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+	}
 }
 
 export function reassignAgentToFile(

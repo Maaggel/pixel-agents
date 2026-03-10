@@ -23,14 +23,9 @@ function getActivityText(
   agentTools: Record<number, ToolActivity[]>,
   isActive: boolean,
   remoteToolStatus?: string | null,
+  idleHint?: 'thinking' | 'between-turns' | null,
 ): string {
-  // Remote agents: use synced tool status from source window
-  if (remoteToolStatus !== undefined) {
-    if (remoteToolStatus) return remoteToolStatus
-    if (isActive) return 'Thinking...'
-    return 'Idle'
-  }
-
+  // Check local tool list first (VS Code webview has detailed tool tracking)
   const tools = agentTools[agentId]
   if (tools && tools.length > 0) {
     // Find the latest non-done tool
@@ -46,7 +41,15 @@ function getActivityText(
     }
   }
 
-  if (isActive) return 'Thinking...'
+  // Fallback: use synced tool status from agentStateUpdate
+  // (standalone browser doesn't have agentToolStart messages,
+  // so agentTools is empty — use remoteToolStatus instead)
+  if (remoteToolStatus) return remoteToolStatus
+
+  if (isActive) {
+    if (idleHint === 'between-turns') return 'Waiting...'
+    return 'Thinking...'
+  }
   return 'Idle'
 }
 
@@ -148,7 +151,7 @@ export function ToolOverlay({
             activityText = 'Subtask'
           }
         } else {
-          activityText = getActivityText(id, agentTools, ch.isActive, ch.isRemote ? ch.remoteToolStatus : undefined)
+          activityText = getActivityText(id, agentTools, ch.isActive, ch.remoteToolStatus, ch.idleHint)
         }
 
         // Determine dot color
@@ -156,7 +159,7 @@ export function ToolOverlay({
           ? (() => { const sub = subagentCharacters.find((s) => s.id === id); return sub ? getSubagentToolActivities(sub, subagentTools) : undefined })()
           : (ch.isRemote ? undefined : agentTools[id])
         const hasPermission = subHasPermission || ch.bubbleType === 'permission' || tools?.some((t) => t.permissionWait && !t.done)
-        const hasActiveTools = ch.isRemote ? !!ch.remoteToolStatus : tools?.some((t) => !t.done)
+        const hasActiveTools = tools?.some((t) => !t.done) || !!ch.remoteToolStatus
         const isActive = ch.isActive
 
         let dotColor: string | null = null

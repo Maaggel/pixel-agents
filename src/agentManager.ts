@@ -3,10 +3,11 @@ import * as path from 'path';
 import * as os from 'os';
 import * as vscode from 'vscode';
 import type { AgentState, PersistedAgent } from './types.js';
-import { cancelWaitingTimer, cancelPermissionTimer } from './timerManager.js';
+import { cancelWaitingTimer, cancelPermissionTimer, startWaitingTimer } from './timerManager.js';
 import { startFileWatching, readNewLines, ensureProjectScan } from './fileWatcher.js';
-import { JSONL_POLL_INTERVAL_MS, TERMINAL_NAME_PREFIX, WORKSPACE_KEY_AGENTS, WORKSPACE_KEY_AGENT_SEATS } from './constants.js';
+import { JSONL_POLL_INTERVAL_MS, TEXT_IDLE_DELAY_MS, TERMINAL_NAME_PREFIX, WORKSPACE_KEY_AGENTS, WORKSPACE_KEY_AGENT_SEATS } from './constants.js';
 import { migrateAndLoadLayout } from './layoutPersistence.js';
+import { sendAgentStateUpdate } from './agentDisplayState.js';
 
 export function getProjectDirPath(cwd?: string): string | null {
 	const workspacePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -74,6 +75,8 @@ export async function launchNewTerminal(
 		isWaiting: false,
 		permissionSent: false,
 		hadToolsInTurn: false,
+		hasBeenActive: false,
+		lastToolStatus: null,
 		agentDefinitionId: null,
 		folderName,
 	};
@@ -266,6 +269,8 @@ export function restoreAgents(
 			isWaiting: false,
 			permissionSent: false,
 			hadToolsInTurn: false,
+		hasBeenActive: false,
+		lastToolStatus: null,
 			agentDefinitionId: p.agentDefinitionId ?? null,
 			folderName: p.folderName,
 		};
@@ -284,12 +289,16 @@ export function restoreAgents(
 
 		restoredProjectDir = p.projectDir;
 
-		// Start file watching if JSONL exists, skipping to end of file
+		// Start file watching if JSONL exists, skipping to end of file.
+		// Also start an idle timer — if no new JSONL data arrives within a few
+		// seconds, the agent goes waiting. This handles stale agents from
+		// previous sessions that were persisted while active.
 		try {
 			if (fs.existsSync(p.jsonlFile)) {
 				const stat = fs.statSync(p.jsonlFile);
 				agent.fileOffset = stat.size;
 				startFileWatching(p.id, p.jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
+				startWaitingTimer(p.id, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
 			} else {
 				// Poll for the file to appear
 				const pollTimer = setInterval(() => {
@@ -301,6 +310,7 @@ export function restoreAgents(
 							const stat = fs.statSync(agent.jsonlFile);
 							agent.fileOffset = stat.size;
 							startFileWatching(p.id, agent.jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
+							startWaitingTimer(p.id, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
 						}
 					} catch { /* file may not exist yet */ }
 				}, JSONL_POLL_INTERVAL_MS);
@@ -373,7 +383,7 @@ export function sendCurrentAgentStatuses(
 ): void {
 	if (!webview) return;
 	for (const [agentId, agent] of agents) {
-		// Re-send active tools
+		// Re-send active tools (for React UI tool list)
 		for (const [toolId, status] of agent.activeToolStatuses) {
 			webview.postMessage({
 				type: 'agentToolStart',
@@ -382,7 +392,7 @@ export function sendCurrentAgentStatuses(
 				status,
 			});
 		}
-		// Re-send waiting status
+		// Re-send waiting status (for React UI status display)
 		if (agent.isWaiting) {
 			webview.postMessage({
 				type: 'agentStatus',
@@ -390,6 +400,8 @@ export function sendCurrentAgentStatuses(
 				status: 'waiting',
 			});
 		}
+		// Send consolidated display state (drives character FSM)
+		sendAgentStateUpdate(agentId, agents, webview);
 	}
 }
 

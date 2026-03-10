@@ -46,6 +46,10 @@ export interface AgentState {
 	isWaiting: boolean;
 	permissionSent: boolean;
 	hadToolsInTurn: boolean;
+	/** True once the agent has processed any tool_use in this session (survives turn resets) */
+	hasBeenActive: boolean;
+	/** Last tool status string — persists through grace period for sync display */
+	lastToolStatus: string | null;
 	/** Links to DetectedAgentDefinition.definitionId, or null for ad-hoc agents */
 	agentDefinitionId: string | null;
 	/** Workspace folder name (only set for multi-root workspaces) */
@@ -92,6 +96,7 @@ export interface SyncAgentState {
 	currentToolStatus: string | null;
 	isWaiting: boolean;
 	bubbleType: 'permission' | 'waiting' | null;
+	idleHint: 'thinking' | 'between-turns' | null;
 	folderName?: string;
 	visual?: SyncCharacterVisual;
 }

@@ -216,13 +216,36 @@ export function ensureProjectScan(
 
 	console.log(`[Pixel Agents] ensureProjectScan: starting for ${projectDir}`);
 
-	// Seed with all existing JSONL files so we only react to truly new ones
+	// Seed with all existing JSONL files so we only react to truly new ones.
+	// Also adopt recently modified files not tracked by any agent — handles
+	// the case where a VS Code window reopens with an existing Claude session
+	// but no persisted workspace state.
 	try {
 		const files = fs.readdirSync(projectDir)
 			.filter(f => f.endsWith('.jsonl'))
 			.map(f => path.join(projectDir, f));
+		const trackedFiles = new Set<string>();
+		for (const a of agents.values()) {
+			if (a.jsonlFile) trackedFiles.add(a.jsonlFile);
+		}
+		const RECENT_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+		const now = Date.now();
 		for (const f of files) {
 			knownJsonlFiles.add(f);
+			if (!trackedFiles.has(f)) {
+				try {
+					const stat = fs.statSync(f);
+					if (now - stat.mtimeMs < RECENT_THRESHOLD_MS) {
+						console.log(`[Pixel Agents] ensureProjectScan: adopting recent untracked file ${path.basename(f)}`);
+						adoptFileWithoutTerminal(
+							f, projectDir,
+							nextAgentIdRef, agents, activeAgentIdRef,
+							fileWatchers, pollingTimers, waitingTimers, permissionTimers,
+							webview, persistAgents,
+						);
+					}
+				} catch { /* ignore stat errors */ }
+			}
 		}
 		console.log(`[Pixel Agents] ensureProjectScan: seeded ${files.length} known JSONL files`);
 	} catch (e) {
@@ -432,24 +455,48 @@ function adoptFileWithoutTerminal(
 	// Check for session marker to bind to a detected agent
 	const sessionId = path.basename(jsonlFile, '.jsonl');
 	const marker = readSessionMarker(sessionId);
+
+	// Try to bind to an existing unbound config agent:
+	// 1. By marker definitionId if available
+	// 2. Fallback: if only one unbound config agent exists, bind to it
+	let bindTarget: [number, AgentState] | null = null;
 	if (marker) {
 		for (const [existingId, existingAgent] of agents) {
 			if (existingAgent.agentDefinitionId === marker.definitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile) {
-				existingAgent.jsonlFile = jsonlFile;
-				existingAgent.fileOffset = fileOffset;
-				existingAgent.lineBuffer = '';
-				activeAgentIdRef.current = existingId;
-				persistAgents();
-				console.log(`[Pixel Agents] Agent ${existingId}: bound file to definition "${marker.definitionId}"`);
-				webview?.postMessage({ type: 'agentBound', id: existingId, definitionId: marker.definitionId });
-				startFileWatching(existingId, jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
-				readNewLines(existingId, agents, waitingTimers, permissionTimers, webview);
-				if (!waitingTimers.has(existingId)) {
-					startWaitingTimer(existingId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
-				}
-				return;
+				bindTarget = [existingId, existingAgent];
+				break;
 			}
 		}
+	}
+	if (!bindTarget) {
+		// No marker match — check for unbound config agents
+		const unboundConfigAgents: Array<[number, AgentState]> = [];
+		for (const [existingId, existingAgent] of agents) {
+			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile) {
+				unboundConfigAgents.push([existingId, existingAgent]);
+			}
+		}
+		// If exactly one unbound config agent, bind to it (single-definition workspace)
+		if (unboundConfigAgents.length === 1) {
+			bindTarget = unboundConfigAgents[0];
+		}
+	}
+	if (bindTarget) {
+		const [existingId, existingAgent] = bindTarget;
+		existingAgent.jsonlFile = jsonlFile;
+		existingAgent.fileOffset = fileOffset;
+		existingAgent.lineBuffer = '';
+		activeAgentIdRef.current = existingId;
+		persistAgents();
+		const defId = marker?.definitionId ?? existingAgent.agentDefinitionId ?? '';
+		console.log(`[Pixel Agents] Agent ${existingId}: bound file to definition "${defId}"`);
+		webview?.postMessage({ type: 'agentBound', id: existingId, definitionId: defId });
+		startFileWatching(existingId, jsonlFile, agents, fileWatchers, pollingTimers, waitingTimers, permissionTimers, webview);
+		readNewLines(existingId, agents, waitingTimers, permissionTimers, webview);
+		if (!waitingTimers.has(existingId)) {
+			startWaitingTimer(existingId, TEXT_IDLE_DELAY_MS, agents, waitingTimers, webview);
+		}
+		return;
 	}
 
 	const id = nextAgentIdRef.current++;

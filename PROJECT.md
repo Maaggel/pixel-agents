@@ -297,15 +297,32 @@ node standalone/server.mjs --port 8080
 
 ---
 
+## 14. Instant Avatar Activation on User Prompt
+
+**Problem**: When the user submits a message, the avatar stays "Idle" during the thinking phase until the agent starts using tools or responding. It should react immediately when the user submits.
+
+**Current state**: The backend already detects `user` records in the JSONL and sets `isWaiting = false` + sends `agentStateUpdate` (lines 159-174 in `transcriptParser.ts`). This works for the VS Code webview.
+
+**Why it may not work in standalone**: The chain is: Claude Code writes `user` record → `fs.watch`/2s poll detects change → backend parses + sends `agentStateUpdate` → sync file written (200ms debounce) → standalone polls sync file (500ms interval). Total worst-case delay: ~3s. But the real bottleneck may be Claude Code itself — it might not write the `user` record to the JSONL until the assistant starts streaming, which can be 10-30s for complex prompts.
+
+**Investigation needed**:
+- Monitor the JSONL file timestamps to determine when Claude Code writes the `user` record — immediately on submit, or when streaming begins?
+- If Claude Code delays the write, there's no way to detect the prompt from the JSONL alone
+- Alternative: watch the terminal for input activity (VS Code terminal `onDidWriteData` API) as an earlier signal — but this wouldn't help the standalone browser since it has no terminal access
+- Could reduce standalone poll interval from 500ms to 200ms for snappier response
+
+---
+
 ## Priority Order (Remaining) — easiest first
 
 1. **Standalone Avatars Same Palette (#11)** — Likely just passing palette/hueShift through `addAgent()` correctly; small fix
 2. **Project Color Dots (#8)** — Pass `workspaceFolder` through standalone server so `projectColorFromFolder()` works; small fix
-3. **Duplicate Agent Root Cause (#12)** — Merge logic in `agentManager.ts`/`fileWatcher.ts`; moderate but high-value
-4. **Idle Roaming in Standalone (#13)** — FSM already works in VS Code; likely just missing seatTimer init or zone data; debug + small fix
-5. **Thought Bubbles (#4)** — New sprite + render in canvas; self-contained, no architecture changes
-6. **Always-Visible Tool Indicators (#9)** — Canvas text above characters + toggle flag; moderate
-7. **Toggleable View Options (#10)** — New React component + visibility flags; moderate, mostly UI wiring
-8. **Rich Idle Behaviors (#5)** — Interactions, coffee runs, etc.; larger feature, depends on zone system
-9. **Sub-Agent Persistence Setting (#3)** — Nice-to-have toggle; simple but low priority
-10. **Item Editor Improvements (#2)** — Developer tooling; low user-facing priority
+3. **Instant Activation on Prompt (#14)** — Investigate JSONL write timing; may already work, just delayed
+4. **Duplicate Agent Root Cause (#12)** — Merge logic in `agentManager.ts`/`fileWatcher.ts`; moderate but high-value
+5. **Idle Roaming in Standalone (#13)** — FSM already works in VS Code; likely just missing seatTimer init or zone data; debug + small fix
+6. **Thought Bubbles (#4)** — New sprite + render in canvas; self-contained, no architecture changes
+7. **Always-Visible Tool Indicators (#9)** — Canvas text above characters + toggle flag; moderate
+8. **Toggleable View Options (#10)** — New React component + visibility flags; moderate, mostly UI wiring
+9. **Rich Idle Behaviors (#5)** — Interactions, coffee runs, etc.; larger feature, depends on zone system
+10. **Sub-Agent Persistence Setting (#3)** — Nice-to-have toggle; simple but low priority
+11. **Item Editor Improvements (#2)** — Developer tooling; low user-facing priority

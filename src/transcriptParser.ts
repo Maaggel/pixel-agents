@@ -160,7 +160,9 @@ export function processTranscriptLine(
 					cancelWaitingTimer(agentId, waitingTimers);
 					clearAgentActivity(agent, agentId, permissionTimers, webview);
 					agent.hadToolsInTurn = false;
+					agent.hasBeenActive = false;
 					agent.isWaiting = false;
+					agent.lastToolStatus = null;
 					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 					sendAgentStateUpdate(agentId, agents, webview);
 				}
@@ -169,7 +171,9 @@ export function processTranscriptLine(
 				cancelWaitingTimer(agentId, waitingTimers);
 				clearAgentActivity(agent, agentId, permissionTimers, webview);
 				agent.hadToolsInTurn = false;
+				agent.hasBeenActive = false;
 				agent.isWaiting = false;
+				agent.lastToolStatus = null;
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				sendAgentStateUpdate(agentId, agents, webview);
 			}
@@ -187,6 +191,7 @@ export function processTranscriptLine(
 
 			agent.permissionSent = false;
 			agent.hadToolsInTurn = false;
+			agent.lastToolStatus = null;
 
 			// Grace period: delay the "waiting" transition to absorb brief gaps
 			// in agentic loops. If a new turn starts within THINKING_GRACE_MS,

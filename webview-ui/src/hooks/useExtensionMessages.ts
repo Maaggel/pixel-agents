@@ -113,7 +113,7 @@ export function useExtensionMessages(
 
   useEffect(() => {
     // Buffer agents from existingAgents until layout is loaded
-    let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; projectName?: string }> = []
+    let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; projectName?: string; workspaceFolder?: string }> = []
 
     const handler = (e: MessageEvent) => {
       const msg = e.data
@@ -137,6 +137,10 @@ export function useExtensionMessages(
         // Add buffered agents now that layout (and seats) are correct
         for (const p of pendingAgents) {
           os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, false, p.projectName)
+          if (p.workspaceFolder) {
+            const ch = os.characters.get(p.id)
+            if (ch) ch.projectColor = projectColorFromFolder(p.workspaceFolder)
+          }
         }
         pendingAgents = []
         layoutReadyRef.current = true
@@ -182,18 +186,25 @@ export function useExtensionMessages(
         const incoming = msg.agents as number[]
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
+        const wsFolders = (msg.workspaceFolders || {}) as Record<number, string>
         const pName = msg.projectName as string | undefined
         if (layoutReadyRef.current) {
           // Layout already loaded — add agents immediately with spawn effect
           for (const id of incoming) {
             const m = meta[id]
             os.addAgent(id, m?.palette, m?.hueShift, m?.seatId, false, folderNames[id], false, pName)
+            // Set project color dot from workspace folder path
+            const wsFolder = wsFolders[id]
+            if (wsFolder) {
+              const ch = os.characters.get(id)
+              if (ch) ch.projectColor = projectColorFromFolder(wsFolder)
+            }
           }
         } else {
           // Buffer agents — they'll be added in layoutLoaded after seats are built
           for (const id of incoming) {
             const m = meta[id]
-            pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], projectName: pName })
+            pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], projectName: pName, workspaceFolder: wsFolders[id] })
           }
         }
         setAgents((prev) => {
@@ -271,6 +282,9 @@ export function useExtensionMessages(
         } else if (bubbleType === 'waiting') {
           os.showWaitingBubble(id)
           playDoneSound()
+        } else if (isActive && idleHint === 'thinking' && !currentTool) {
+          // Active but no tools yet — show thinking bubble
+          os.showThinkingBubble(id)
         } else {
           os.clearPermissionBubble(id)
         }

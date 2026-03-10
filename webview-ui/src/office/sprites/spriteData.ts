@@ -340,6 +340,29 @@ export const BUBBLE_TALKING_SPRITE: SpriteData = (() => {
   ]
 })()
 
+/** Thinking bubble: cloud shape with thought trail (11x14) */
+export const BUBBLE_THINKING_SPRITE: SpriteData = (() => {
+  const B = '#555566' // border
+  const F = '#EEEEFF' // fill
+  const D = '#8888AA' // dot color (softer than amber)
+  return [
+    [_, _, B, B, B, B, B, B, B, _, _],
+    [_, B, F, F, F, F, F, F, F, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, D, F, D, F, D, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, F, F, F, F, F, F, F, B, _],
+    [_, _, B, B, B, B, B, B, B, _, _],
+    [_, _, _, _, _, B, B, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, B, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 // ── Character Sprites ───────────────────────────────────────────
 // 16x24 characters with palette substitution
 

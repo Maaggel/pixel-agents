@@ -700,6 +700,7 @@ export class OfficeState {
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id)
     if (ch) {
+      const wasActive = ch.isActive
       ch.isActive = active
       // Remote: just update flag, source window handles FSM
       if (ch.isRemote) {
@@ -729,9 +730,9 @@ export class OfficeState {
           }
         }
       }
-      if (!active) {
-        // Character stays seated for IDLE_ZONE_DELAY_SEC before getting up.
-        // idleZoneTimer is checked in the update loop to trigger zone reassignment.
+      if (!active && wasActive) {
+        // Transition from active → inactive: start zone delay timers
+        // Only set on transition — repeated calls with active=false must not reset timers
         ch.idleZoneTimer = IDLE_ZONE_DELAY_SEC
         // seatTimer controls how long SIT_IDLE lasts — match the zone delay
         // so character sits at desk until zone transition fires
@@ -888,9 +889,18 @@ export class OfficeState {
 
   clearPermissionBubble(id: number): void {
     const ch = this.characters.get(id)
-    if (ch && ch.bubbleType === 'permission') {
+    if (ch && (ch.bubbleType === 'permission' || ch.bubbleType === 'thinking')) {
       ch.bubbleType = null
       ch.bubbleTimer = 0
+    }
+  }
+
+  showThinkingBubble(id: number): void {
+    const ch = this.characters.get(id)
+    if (ch && ch.bubbleType !== 'permission') {
+      // Don't override permission bubble; thinking is lower priority
+      ch.bubbleType = 'thinking'
+      ch.bubbleTimer = 0 // stays until cleared (no auto-fade)
     }
   }
 

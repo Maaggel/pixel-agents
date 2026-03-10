@@ -15,6 +15,7 @@ interface ToolOverlayProps {
   zoom: number
   panRef: React.RefObject<{ x: number; y: number }>
   onShuffleAgent: (id: number) => void
+  alwaysShowActivities?: boolean
 }
 
 /** Derive a short human-readable activity string from tools/status */
@@ -70,6 +71,7 @@ export function ToolOverlay({
   zoom,
   panRef,
   onShuffleAgent,
+  alwaysShowActivities,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -113,8 +115,9 @@ export function ToolOverlay({
         const isHovered = hoveredId === id
         const isSub = ch.isSubagent
 
-        // Only show for hovered or selected agents
-        if (!isSelected && !isHovered) return null
+        // Show for hovered/selected agents, or all non-idle agents if alwaysShowActivities
+        const isNonIdle = ch.isActive || ch.isWaiting
+        if (!isSelected && !isHovered && !(alwaysShowActivities && isNonIdle)) return null
 
         // Position above character
         const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0

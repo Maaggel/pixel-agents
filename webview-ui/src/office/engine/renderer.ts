@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_TALKING_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_TALKING_SPRITE, BUBBLE_THINKING_SPRITE } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -473,7 +473,9 @@ export function renderBubbles(
       ? BUBBLE_PERMISSION_SPRITE
       : ch.bubbleType === 'talking'
         ? BUBBLE_TALKING_SPRITE
-        : BUBBLE_WAITING_SPRITE
+        : ch.bubbleType === 'thinking'
+          ? BUBBLE_THINKING_SPRITE
+          : BUBBLE_WAITING_SPRITE
 
     // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0

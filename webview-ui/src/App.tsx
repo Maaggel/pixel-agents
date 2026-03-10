@@ -14,6 +14,8 @@ import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
 import { ZoomControls } from './components/ZoomControls.js'
 import { BottomToolbar } from './components/BottomToolbar.js'
 import { DebugView } from './components/DebugView.js'
+import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
+import type { ViewOptions } from './components/ViewOptionsPanel.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -154,6 +156,30 @@ function App() {
     vscode.postMessage({ type: 'setShowNametags', enabled: newVal })
   }, [showNametags, setShowNametags])
 
+  const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
+    try {
+      const saved = localStorage.getItem('pixel-agents-view-options')
+      if (saved) return JSON.parse(saved) as ViewOptions
+    } catch { /* ignore */ }
+    return { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false }
+  })
+  const handleViewOptionsChange = useCallback((opts: ViewOptions) => {
+    setViewOptions(opts)
+    try { localStorage.setItem('pixel-agents-view-options', JSON.stringify(opts)) } catch { /* ignore */ }
+    // Sync nametags toggle with existing setting
+    if (opts.showNametags !== showNametags) {
+      setShowNametags(opts.showNametags)
+      vscode.postMessage({ type: 'setShowNametags', enabled: opts.showNametags })
+    }
+  }, [showNametags, setShowNametags])
+
+  // Keep viewOptions.showNametags in sync with the extension-level setting
+  useEffect(() => {
+    if (viewOptions.showNametags !== showNametags) {
+      setViewOptions((prev) => ({ ...prev, showNametags }))
+    }
+  }, [showNametags]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id })
   }, [])
@@ -249,7 +275,9 @@ function App() {
         showNametags={showNametags}
       />
 
-      <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+      {viewOptions.showZoom && (
+        <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+      )}
 
       {/* Vignette overlay */}
       <div
@@ -262,14 +290,16 @@ function App() {
         }}
       />
 
-      <BottomToolbar
-        isEditMode={editor.isEditMode}
-        onToggleEditMode={editor.handleToggleEditMode}
-        isDebugMode={isDebugMode}
-        onToggleDebugMode={handleToggleDebugMode}
-        showNametags={showNametags}
-        onToggleNametags={handleToggleNametags}
-      />
+      {viewOptions.showBottomBar && (
+        <BottomToolbar
+          isEditMode={editor.isEditMode}
+          onToggleEditMode={editor.handleToggleEditMode}
+          isDebugMode={isDebugMode}
+          onToggleDebugMode={handleToggleDebugMode}
+          showNametags={showNametags}
+          onToggleNametags={handleToggleNametags}
+        />
+      )}
 
       {editor.isEditMode && editor.isDirty && (
         <EditActionBar editor={editor} editorState={editorState} />
@@ -326,6 +356,8 @@ function App() {
         )
       })()}
 
+      <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />
+
       <ToolOverlay
         officeState={officeState}
         agentTools={agentTools}
@@ -335,6 +367,7 @@ function App() {
         zoom={editor.zoom}
         panRef={editor.panRef}
         onShuffleAgent={handleShuffleAgent}
+        alwaysShowActivities={viewOptions.alwaysShowActivities}
       />
 
       {isDebugMode && (

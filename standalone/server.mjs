@@ -251,6 +251,7 @@ function startSyncPolling() {
             bubbleType: agent.bubbleType,
             idleHint: agent.idleHint || null,
             workspaceName: win.workspaceName || '',
+            workspaceFolder: win.workspaceFolder || '',
           });
         }
       }
@@ -259,12 +260,21 @@ function startSyncPolling() {
       const newAgentIds = [];
       const newAgentMeta = {};
       const newFolderNames = {};
+      const newWorkspaceFolders = {};
       let projectName = '';
       for (const [id, agent] of currentAgents) {
         if (!knownAgents.has(id)) {
           newAgentIds.push(id);
-          newAgentMeta[id] = { palette: agent.palette, hueShift: agent.hueShift, seatId: agent.seatId };
+          // Only pass palette/hueShift if explicitly set (non-default) —
+          // otherwise let the webview's pickDiversePalette() assign diverse skins
+          const hasExplicitPalette = agent.palette > 0 || agent.hueShift > 0;
+          newAgentMeta[id] = {
+            palette: hasExplicitPalette ? agent.palette : undefined,
+            hueShift: hasExplicitPalette ? agent.hueShift : undefined,
+            seatId: agent.seatId,
+          };
           newFolderNames[id] = agent.name;
+          newWorkspaceFolders[id] = agent.workspaceFolder;
           if (agent.workspaceName) projectName = agent.workspaceName;
         }
       }
@@ -273,6 +283,7 @@ function startSyncPolling() {
           type: 'existingAgents',
           agents: newAgentIds,
           agentMeta: newAgentMeta,
+          workspaceFolders: newWorkspaceFolders,
           folderNames: newFolderNames,
           projectName: projectName,
         });

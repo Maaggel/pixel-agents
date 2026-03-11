@@ -1,4 +1,4 @@
-import { CharacterState, Direction, TILE_SIZE } from '../types.js'
+import { CharacterState, Direction, TILE_SIZE, IdleActionType } from '../types.js'
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
 import type { CharacterSprites } from '../sprites/spriteData.js'
 import { findPath } from '../layout/tileMap.js'
@@ -336,11 +336,18 @@ export function updateCharacter(
           if (ch.seatId) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
-              logIdle(ch, 'sitting down to rest')
+              // Don't log "sitting down to rest" for meetings/conversations — those handle their own logging
+              if (ch.idleAction === IdleActionType.MEETING) {
+                logIdle(ch, 'arrived at meeting')
+              } else if (ch.idleAction === IdleActionType.CONVERSATION) {
+                // conversation handles its own state in updateConversation
+              } else {
+                logIdle(ch, 'sitting down to rest')
+              }
               ch.dir = seat.facingDir
               ch.state = ch.isWaiting ? CharacterState.SIT_WAIT : CharacterState.SIT_IDLE
-              // Rest at seat before wandering again
-              if (!ch.isWaiting && ch.seatTimer <= 0) {
+              // Rest at seat before wandering again (skip for meetings/conversations — they manage their own timers)
+              if (!ch.isWaiting && ch.seatTimer <= 0 && ch.idleAction !== IdleActionType.MEETING && ch.idleAction !== IdleActionType.CONVERSATION) {
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
               }
               ch.wanderCount = 0

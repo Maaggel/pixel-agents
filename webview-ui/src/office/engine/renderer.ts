@@ -748,13 +748,13 @@ export function renderFrame(
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
 
-  // Speech bubbles (always on top of characters)
-  renderBubbles(ctx, characters, offsetX, offsetY, zoom)
-
-  // Nametags (above characters, below bubbles would overlap — render after bubbles)
+  // Nametags (above characters, below bubbles)
   if (selection?.showNametags) {
     renderNametags(ctx, characters, offsetX, offsetY, zoom)
   }
+
+  // Speech bubbles (always on top of everything including nametags)
+  renderBubbles(ctx, characters, offsetX, offsetY, zoom)
 
   // Editor overlays
   if (editor) {

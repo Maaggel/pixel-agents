@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToolActivity } from '../types.js'
 import type { OfficeState } from '../engine/officeState.js'
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js'
-import { TILE_SIZE } from '../types.js'
+import { TILE_SIZE, IdleActionType } from '../types.js'
 import { isSittingState } from '../engine/characters.js'
 import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
 
@@ -18,6 +18,14 @@ interface ToolOverlayProps {
   alwaysShowActivities?: boolean
 }
 
+/** Format seconds as "Xm Ys" or "Ys" */
+function formatTimer(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds))
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return m > 0 ? `${m}m ${rem}s` : `${rem}s`
+}
+
 /** Derive a short human-readable activity string from tools/status */
 function getActivityText(
   agentId: number,
@@ -25,6 +33,8 @@ function getActivityText(
   isActive: boolean,
   remoteToolStatus?: string | null,
   idleHint?: 'thinking' | 'between-turns' | null,
+  idleAction?: string | null,
+  idleActionTimer?: number,
 ): string {
   // Check local tool list first (VS Code webview has detailed tool tracking)
   const tools = agentTools[agentId]
@@ -51,6 +61,16 @@ function getActivityText(
     if (idleHint === 'between-turns') return 'Waiting...'
     return 'Thinking...'
   }
+
+  // Meeting / conversation status
+  if (idleAction === IdleActionType.MEETING) {
+    const timer = idleActionTimer != null && idleActionTimer > 0 ? ` (${formatTimer(idleActionTimer)})` : ''
+    return `In Meeting${timer}`
+  }
+  if (idleAction === IdleActionType.CONVERSATION) {
+    return 'Chatting'
+  }
+
   return 'Idle'
 }
 
@@ -154,7 +174,7 @@ export function ToolOverlay({
             activityText = 'Subtask'
           }
         } else {
-          activityText = getActivityText(id, agentTools, ch.isActive, ch.remoteToolStatus, ch.idleHint)
+          activityText = getActivityText(id, agentTools, ch.isActive, ch.remoteToolStatus, ch.idleHint, ch.idleAction, ch.idleActionTimer)
         }
 
         // Determine dot color

@@ -9,7 +9,7 @@ import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
 import { setSoundEnabled } from '../notificationSound.js'
-import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS } from '../constants.js'
+import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS } from '../constants.js'
 import { addBehaviourEntry } from '../behaviourLog.js'
 
 /** Derive a stable color from a workspace folder path. */
@@ -120,6 +120,22 @@ export function useExtensionMessages(
     // Buffer agents from existingAgents until layout is loaded
     let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; projectName?: string; workspaceFolder?: string }> = []
 
+    // Grace period map: agentId → timeout handle. If the agent reappears before
+    // the timeout fires, we cancel the removal (prevents despawn→respawn flicker).
+    const pendingCloses = new Map<number, ReturnType<typeof setTimeout>>()
+
+    /** Cancel a pending close for an agent that reappeared */
+    function cancelPendingClose(id: number): boolean {
+      const timer = pendingCloses.get(id)
+      if (timer) {
+        clearTimeout(timer)
+        pendingCloses.delete(id)
+        console.log(`[Webview] Cancelled pending close for agent ${id} (reappeared within grace period)`)
+        return true
+      }
+      return false
+    }
+
     /** Get display name for an agent from the character nametag or fallback */
     function agentName(id: number): string {
       const ch = getOfficeState().characters.get(id)
@@ -163,48 +179,65 @@ export function useExtensionMessages(
         const id = msg.id as number
         const folderName = msg.folderName as string | undefined
         const projectName = msg.projectName as string | undefined
+        // Cancel pending close if agent reappeared quickly
+        if (!cancelPendingClose(id)) {
+          // Truly new agent
+          addBehaviourEntry({ agentId: id, agentName: folderName || `Agent ${id}`, message: 'joined the office', type: 'info' })
+        }
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         setSelectedAgent(id)
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
+        if (!os.characters.has(id)) {
+          os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
+        }
         saveAgentSeats(os)
-        addBehaviourEntry({ agentId: id, agentName: folderName || `Agent ${id}`, message: 'joined the office', type: 'info' })
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number
-        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'left the office', type: 'info' })
-        setAgents((prev) => prev.filter((a) => a !== id))
-        setSelectedAgent((prev) => (prev === id ? null : prev))
-        setAgentTools((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        setAgentStatuses((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        setSubagentTools((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        // Remove all sub-agent characters belonging to this agent
-        os.removeAllSubagents(id)
-        setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
-        os.removeAgent(id)
+        // Defer removal with a grace period — if the agent reappears (e.g. rebinding),
+        // the close is cancelled, avoiding a despawn→respawn flicker.
+        if (pendingCloses.has(id)) return // already pending
+        const name = agentName(id)
+        const timer = setTimeout(() => {
+          pendingCloses.delete(id)
+          addBehaviourEntry({ agentId: id, agentName: name, message: 'left the office', type: 'info' })
+          setAgents((prev) => prev.filter((a) => a !== id))
+          setSelectedAgent((prev) => (prev === id ? null : prev))
+          setAgentTools((prev) => {
+            if (!(id in prev)) return prev
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+          setAgentStatuses((prev) => {
+            if (!(id in prev)) return prev
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+          setSubagentTools((prev) => {
+            if (!(id in prev)) return prev
+            const next = { ...prev }
+            delete next[id]
+            return next
+          })
+          const currentOs = getOfficeState()
+          currentOs.removeAllSubagents(id)
+          setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
+          currentOs.removeAgent(id)
+        }, AGENT_CLOSE_GRACE_MS)
+        pendingCloses.set(id, timer)
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[]
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
         const wsFolders = (msg.workspaceFolders || {}) as Record<number, string>
         const pName = msg.projectName as string | undefined
+        // Cancel pending closes for any agents that reappeared
+        for (const id of incoming) cancelPendingClose(id)
         if (layoutReadyRef.current) {
           // Layout already loaded — add agents immediately with spawn effect
           for (const id of incoming) {
             const m = meta[id]
+            if (os.characters.has(id)) continue // already exists, skip re-add
             os.addAgent(id, m?.palette, m?.hueShift, m?.seatId, false, folderNames[id], false, pName)
             // Set project color dot from workspace folder path
             const wsFolder = wsFolders[id]
@@ -277,6 +310,8 @@ export function useExtensionMessages(
         const id = msg.id as number
         setSelectedAgent(id)
       } else if (msg.type === 'agentStateUpdate') {
+        // Agent is alive — cancel any pending close
+        cancelPendingClose(msg.id as number)
         // ── Consolidated display state from backend (single source of truth) ──
         const id = msg.id as number
         const isActive = msg.isActive as boolean
@@ -509,6 +544,7 @@ export function useExtensionMessages(
         saveAgentSeats(os)
       } else if (msg.type === 'agentBound') {
         const id = msg.id as number
+        cancelPendingClose(id)
         const definitionId = msg.definitionId as string
         console.log(`[Webview] Agent ${id} bound to definition ${definitionId}`)
         addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'connected to terminal', type: 'info' })
@@ -666,7 +702,12 @@ export function useExtensionMessages(
     }
     window.addEventListener('message', handler)
     vscode.postMessage({ type: 'webviewReady' })
-    return () => window.removeEventListener('message', handler)
+    return () => {
+      window.removeEventListener('message', handler)
+      // Clear any pending close timers
+      for (const timer of pendingCloses.values()) clearTimeout(timer)
+      pendingCloses.clear()
+    }
   }, [getOfficeState])
 
   return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents }

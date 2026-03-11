@@ -284,30 +284,75 @@ export class OfficeState {
     return false
   }
 
-  /** Get free (unassigned, unoccupied) seats in MEETING_ROOM zones.
-   *  Checks the raw zones array directly (not walkableTiles) because
-   *  chair tiles are blocked/non-walkable but still have zone assignments.
-   *  Returns array of seat UIDs. */
-  private getFreeMeetingZoneSeats(): string[] {
+  /** Identify separate meeting rooms by flood-filling connected meeting_room tiles.
+   *  Returns an array of rooms, each being a Set of "col,row" tile keys. */
+  private getMeetingRooms(): Array<Set<string>> {
     const zones = this.layout.zones
-    if (!zones) {
-      console.log(`[Meeting] No zones array on layout`)
+    if (!zones) return []
+    const cols = this.layout.cols
+    const rows = this.layout.rows
+    const visited = new Set<string>()
+    const rooms: Array<Set<string>> = []
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const key = `${c},${r}`
+        if (visited.has(key)) continue
+        const idx = r * cols + c
+        if (zones[idx] !== ZoneTypeValues.MEETING_ROOM) continue
+
+        // Flood-fill from this tile to find all connected meeting tiles
+        const room = new Set<string>()
+        const queue = [{ col: c, row: r }]
+        visited.add(key)
+        while (queue.length > 0) {
+          const { col, row } = queue.shift()!
+          room.add(`${col},${row}`)
+          for (const [dc, dr] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+            const nc = col + dc
+            const nr = row + dr
+            if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue
+            const nk = `${nc},${nr}`
+            if (visited.has(nk)) continue
+            if (zones[nr * cols + nc] !== ZoneTypeValues.MEETING_ROOM) continue
+            visited.add(nk)
+            queue.push({ col: nc, row: nr })
+          }
+        }
+        rooms.push(room)
+      }
+    }
+    return rooms
+  }
+
+  /** Get free seats grouped by meeting room. Each entry is one room's free seats.
+   *  Returns the room with the most free seats (best candidate for a meeting). */
+  private getFreeMeetingZoneSeats(): string[] {
+    const rooms = this.getMeetingRooms()
+    if (rooms.length === 0) {
+      console.log(`[Meeting] No meeting rooms found`)
       return []
     }
 
-    console.log(`[Meeting] Layout: ${this.layout.cols}x${this.layout.rows}, zones length=${zones.length}, seats=${this.seats.size}`)
-    const freeSeats: string[] = []
-    for (const [uid, seat] of this.seats) {
-      const idx = seat.seatRow * this.layout.cols + seat.seatCol
-      const zone = zones[idx]
-      const isMeeting = zone === ZoneTypeValues.MEETING_ROOM
-      console.log(`[Meeting] Seat "${uid}" at (${seat.seatCol},${seat.seatRow}) idx=${idx}: zone=${JSON.stringify(zone)} isMeeting=${isMeeting} assigned=${seat.assigned}`)
-      if (!isMeeting) continue
-      if (seat.assigned) continue
-      if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
-      freeSeats.push(uid)
+    // For each room, collect free seats — only rooms with enough seats are eligible
+    const eligible: string[][] = []
+    for (const room of rooms) {
+      const freeInRoom: string[] = []
+      for (const [uid, seat] of this.seats) {
+        const key = `${seat.seatCol},${seat.seatRow}`
+        if (!room.has(key)) continue
+        if (seat.assigned) continue
+        if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
+        freeInRoom.push(uid)
+      }
+      console.log(`[Meeting] Room with ${room.size} tiles: ${freeInRoom.length} free seats`)
+      if (freeInRoom.length >= MEETING_MIN_PARTICIPANTS) {
+        eligible.push(freeInRoom)
+      }
     }
-    return freeSeats
+    if (eligible.length === 0) return []
+    // Randomly pick one eligible room
+    return eligible[Math.floor(Math.random() * eligible.length)]
   }
 
   /** Try to start a meeting. Returns null on success, or a reason string on failure. */
@@ -320,9 +365,20 @@ export class OfficeState {
 
     // Find free meeting zone seats
     const freeSeats = this.getFreeMeetingZoneSeats()
-    console.log(`[Meeting] Free meeting seats: ${freeSeats.length}, zones: ${this.zoneTiles.size}, seats total: ${this.seats.size}`)
+    const hasZonesArr = !!this.layout.zones
+    const meetingZoneCount = hasZonesArr ? this.layout.zones!.filter(z => z === ZoneTypeValues.MEETING_ROOM).length : 0
+    console.log(`[Meeting] Free meeting seats: ${freeSeats.length}, zones array: ${hasZonesArr}, meeting tiles: ${meetingZoneCount}, seats total: ${this.seats.size}`)
     if (freeSeats.length < MEETING_MIN_PARTICIPANTS) {
-      return `Not enough free meeting seats (${freeSeats.length}/${MEETING_MIN_PARTICIPANTS})`
+      // Count meeting-zone seats (assigned + free) for diagnostic
+      let meetingSeatsTotal = 0
+      let meetingSeatsAssigned = 0
+      for (const [, seat] of this.seats) {
+        if (this.isMeetingZoneSeat(seat)) {
+          meetingSeatsTotal++
+          if (seat.assigned) meetingSeatsAssigned++
+        }
+      }
+      return `Not enough free meeting seats (${freeSeats.length}/${MEETING_MIN_PARTICIPANTS}). Total meeting seats: ${meetingSeatsTotal}, assigned: ${meetingSeatsAssigned}, zones: ${meetingZoneCount} tiles, total seats: ${this.seats.size}`
     }
 
     // Collect eligible idle agents (non-subagent, non-remote, not active, not waiting, no idle action, not in matrix effect)
@@ -333,7 +389,7 @@ export class OfficeState {
         continue
       }
       if (ch.matrixEffect !== null) continue
-      if (ch.idleAction !== null && ch.idleAction !== IdleActionType.WANDER) {
+      if (ch.idleAction !== null && ch.idleAction !== IdleActionType.WANDER && ch.idleAction !== IdleActionType.CONVERSATION) {
         console.log(`[Meeting] Skipping ${ch.id}: idleAction=${ch.idleAction}`)
         continue
       }
@@ -357,10 +413,13 @@ export class OfficeState {
     // Set a shared meeting duration
     const duration = MEETING_MIN_DURATION_SEC + Math.random() * (MEETING_MAX_DURATION_SEC - MEETING_MIN_DURATION_SEC)
 
+    // Distribute seats across facing directions so participants sit across from each other
+    const distributedSeats = this.distributeMeetingSeats(freeSeats, participants.length)
+
     // Assign each participant to a meeting seat and start walking
     for (let i = 0; i < participants.length; i++) {
       const ch = participants[i]
-      const seatId = freeSeats[i]
+      const seatId = distributedSeats[i]
       const seat = this.seats.get(seatId)!
 
       // Save original seat
@@ -414,7 +473,10 @@ export class OfficeState {
       }
 
       const name = ch.nametag || `Agent ${ch.id}`
-      addBehaviourEntry({ agentId: ch.id, agentName: name, message: 'heading to meeting', type: 'idle' })
+      const mins = Math.floor(duration / 60)
+      const secs = Math.round(duration % 60)
+      const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+      addBehaviourEntry({ agentId: ch.id, agentName: name, message: `heading to meeting (${durationStr})`, type: 'idle' })
     }
 
     return null
@@ -451,6 +513,66 @@ export class OfficeState {
     } else {
       ch.seatId = null
     }
+  }
+
+  /** Distribute meeting seats across facing directions so participants sit across from each other.
+   *  Groups seats by facing direction, then round-robin picks from each group. */
+  private distributeMeetingSeats(freeSeats: string[], count: number): string[] {
+    // Group seats by facing direction
+    const byDir = new Map<number, string[]>()
+    for (const uid of freeSeats) {
+      const seat = this.seats.get(uid)
+      if (!seat) continue
+      const dir = seat.facingDir
+      let list = byDir.get(dir)
+      if (!list) {
+        list = []
+        byDir.set(dir, list)
+      }
+      list.push(uid)
+    }
+
+    const dirGroups = Array.from(byDir.values())
+    if (dirGroups.length <= 1) {
+      // Only one facing direction — just return as-is (shuffled)
+      const shuffled = [...freeSeats]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp
+      }
+      return shuffled.slice(0, count)
+    }
+
+    // Shuffle each group internally for variety within a side
+    for (const group of dirGroups) {
+      for (let i = group.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const tmp = group[i]; group[i] = group[j]; group[j] = tmp
+      }
+    }
+
+    // Shuffle the direction groups order too
+    for (let i = dirGroups.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const tmp = dirGroups[i]; dirGroups[i] = dirGroups[j]; dirGroups[j] = tmp
+    }
+
+    // Round-robin pick from each direction group
+    const result: string[] = []
+    const indices = dirGroups.map(() => 0)
+    let groupIdx = 0
+    while (result.length < count) {
+      const group = dirGroups[groupIdx]
+      if (indices[groupIdx] < group.length) {
+        result.push(group[indices[groupIdx]])
+        indices[groupIdx]++
+      }
+      groupIdx = (groupIdx + 1) % dirGroups.length
+      // Safety: if we've exhausted all groups, break
+      if (indices.every((idx, gi) => idx >= dirGroups[gi].length)) break
+    }
+
+    return result
   }
 
   /** Check if a seat tile is inside a MEETING_ROOM zone */
@@ -997,13 +1119,15 @@ export class OfficeState {
           ch.bubbleTimer = 0
           ch.currentTool = null
         }
+        // Clear any in-progress walk (e.g. walking to meeting seat)
+        ch.path = []
+        ch.moveProgress = 0
         // Reassign to a workspace zone seat when becoming active
-        const oldSeatId = ch.seatId
         this.reassignToZoneSeat(ch, [ZoneTypeValues.WORKSPACE])
-        // If seat changed and character is sitting, kick them into walking
-        if (ch.seatId && ch.seatId !== oldSeatId && isSittingState(ch.state)) {
+        // Walk to assigned seat if not already there (e.g. leaving a meeting across the room)
+        if (ch.seatId) {
           const seat = this.seats.get(ch.seatId)
-          if (seat) {
+          if (seat && (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow)) {
             const path = this.withOwnSeatUnblocked(ch, () =>
               findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
             )
@@ -1333,7 +1457,8 @@ export class OfficeState {
 
       // Idle zone transition: after IDLE_ZONE_DELAY_SEC of being idle,
       // reassign to a rest/kitchen zone seat and walk there
-      if (!ch.isActive && !ch.isSubagent && ch.idleZoneTimer > 0) {
+      // Skip characters in a meeting — they stay at their meeting seat
+      if (!ch.isActive && !ch.isSubagent && ch.idleAction !== IdleActionType.MEETING && ch.idleZoneTimer > 0) {
         ch.idleZoneTimer -= dt
         if (ch.idleZoneTimer <= 0) {
           ch.idleZoneTimer = 0
@@ -1360,8 +1485,8 @@ export class OfficeState {
       }
 
       // ── Seated Conversation Check ────────────────────────────────
-      // SIT_IDLE characters can start conversations with nearby seated partners
-      if (ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+      // SIT_IDLE characters can start conversations with nearby seated partners (not during meetings)
+      if (ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote && !this.meetingOriginalSeats.has(ch.id)) {
         if (Math.random() < SEATED_CONVERSATION_CHANCE_PER_SEC * dt) {
           const idleCtx = this.buildIdleActionContext()
           trySeatedConversation(ch, idleCtx)

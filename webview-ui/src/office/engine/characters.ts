@@ -14,7 +14,14 @@ import {
   WANDER_MOVES_BEFORE_REST_MAX,
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
+  INITIAL_IDLE_SEAT_REST_MIN_SEC,
+  INITIAL_IDLE_SEAT_REST_MAX_SEC,
 } from '../../constants.js'
+import { addBehaviourEntry } from '../../behaviourLog.js'
+
+function logIdle(ch: Character, message: string): void {
+  addBehaviourEntry({ agentId: ch.id, agentName: ch.nametag || `Agent ${ch.id}`, message, type: 'idle' })
+}
 
 /** Tools that show reading animation instead of typing */
 const READING_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'])
@@ -93,6 +100,12 @@ export function createCharacter(
     bubbleTimer: 0,
     seatTimer: 0,
     idleZoneTimer: 0,
+    idleAction: null,
+    conversationPartnerId: null,
+    idleActionTimer: 0,
+    conversationPhase: null,
+    chatBubbleVariant: 0,
+    preConversationDir: null,
     isSubagent: false,
     parentAgentId: null,
     matrixEffect: null,
@@ -134,8 +147,8 @@ export function updateCharacter(
           ch.state = CharacterState.SIT_IDLE
           ch.frame = 0
           ch.frameTimer = 0
-          // Preserve seatTimer if already set (e.g. by idle zone delay)
-          if (ch.seatTimer <= 0) ch.seatTimer = 0
+          // Set initial rest timer so agents don't immediately wander after finishing work
+          if (ch.seatTimer <= 0) ch.seatTimer = randomRange(INITIAL_IDLE_SEAT_REST_MIN_SEC, INITIAL_IDLE_SEAT_REST_MAX_SEC)
         }
       }
       break
@@ -163,16 +176,19 @@ export function updateCharacter(
           ch.state = CharacterState.SIT_IDLE
           ch.frame = 0
           ch.frameTimer = 0
-          // Preserve seatTimer if already set (e.g. by idle zone delay)
-          if (ch.seatTimer <= 0) ch.seatTimer = 0
+          // Set initial rest timer so agents don't immediately wander after finishing work
+          if (ch.seatTimer <= 0) ch.seatTimer = randomRange(INITIAL_IDLE_SEAT_REST_MIN_SEC, INITIAL_IDLE_SEAT_REST_MAX_SEC)
         }
       }
       break
     }
 
     case CharacterState.SIT_IDLE: {
-      // Sitting at seat, not working — no animation, static pose
-      ch.frame = 0
+      // Sitting at seat, not working — slow idle animation (casually looking around)
+      if (ch.frameTimer >= SIT_WAIT_FRAME_DURATION_SEC) {
+        ch.frameTimer -= SIT_WAIT_FRAME_DURATION_SEC
+        ch.frame = (ch.frame + 1) % 2
+      }
       // If became active, start working
       if (ch.isActive) {
         ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
@@ -182,8 +198,9 @@ export function updateCharacter(
       }
       // After sitting idle for a while, stand up and wander
       // seatTimer counts down from a pre-set value (set on state entry)
+      // Pause countdown if in a seated conversation
       if (ch.seatTimer > 0) {
-        ch.seatTimer -= dt
+        if (!ch.idleAction) ch.seatTimer -= dt
         break
       }
       ch.state = CharacterState.IDLE
@@ -192,6 +209,7 @@ export function updateCharacter(
       ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
       ch.wanderCount = 0
       ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
+      ch.idleAction = null // will be assigned by officeState
       break
     }
 
@@ -259,6 +277,7 @@ export function updateCharacter(
           if (seat) {
             const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
             if (path.length > 0) {
+              logIdle(ch, 'heading back to desk')
               ch.path = path
               ch.moveProgress = 0
               ch.state = CharacterState.WALK
@@ -317,6 +336,7 @@ export function updateCharacter(
           if (ch.seatId) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+              logIdle(ch, 'sitting down to rest')
               ch.dir = seat.facingDir
               ch.state = ch.isWaiting ? CharacterState.SIT_WAIT : CharacterState.SIT_IDLE
               // Rest at seat before wandering again
@@ -391,8 +411,8 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
       // Build: cycle through walk frames 0-2 while seated (looking around animatedly)
       return sprites.walk[ch.dir][ch.frame % 3]
     case CharacterState.SIT_IDLE:
-      // Sitting idle: static standing pose (walk frame 1)
-      return sprites.walk[ch.dir][1]
+      // Sitting idle: slow reading animation (casually looking around)
+      return sprites.reading[ch.dir][ch.frame % 2]
     case CharacterState.SIT_WAIT:
       // Waiting: slow reading animation (casually looking around)
       return sprites.reading[ch.dir][ch.frame % 2]

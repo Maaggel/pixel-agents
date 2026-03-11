@@ -17,20 +17,9 @@ This document captures future feature ideas, organized by priority and complexit
 
 ---
 
-## 1. Thinking Grace Period (Status Delay) — IMPLEMENTED
+## ~~1. Thinking Grace Period (Status Delay)~~ — DONE
 
-**Problem**: Between turns in an agentic loop, `turn_duration` fires and the agent briefly flashes to "Idle" / "Waiting" state — character leaves desk, waiting bubble + done sound play — even though a new turn starts within 1–2 seconds.
-
-**Solution**: Added a **grace period on the extension side**. On `turn_duration`, instead of immediately sending `agentStatus: 'waiting'`, the extension starts a `THINKING_GRACE_MS` (6s) timer using the existing `startWaitingTimer` infrastructure. If a new turn starts (new tool_use or user prompt), `cancelWaitingTimer` fires and the agent stays active without any visible idle flash.
-
-**What changed**:
-- `src/constants.ts`: Added `THINKING_GRACE_MS = 6000`
-- `src/transcriptParser.ts`: `turn_duration` handler now calls `startWaitingTimer()` instead of immediately sending `agentStatus: 'waiting'`
-- `webview-ui/src/hooks/useExtensionMessages.ts`:
-  - `agentToolsClear` handler no longer calls `os.setAgentActive(false)` or `os.setAgentTool(null)` — character stays at desk during grace
-  - `agentStatus: 'waiting'` handler now also calls `os.setAgentTool(id, null)` to clear the tool when the grace period expires
-- During grace period: overlay shows "Thinking...", character keeps typing at desk
-- Existing `cancelWaitingTimer` calls throughout the transcript parser automatically cancel the grace timer when new activity arrives
+Added grace period on extension side. On `turn_duration`, starts `THINKING_GRACE_MS` (6s) timer instead of immediately sending idle status. New activity cancels the timer.
 
 ---
 
@@ -137,66 +126,15 @@ When two idle agents are near each other, they may start a conversation:
 
 ---
 
-## 6. Cross-Window Layout Sync
+## ~~6. Cross-Window Layout Sync~~ — DONE
 
-**Status**: Already implemented! The system has:
-- **Layout file**: `~/.pixel-agents/layout.json` — single source of truth, shared across all windows
-- **File watcher**: `layoutPersistence.ts` → `watchLayoutFile()` uses hybrid `fs.watch` + 2s polling
-- **Cross-window push**: When Window A saves, Window B's watcher detects the change and pushes `layoutLoaded` to the webview
-- **Edit conflict protection**: External layout changes are skipped if the local editor has unsaved changes (`isEditDirty` check in `useExtensionMessages.ts`)
-- **Own-write filtering**: `markOwnWrite()` prevents the watcher from re-reading our own saves
-
-**Current behavior**: When you edit the layout in Window A and save, all other windows receive the updated layout within ~2 seconds. If Window B is also editing, it won't be overwritten until the editor is closed or saved.
-
-**Potential improvements**:
-- Show a notification when an external layout change arrives: "Layout updated from another window"
-- Add a "Reload" button if the editor is dirty and an external change was received
-- Consider operational transform or CRDT for true concurrent editing (likely overkill)
+Layout shared via `~/.pixel-agents/layout.json` with hybrid `fs.watch` + 2s polling. Cross-window push, edit conflict protection, own-write filtering all working.
 
 ---
 
-## 7. Standalone Browser View — IMPLEMENTED
+## ~~7. Standalone Browser View~~ — DONE
 
-A standalone Node.js server (`standalone/server.mjs`) serves the webview in a browser, completely decoupled from VS Code. Reads layout from `~/.pixel-agents/layout.json`, polls sync files from `~/.pixel-agents/sync/` to show agents from all open VS Code windows.
-
-### Quick Start
-
-```bash
-# 1. Build the extension (if not already built)
-npm run build
-
-# 2. Start the standalone server
-npm run standalone
-
-# 3. Open in your browser
-#    http://localhost:3000
-```
-
-To use a custom port:
-```bash
-node standalone/server.mjs --port 8080
-```
-
-### Prerequisites
-
-- The extension must be built first (`npm run build`) so the webview dist files exist
-- At least one VS Code window with the Pixel Agents extension must have the panel opened once, so that agent positions are written to the sync files
-- No additional dependencies are needed — the server uses `pngjs` (already a project dependency) and Node.js built-in modules
-
-### How It Works
-
-- Serves the Vite-built webview with an injected bridge script that mocks `acquireVsCodeApi()`
-- Parses PNGs server-side (characters, floors, walls, furniture) using pngjs
-- API endpoints: `/api/init` (all assets + layout), `/api/sync` (all window states), `/api/layout`
-- Polls sync + layout every 500ms, dispatches changes as `remoteAgents` / `layoutLoaded` messages
-- All agents appear as remote characters with positions, tool status, and speech bubbles
-- Read-only — no editing or agent creation from the browser
-- Injects VS Code CSS variable defaults for proper dark theme styling
-
-### Limitations
-
-- Agent visual positions (x/y coordinates, walking animations) are only available after the Pixel Agents panel has been opened at least once in each VS Code window. The panel's game loop computes character positions and writes them to the sync file. Once bootstrapped, the panel can be closed — the sync file retains the last-known positions.
-- The browser view is read-only. Layout editing, agent creation, and terminal interaction require VS Code.
+Standalone Node.js server (`standalone/server.mjs`) serves webview in browser. Reads layout + polls sync files. API endpoints: `/api/init`, `/api/sync`, `/api/layout`. Run: `npm run standalone`.
 
 ---
 

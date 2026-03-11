@@ -93,7 +93,10 @@ export function readNewLines(
 /** How recently a JSONL file must have been modified to be considered "active" (2 minutes) */
 const ACTIVE_FILE_MAX_AGE_MS = 120_000;
 
-/** Check if a JSONL file's last record indicates the session ended (not mid-conversation). */
+/** Check if a JSONL file's last record indicates the session truly ended.
+ *  Only `result` type means the session is complete (claude exited).
+ *  `turn_duration` just means a turn finished — the session may still be active
+ *  (user is reading the response, about to send next prompt). */
 function isSessionEnded(filePath: string): boolean {
 	try {
 		const fd = fs.openSync(filePath, 'r');
@@ -108,8 +111,7 @@ function isSessionEnded(filePath: string): boolean {
 			const lastLine = lines[lines.length - 1];
 			if (!lastLine) return false;
 			const record = JSON.parse(lastLine);
-			// turn_duration = turn ended; result = session complete
-			if (record.type === 'system' && record.subtype === 'turn_duration') return true;
+			// Only `result` = session truly complete (Claude exited)
 			if (record.type === 'result') return true;
 			return false;
 		} finally {
@@ -342,10 +344,11 @@ function adoptTerminalForFile(
 			}
 		}
 	} else {
-		// No marker — try heuristic: if only one detected agent is unbound, auto-bind
+		// No marker — try heuristic: if only one detected agent in this project is unbound, auto-bind
 		const unboundDetected: Array<[number, AgentState]> = [];
 		for (const [existingId, existingAgent] of agents) {
-			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile) {
+			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
+				&& existingAgent.projectDir === projectDir) {
 				unboundDetected.push([existingId, existingAgent]);
 			}
 		}
@@ -425,14 +428,15 @@ function adoptFileWithoutTerminal(
 		}
 	}
 	if (!bindTarget) {
-		// No marker match — check for unbound config agents
+		// No marker match — check for unbound config agents in the SAME project dir
 		const unboundConfigAgents: Array<[number, AgentState]> = [];
 		for (const [existingId, existingAgent] of agents) {
-			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile) {
+			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
+				&& existingAgent.projectDir === projectDir) {
 				unboundConfigAgents.push([existingId, existingAgent]);
 			}
 		}
-		// If exactly one unbound config agent, bind to it (single-definition workspace)
+		// If exactly one unbound config agent in this project, bind to it
 		if (unboundConfigAgents.length === 1) {
 			bindTarget = unboundConfigAgents[0];
 		}

@@ -585,6 +585,415 @@ export const BUBBLE_THINKING_SPRITE: SpriteData = (() => {
   ]
 })()
 
+/** Idle chat bubble: smiley face (11x13) — softer green tint */
+const BUBBLE_IDLE_CHAT_SMILEY: SpriteData = (() => {
+  const B = '#557766'
+  const F = '#E8F5E9'
+  const E = '#558866'
+  const M = '#558866'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, E, F, F, F, E, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, M, F, F, F, M, F, F, B],
+    [B, F, F, F, M, M, M, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: heart (11x13) — soft pink tint */
+const BUBBLE_IDLE_CHAT_HEART: SpriteData = (() => {
+  const B = '#775566'
+  const F = '#FDE8F0'
+  const H = '#CC4466'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, H, F, F, F, H, F, F, B],
+    [B, F, H, H, H, F, H, H, H, F, B],
+    [B, F, H, H, H, H, H, H, H, F, B],
+    [B, F, F, H, H, H, H, H, F, F, B],
+    [B, F, F, F, H, H, H, F, F, F, B],
+    [B, F, F, F, F, H, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: star (11x13) — warm yellow tint */
+const BUBBLE_IDLE_CHAT_STAR: SpriteData = (() => {
+  const B = '#776644'
+  const F = '#FFF8E1'
+  const S = '#DDAA22'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, S, F, F, F, F, B],
+    [B, F, F, F, F, S, F, F, F, F, B],
+    [B, F, S, S, S, S, S, S, S, F, B],
+    [B, F, F, S, S, S, S, S, F, F, B],
+    [B, F, F, F, S, S, S, F, F, F, B],
+    [B, F, F, S, S, F, S, S, F, F, B],
+    [B, F, F, S, F, F, F, S, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: music note (11x13) — soft blue tint */
+const BUBBLE_IDLE_CHAT_MUSIC: SpriteData = (() => {
+  const B = '#445577'
+  const F = '#E3F2FD'
+  const N = '#3366AA'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, N, N, N, F, F, B],
+    [B, F, F, F, F, N, F, F, F, F, B],
+    [B, F, F, F, F, N, F, F, F, F, B],
+    [B, F, F, F, F, N, F, F, F, F, B],
+    [B, F, F, F, F, N, F, F, F, F, B],
+    [B, F, F, N, N, N, F, F, F, F, B],
+    [B, F, F, N, N, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: lightning bolt (11x13) — soft orange tint */
+const BUBBLE_IDLE_CHAT_LIGHTNING: SpriteData = (() => {
+  const B = '#776644'
+  const F = '#FFF3E0'
+  const L = '#DD7722'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, L, L, F, F, F, B],
+    [B, F, F, F, L, L, F, F, F, F, B],
+    [B, F, F, L, L, L, L, L, F, F, B],
+    [B, F, F, F, F, L, L, F, F, F, B],
+    [B, F, F, F, L, L, F, F, F, F, B],
+    [B, F, F, L, L, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: question mark (11x13) — soft purple tint */
+const BUBBLE_IDLE_CHAT_QUESTION: SpriteData = (() => {
+  const B = '#665577'
+  const F = '#F3E5F5'
+  const Q = '#7744AA'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, Q, Q, Q, F, F, F, B],
+    [B, F, F, Q, F, F, F, Q, F, F, B],
+    [B, F, F, F, F, F, Q, F, F, F, B],
+    [B, F, F, F, F, Q, F, F, F, F, B],
+    [B, F, F, F, F, Q, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, Q, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: thumbs up (11x13) — soft teal tint */
+const BUBBLE_IDLE_CHAT_THUMBSUP: SpriteData = (() => {
+  const B = '#446666'
+  const F = '#E0F2F1'
+  const T = '#DDAA55' // thumb color
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, T, F, F, F, F, B],
+    [B, F, F, F, T, T, F, F, F, F, B],
+    [B, F, F, F, T, T, F, F, F, F, B],
+    [B, F, F, T, T, T, T, T, F, F, B],
+    [B, F, F, T, T, T, T, T, F, F, B],
+    [B, F, F, F, T, T, T, T, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: coffee cup (11x13) — warm brown tint */
+const BUBBLE_IDLE_CHAT_COFFEE: SpriteData = (() => {
+  const B = '#665544'
+  const F = '#EFEBE9'
+  const C = '#8D6E63' // cup
+  const S = '#BCAAA4' // steam
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, S, F, S, F, F, F, B],
+    [B, F, F, S, F, S, F, F, F, F, B],
+    [B, F, F, C, C, C, C, C, F, F, B],
+    [B, F, F, C, C, C, C, C, C, F, B],
+    [B, F, F, C, C, C, C, C, C, F, B],
+    [B, F, F, F, C, C, C, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: sun (11x13) — bright yellow tint */
+const BUBBLE_IDLE_CHAT_SUN: SpriteData = (() => {
+  const B = '#887744'
+  const F = '#FFFDE7'
+  const S = '#FFBB00' // sun
+  const R = '#FFDD44' // rays
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, R, F, F, F, F, B],
+    [B, F, F, R, F, F, F, R, F, F, B],
+    [B, F, F, F, S, S, S, F, F, F, B],
+    [B, F, R, F, S, S, S, F, R, F, B],
+    [B, F, F, F, S, S, S, F, F, F, B],
+    [B, F, F, R, F, F, F, R, F, F, B],
+    [B, F, F, F, F, R, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: fire (11x13) — warm red-orange tint */
+const BUBBLE_IDLE_CHAT_FIRE: SpriteData = (() => {
+  const B = '#774433'
+  const F = '#FBE9E7'
+  const R = '#DD4422' // red flame
+  const O = '#FF8833' // orange flame
+  const Y = '#FFCC22' // yellow core
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, R, F, F, F, F, B],
+    [B, F, F, F, R, R, F, F, F, F, B],
+    [B, F, F, R, O, R, R, F, F, F, B],
+    [B, F, F, R, O, Y, O, R, F, F, B],
+    [B, F, F, R, O, Y, O, R, F, F, B],
+    [B, F, F, F, O, Y, O, F, F, F, B],
+    [B, F, F, F, F, O, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: light bulb (11x13) — soft yellow tint */
+const BUBBLE_IDLE_CHAT_BULB: SpriteData = (() => {
+  const B = '#776644'
+  const F = '#FFFDE7'
+  const G = '#FFDD44' // glow
+  const W = '#888866' // base
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, G, G, G, F, F, F, B],
+    [B, F, F, G, G, G, G, G, F, F, B],
+    [B, F, F, G, G, G, G, G, F, F, B],
+    [B, F, F, G, G, G, G, G, F, F, B],
+    [B, F, F, F, G, G, G, F, F, F, B],
+    [B, F, F, F, W, W, W, F, F, F, B],
+    [B, F, F, F, F, W, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: diamond gem (11x13) — soft cyan tint */
+const BUBBLE_IDLE_CHAT_DIAMOND: SpriteData = (() => {
+  const B = '#446677'
+  const F = '#E0F7FA'
+  const D = '#44BBDD' // diamond
+  const H = '#77DDEE' // highlight
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, D, D, D, D, D, F, F, B],
+    [B, F, F, F, D, H, D, F, F, F, B],
+    [B, F, F, F, D, H, D, F, F, F, B],
+    [B, F, F, F, F, D, F, F, F, F, B],
+    [B, F, F, F, F, D, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: flower (11x13) — soft pink-green tint */
+const BUBBLE_IDLE_CHAT_FLOWER: SpriteData = (() => {
+  const B = '#667755'
+  const F = '#F1F8E9'
+  const P = '#EE6699' // petals
+  const C = '#FFCC44' // center
+  const L = '#66AA44' // leaf/stem
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, P, F, F, F, F, B],
+    [B, F, F, F, P, P, P, F, F, F, B],
+    [B, F, F, P, P, C, P, P, F, F, B],
+    [B, F, F, F, P, P, P, F, F, F, B],
+    [B, F, F, F, F, L, F, F, F, F, B],
+    [B, F, F, F, L, L, L, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: laughing face (XD) (11x13) — warm green tint */
+const BUBBLE_IDLE_CHAT_LAUGH: SpriteData = (() => {
+  const B = '#557766'
+  const F = '#E8F5E9'
+  const E = '#558866' // eyes (X shapes)
+  const M = '#558866' // mouth
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, E, F, F, F, E, F, F, B],
+    [B, F, F, F, E, F, E, F, F, F, B],
+    [B, F, F, E, F, F, F, E, F, F, B],
+    [B, F, F, F, M, M, M, F, F, F, B],
+    [B, F, F, M, M, M, M, M, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: winking face (11x13) — soft blue-green tint */
+const BUBBLE_IDLE_CHAT_WINK: SpriteData = (() => {
+  const B = '#557766'
+  const F = '#E8F5E9'
+  const E = '#558866' // eyes
+  const M = '#558866' // mouth
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, E, F, F, E, E, E, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, M, F, F, F, M, F, F, B],
+    [B, F, F, F, M, M, M, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Idle chat bubble: exclamation marks (!!) (11x13) — soft red tint */
+const BUBBLE_IDLE_CHAT_EXCLAIM: SpriteData = (() => {
+  const B = '#775555'
+  const F = '#FFEBEE'
+  const X = '#CC3333'
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, X, F, X, F, F, F, B],
+    [B, F, F, F, X, F, X, F, F, F, B],
+    [B, F, F, F, X, F, X, F, F, F, B],
+    [B, F, F, F, X, F, X, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, X, F, X, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** All idle chat bubble variants for random selection */
+export const IDLE_CHAT_BUBBLE_VARIANTS: SpriteData[] = [
+  BUBBLE_IDLE_CHAT_SMILEY,
+  BUBBLE_IDLE_CHAT_HEART,
+  BUBBLE_IDLE_CHAT_STAR,
+  BUBBLE_IDLE_CHAT_MUSIC,
+  BUBBLE_IDLE_CHAT_LIGHTNING,
+  BUBBLE_IDLE_CHAT_QUESTION,
+  BUBBLE_IDLE_CHAT_THUMBSUP,
+  BUBBLE_IDLE_CHAT_COFFEE,
+  BUBBLE_IDLE_CHAT_SUN,
+  BUBBLE_IDLE_CHAT_FIRE,
+  BUBBLE_IDLE_CHAT_BULB,
+  BUBBLE_IDLE_CHAT_DIAMOND,
+  BUBBLE_IDLE_CHAT_FLOWER,
+  BUBBLE_IDLE_CHAT_LAUGH,
+  BUBBLE_IDLE_CHAT_WINK,
+  BUBBLE_IDLE_CHAT_EXCLAIM,
+]
+
+/** @deprecated Use IDLE_CHAT_BUBBLE_VARIANTS instead */
+export const BUBBLE_IDLE_CHAT_SPRITE: SpriteData = BUBBLE_IDLE_CHAT_SMILEY
+
+/** Idle think bubble: thought cloud with exclamation mark icon (11x14) — warm yellow tint */
+export const BUBBLE_IDLE_THINK_SPRITE: SpriteData = (() => {
+  const B = '#887755' // warm border
+  const F = '#FFF8E1' // warm cream fill
+  const X = '#CC6622' // exclamation mark color
+  return [
+    [_, _, B, B, B, B, B, B, B, _, _],
+    [_, B, F, F, F, F, F, F, F, B, _],
+    [B, F, F, F, X, X, X, F, F, F, B],
+    [B, F, F, F, X, X, X, F, F, F, B],
+    [B, F, F, F, X, X, X, F, F, F, B],
+    [B, F, F, F, F, X, F, F, F, F, B],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [_, B, F, F, F, X, F, F, F, B, _],
+    [_, _, B, B, B, B, B, B, B, _, _],
+    [_, _, _, _, _, B, B, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, B, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 // ── Character Sprites ───────────────────────────────────────────
 // 16x24 characters with palette substitution
 

@@ -44,6 +44,15 @@ export const CharacterState = {
 } as const
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState]
 
+export const IdleActionType = {
+  WANDER: 'wander',
+  CONVERSATION: 'conversation',
+  VISIT_FURNITURE: 'visit_furniture',
+  STAND_AND_THINK: 'stand_and_think',
+  MEETING: 'meeting',
+} as const
+export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
+
 export const Direction = {
   DOWN: 0,
   LEFT: 1,
@@ -194,7 +203,7 @@ export interface Character {
   /** Assigned seat uid, or null if no seat */
   seatId: string | null
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | 'talking' | 'thinking' | null
+  bubbleType: 'permission' | 'waiting' | 'talking' | 'thinking' | 'idle_chat' | 'idle_think' | null
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
@@ -211,6 +220,18 @@ export interface Character {
   matrixEffectSeeds: number[]
   /** Countdown timer before idle character transitions to idle zone (seconds) */
   idleZoneTimer: number
+  /** Current idle action type, or null if not performing an idle action */
+  idleAction: IdleActionType | null
+  /** Partner character ID during a conversation action */
+  conversationPartnerId: number | null
+  /** Countdown timer for idle action phases (conversation duration, visit duration, think duration) */
+  idleActionTimer: number
+  /** Conversation phase tracking */
+  conversationPhase: 'approaching' | 'talking' | 'leaving' | null
+  /** Index into IDLE_CHAT_BUBBLE_VARIANTS for current chat bubble emoji */
+  chatBubbleVariant: number
+  /** Direction before conversation started (to restore after) */
+  preConversationDir: Direction | null
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
   /** Display name shown as nametag above character */

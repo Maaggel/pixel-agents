@@ -6,6 +6,7 @@ import { createAgentState } from './types.js';
 import type { AgentState, PersistedAgent } from './types.js';
 import { cancelPermissionTimer } from './timerManager.js';
 import { startFileWatching, readNewLines, ensureProjectScan } from './fileWatcher.js';
+import { writeSessionMarker } from './agentDetector.js';
 import { JSONL_POLL_INTERVAL_MS, TERMINAL_NAME_PREFIX, WORKSPACE_KEY_AGENTS, WORKSPACE_KEY_AGENT_SEATS } from './constants.js';
 import { migrateAndLoadLayout } from './layoutPersistence.js';
 import { computeAgentDisplayState, sendAgentStateUpdate } from './agentDisplayState.js';
@@ -57,18 +58,47 @@ export async function launchNewTerminal(
 	const expectedFile = path.join(projectDir, `${sessionId}.jsonl`);
 	knownJsonlFiles.add(expectedFile);
 
-	// Create agent immediately (before JSONL file exists)
-	const id = nextAgentIdRef.current++;
-	const folderName = isMultiRoot && cwd ? path.basename(cwd) : undefined;
-	const agent = createAgentState({ id, projectDir, jsonlFile: expectedFile, terminalRef: terminal, folderName });
+	// Try to bind to an existing unbound detected agent in this project (has agentDefinitionId but no terminal/JSONL)
+	let id: number | null = null;
+	let agent: AgentState | null = null;
+	for (const [existingId, existingAgent] of agents) {
+		if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
+			&& existingAgent.projectDir === projectDir) {
+			// Found unbound detected agent — bind terminal to it
+			existingAgent.terminalRef = terminal;
+			existingAgent.jsonlFile = expectedFile;
+			existingAgent.fileOffset = 0;
+			existingAgent.lineBuffer = '';
+			id = existingId;
+			agent = existingAgent;
+			console.log(`[Pixel Agents] Agent ${id}: bound new terminal to detected agent "${existingAgent.agentDefinitionId}"`);
+			webview?.postMessage({ type: 'agentBound', id, definitionId: existingAgent.agentDefinitionId });
+			sendAgentStateUpdate(id, agents, webview);
+			// Write session marker so rebinding works after reload
+			const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (wsFolder) writeSessionMarker(sessionId, existingAgent.agentDefinitionId, wsFolder);
+			break;
+		}
+	}
 
-	agents.set(id, agent);
-	activeAgentIdRef.current = id;
+	if (!agent) {
+		// No detected agent to bind to — create a new ad-hoc agent
+		id = nextAgentIdRef.current++;
+		const folderName = isMultiRoot && cwd ? path.basename(cwd) : undefined;
+		agent = createAgentState({ id, projectDir, jsonlFile: expectedFile, terminalRef: terminal, folderName });
+		agents.set(id, agent);
+		const customName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
+		const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
+		console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
+		webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
+	}
+
+	// Both id and agent are guaranteed non-null after the if/else above
+	const agentId = id!;
+	const boundAgent = agent!;
+
+	activeAgentIdRef.current = agentId;
 	persistAgents();
-	const customName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
-	const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
-	console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
-	webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
 
 	ensureProjectScan(
 		projectDir, knownJsonlFiles, projectScanTimerRef, activeAgentIdRef,
@@ -79,16 +109,16 @@ export async function launchNewTerminal(
 	// Poll for the specific JSONL file to appear
 	const pollTimer = setInterval(() => {
 		try {
-			if (fs.existsSync(agent.jsonlFile)) {
-				console.log(`[Pixel Agents] Agent ${id}: found JSONL file ${path.basename(agent.jsonlFile)}`);
+			if (fs.existsSync(boundAgent.jsonlFile)) {
+				console.log(`[Pixel Agents] Agent ${agentId}: found JSONL file ${path.basename(boundAgent.jsonlFile)}`);
 				clearInterval(pollTimer);
-				jsonlPollTimers.delete(id);
-				startFileWatching(id, agent.jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
-				readNewLines(id, agents, permissionTimers, webview);
+				jsonlPollTimers.delete(agentId);
+				startFileWatching(agentId, boundAgent.jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
+				readNewLines(agentId, agents, permissionTimers, webview);
 			}
 		} catch { /* file may not exist yet */ }
 	}, JSONL_POLL_INTERVAL_MS);
-	jsonlPollTimers.set(id, pollTimer);
+	jsonlPollTimers.set(agentId, pollTimer);
 }
 
 /**

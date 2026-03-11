@@ -13,12 +13,15 @@ export const WALK_FRAME_DURATION_SEC = 0.15
 export const TYPE_FRAME_DURATION_SEC = 0.3
 export const BUILD_FRAME_DURATION_SEC = 0.4
 export const SIT_WAIT_FRAME_DURATION_SEC = 0.8
-export const WANDER_PAUSE_MIN_SEC = 2.0
-export const WANDER_PAUSE_MAX_SEC = 20.0
-export const WANDER_MOVES_BEFORE_REST_MIN = 3
-export const WANDER_MOVES_BEFORE_REST_MAX = 6
-export const SEAT_REST_MIN_SEC = 120.0
-export const SEAT_REST_MAX_SEC = 240.0
+export const WANDER_PAUSE_MIN_SEC = 0.5
+export const WANDER_PAUSE_MAX_SEC = 3.0
+export const WANDER_MOVES_BEFORE_REST_MIN = 2
+export const WANDER_MOVES_BEFORE_REST_MAX = 4
+export const SEAT_REST_MIN_SEC = 60.0
+export const SEAT_REST_MAX_SEC = 180.0
+/** How long agents sit at their desk before wandering after finishing work */
+export const INITIAL_IDLE_SEAT_REST_MIN_SEC = 45.0
+export const INITIAL_IDLE_SEAT_REST_MAX_SEC = 120.0
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3
@@ -169,3 +172,37 @@ export const CHARACTER_HIT_HALF_WIDTH = 8
 export const CHARACTER_HIT_HEIGHT = 24
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32
 export const PULSE_ANIMATION_DURATION_SEC = 1.5
+
+// ── Idle Actions ────────────────────────────────────────────
+export const CONVERSATION_MIN_DURATION_SEC = 15.0
+export const CONVERSATION_MAX_DURATION_SEC = 40.0
+export const CONVERSATION_BUBBLE_SHOW_MIN_SEC = 2.5
+export const CONVERSATION_BUBBLE_SHOW_MAX_SEC = 4.5
+export const CONVERSATION_BUBBLE_GAP_MIN_SEC = 1.0
+export const CONVERSATION_BUBBLE_GAP_MAX_SEC = 3.0
+export const CONVERSATION_BUBBLE_INITIAL_MAX_DELAY_SEC = 2.0
+export const THINK_MIN_DURATION_SEC = 0.5
+export const THINK_MAX_DURATION_SEC = 3.0
+export const VISIT_MIN_DURATION_SEC = 3.0
+export const VISIT_MAX_DURATION_SEC = 6.0
+/** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
+export const SEATED_CONVERSATION_MAX_DISTANCE = 4
+/** Number of idle chat bubble emoji variants */
+export const IDLE_CHAT_BUBBLE_VARIANT_COUNT = 16
+/** Chance per second that a SIT_IDLE character will try to start a seated conversation */
+export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
+/** Furniture type substrings considered "interesting" for visit_furniture action */
+export const INTERESTING_FURNITURE_PATTERNS = ['plant', 'cooler', 'whiteboard', 'bookshelf', 'water'] as const
+
+// ── Meetings ───────────────────────────────────────────────
+export const MEETING_MIN_DURATION_SEC = 45.0
+export const MEETING_MAX_DURATION_SEC = 120.0
+/** Chance per second that a meeting starts (when enough idle agents + meeting zone seats exist) */
+export const MEETING_CHANCE_PER_SEC = 0.008
+/** Minimum idle non-subagent agents required to start a meeting */
+export const MEETING_MIN_PARTICIPANTS = 2
+export const MEETING_BUBBLE_SHOW_MIN_SEC = 3.0
+export const MEETING_BUBBLE_SHOW_MAX_SEC = 6.0
+export const MEETING_BUBBLE_GAP_MIN_SEC = 1.5
+export const MEETING_BUBBLE_GAP_MAX_SEC = 4.0
+export const MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC = 3.0

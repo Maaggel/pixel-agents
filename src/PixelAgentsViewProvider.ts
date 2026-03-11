@@ -216,6 +216,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	resolveWebviewView(webviewView: vscode.WebviewView) {
 		this.webviewView = webviewView;
 		webviewView.webview.options = { enableScripts: true };
+		// Keep webview alive when switching to terminal panel — prevents avatar respawn
+		(webviewView as unknown as { options: { retainContextWhenHidden: boolean } }).options = { retainContextWhenHidden: true };
 		webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
 
 		webviewView.webview.onDidReceiveMessage(async (message) => {
@@ -336,6 +338,21 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			}
 
 			sendExistingAgents(this.agents, this.context, senderWebview);
+
+			// Force kick: re-read all agents with JSONL files to catch up on missed data
+			for (const [agentId, agent] of this.agents) {
+				if (agent.jsonlFile) {
+					console.log(`[Pixel Agents] Kick: re-reading agent ${agentId} (file=${agent.jsonlFile.split(/[\\/]/).pop()}, offset=${agent.fileOffset}, hasWatcher=${this.fileWatchers.has(agentId)})`);
+					if (!this.fileWatchers.has(agentId) && !this.pollingTimers.has(agentId)) {
+						// Watcher lost — restart it
+						console.log(`[Pixel Agents] Kick: restarting file watcher for agent ${agentId}`);
+						startFileWatching(agentId, agent.jsonlFile, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.webviewProxy);
+					}
+					readNewLines(agentId, this.agents, this.permissionTimers, this.webviewProxy);
+				} else {
+					console.log(`[Pixel Agents] Agent ${agentId} has no JSONL file (defId=${agent.agentDefinitionId})`);
+				}
+			}
 
 			// Start sync manager (once, on first webviewReady)
 			this.startSyncManager();
@@ -592,6 +609,38 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			}
 		}
 
+		// Create backend AgentState entries for detected agents that aren't already tracked.
+		// This ensures they have agentDefinitionId set, so terminal close triggers unbind (not remove).
+		// Skip if another agent already has this definitionId bound (e.g. adopted with a different ID).
+		for (const msg of agentMessages) {
+			const agentProjectDir = getProjectDirPath(msg.workspaceFolder);
+			// Check if ANY agent already covers this definition (may have a different ID from adoption)
+			let alreadyCovered = this.agents.has(msg.id);
+			if (!alreadyCovered) {
+				for (const existingAgent of this.agents.values()) {
+					if (existingAgent.agentDefinitionId === msg.definitionId) {
+						alreadyCovered = true;
+						break;
+					}
+				}
+			}
+			if (!alreadyCovered && agentProjectDir) {
+				const agent = createAgentState({
+					id: msg.id,
+					projectDir: agentProjectDir,
+					jsonlFile: '',
+					agentDefinitionId: msg.definitionId,
+					folderName: undefined,
+				});
+				this.agents.set(msg.id, agent);
+				console.log(`[Pixel Agents] Created backend entry for detected agent ${msg.id} ("${msg.definitionId}") projectDir=${agentProjectDir}`);
+			}
+			// Advance nextAgentId past config IDs to prevent collisions
+			if (msg.id >= this.nextAgentId.current) {
+				this.nextAgentId.current = msg.id + 1;
+			}
+		}
+
 		console.log(`[Pixel Agents] Sending ${agentMessages.length} detected agents to webview`);
 		this.webview?.postMessage({
 			type: 'detectedAgents',
@@ -625,7 +674,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 					// Check if any agent already has this definition bound
 					let alreadyBound = false;
 					for (const agent of this.agents.values()) {
-						if (agent.agentDefinitionId === def.definitionId) {
+						if (agent.agentDefinitionId === def.definitionId && (agent.jsonlFile || agent.terminalRef)) {
 							alreadyBound = true;
 							break;
 						}
@@ -639,6 +688,20 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 		if (unboundDefinitions.size === 0) return;
 
+		// Helper: when an adopted agent gets bound to a definition, remove the
+		// placeholder entry (from detectAndSendAgents) that has no session.
+		const removePlaceholder = (definitionId: string, adoptedAgentId: number): void => {
+			for (const [existingId, existingAgent] of this.agents) {
+				if (existingId !== adoptedAgentId
+					&& existingAgent.agentDefinitionId === definitionId
+					&& !existingAgent.jsonlFile && !existingAgent.terminalRef) {
+					this.agents.delete(existingId);
+					console.log(`[Pixel Agents] Removed placeholder agent ${existingId} for definition "${definitionId}"`);
+					break;
+				}
+			}
+		};
+
 		// Try to bind restored agents (which have active terminals/JSONL files but no definitionId) to definitions
 		for (const [_id, agent] of this.agents) {
 			if (agent.agentDefinitionId) continue; // already bound
@@ -650,6 +713,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			if (marker && unboundDefinitions.has(marker.definitionId)) {
 				agent.agentDefinitionId = marker.definitionId;
 				unboundDefinitions.delete(marker.definitionId);
+				removePlaceholder(marker.definitionId, agent.id);
 				console.log(`[Pixel Agents] Agent ${agent.id}: bound restored agent to definition "${marker.definitionId}"`);
 				this.webview?.postMessage({ type: 'agentBound', id: agent.id, definitionId: marker.definitionId });
 				this.persistAgents();
@@ -663,6 +727,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				const [definitionId] = unboundDefinitions.keys();
 				const agent = unmatchedAgents[0];
 				agent.agentDefinitionId = definitionId;
+				removePlaceholder(definitionId, agent.id);
 				console.log(`[Pixel Agents] Agent ${agent.id}: auto-bound to definition "${definitionId}" (only match)`);
 				this.webview?.postMessage({ type: 'agentBound', id: agent.id, definitionId });
 				this.persistAgents();

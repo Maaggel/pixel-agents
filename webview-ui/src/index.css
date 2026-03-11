@@ -63,3 +63,23 @@ html, body, #root {
 * {
   font-family: 'FS Pixel Sans', sans-serif;
 }
+
+/* Pixel-art styled scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--pixel-bg);
+  border-left: 2px solid var(--pixel-border);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--pixel-border);
+  border: 1px solid #2a2a3e;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pixel-border-light);
+}
+::-webkit-scrollbar-corner {
+  background: var(--pixel-bg);
+}

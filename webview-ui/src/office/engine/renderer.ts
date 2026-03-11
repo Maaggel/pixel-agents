@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -469,9 +469,9 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue
 
-    // Compute opacity: permission = full, talking/waiting = fade in last 0.5s
+    // Compute opacity: permission = full, talking/waiting/idle = fade in last 0.5s
     let alpha = 1.0
-    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
@@ -489,6 +489,10 @@ export function renderBubbles(
       sprite = BUBBLE_PERMISSION_SPRITE
     } else if (ch.bubbleType === 'thinking') {
       sprite = BUBBLE_THINKING_SPRITE
+    } else if (ch.bubbleType === 'idle_chat') {
+      sprite = IDLE_CHAT_BUBBLE_VARIANTS[ch.chatBubbleVariant % IDLE_CHAT_BUBBLE_VARIANTS.length]
+    } else if (ch.bubbleType === 'idle_think') {
+      sprite = BUBBLE_IDLE_THINK_SPRITE
     } else if (ch.bubbleType === 'talking') {
       sprite = BUBBLE_TALKING_SPRITE
     } else {

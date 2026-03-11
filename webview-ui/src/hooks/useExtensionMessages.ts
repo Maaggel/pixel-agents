@@ -10,6 +10,7 @@ import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
 import { setSoundEnabled } from '../notificationSound.js'
 import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS } from '../constants.js'
+import { addBehaviourEntry } from '../behaviourLog.js'
 
 /** Derive a stable color from a workspace folder path. */
 function projectColorFromFolder(folder: string): string {
@@ -119,6 +120,12 @@ export function useExtensionMessages(
     // Buffer agents from existingAgents until layout is loaded
     let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; projectName?: string; workspaceFolder?: string }> = []
 
+    /** Get display name for an agent from the character nametag or fallback */
+    function agentName(id: number): string {
+      const ch = getOfficeState().characters.get(id)
+      return ch?.nametag || `Agent ${id}`
+    }
+
     const handler = (e: MessageEvent) => {
       const msg = e.data
       const os = getOfficeState()
@@ -160,8 +167,10 @@ export function useExtensionMessages(
         setSelectedAgent(id)
         os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
         saveAgentSeats(os)
+        addBehaviourEntry({ agentId: id, agentName: folderName || `Agent ${id}`, message: 'joined the office', type: 'info' })
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'left the office', type: 'info' })
         setAgents((prev) => prev.filter((a) => a !== id))
         setSelectedAgent((prev) => (prev === id ? null : prev))
         setAgentTools((prev) => {
@@ -230,6 +239,10 @@ export function useExtensionMessages(
           if (list.some((t) => t.toolId === toolId)) return prev
           return { ...prev, [id]: [...list, { toolId, status, done: false }] }
         })
+        const toolName = extractToolName(status)
+        if (toolName) {
+          addBehaviourEntry({ agentId: id, agentName: agentName(id), message: `using ${toolName}`, type: 'tool' })
+        }
         // Character FSM is now driven by agentStateUpdate — don't call setAgentTool/setAgentActive here
       } else if (msg.type === 'agentToolDone') {
         const id = msg.id as number
@@ -313,9 +326,13 @@ export function useExtensionMessages(
           }
           return { ...prev, [id]: status }
         })
+        if (status === 'waiting') {
+          addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'finished — waiting for input', type: 'status' })
+        }
         // Character FSM is now driven by agentStateUpdate — agentStatus only updates React state
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'needs permission to continue', type: 'status' })
         setAgentTools((prev) => {
           const list = prev[id]
           if (!list) return prev
@@ -375,6 +392,7 @@ export function useExtensionMessages(
             : parentTool?.status || 'Subtask'
           subId = os.addSubagent(id, parentToolId)
           console.log(`[Webview] Created sub-agent character: subId=${subId} parent=${id} parentToolId=${parentToolId.slice(-8)} label=${label}`)
+          addBehaviourEntry({ agentId: id, agentName: agentName(id), message: `spawned subtask: ${label}`, type: 'info' })
           // Set nametag from task description
           const subCh = os.characters.get(subId)
           if (subCh) subCh.nametag = label
@@ -417,6 +435,10 @@ export function useExtensionMessages(
           return { ...prev, [id]: next }
         })
         // Remove sub-agent character
+        const subId = os.getSubagentId(id, parentToolId)
+        const subCh = subId !== null ? os.characters.get(subId) : null
+        const subLabel = subCh?.nametag || 'subtask'
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: `subtask completed: ${subLabel}`, type: 'info' })
         os.removeSubagent(id, parentToolId)
         setSubagentCharacters((prev) => prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)))
       } else if (msg.type === 'characterSpritesLoaded') {
@@ -489,11 +511,13 @@ export function useExtensionMessages(
         const id = msg.id as number
         const definitionId = msg.definitionId as string
         console.log(`[Webview] Agent ${id} bound to definition ${definitionId}`)
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'connected to terminal', type: 'info' })
         // Character FSM will be updated by agentStateUpdate from the backend
       } else if (msg.type === 'agentUnbound') {
         const id = msg.id as number
         const definitionId = msg.definitionId as string
         console.log(`[Webview] Agent ${id} unbound from definition ${definitionId}`)
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'disconnected from terminal', type: 'info' })
         // Clear all tool state
         setAgentTools((prev) => {
           if (!(id in prev)) return prev

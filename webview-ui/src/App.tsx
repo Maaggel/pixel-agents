@@ -16,6 +16,8 @@ import { BottomToolbar } from './components/BottomToolbar.js'
 import { DebugView } from './components/DebugView.js'
 import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
 import type { ViewOptions } from './components/ViewOptionsPanel.js'
+import { BehaviourLog } from './components/BehaviourLog.js'
+import { addBehaviourEntry } from './behaviourLog.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -179,6 +181,16 @@ function App() {
       setViewOptions((prev) => ({ ...prev, showNametags }))
     }
   }, [showNametags]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleTriggerMeeting = useCallback(() => {
+    const os = officeStateRef.current
+    if (!os) return
+    const reason = os.tryStartMeeting()
+    if (reason) {
+      console.log(`[App] Meeting failed: ${reason}`)
+      addBehaviourEntry({ agentId: 0, agentName: 'System', message: `Meeting: ${reason}`, type: 'info' })
+    }
+  }, [])
 
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id })
@@ -369,6 +381,8 @@ function App() {
         onShuffleAgent={handleShuffleAgent}
         alwaysShowActivities={viewOptions.alwaysShowActivities}
       />
+
+      <BehaviourLog onTriggerMeeting={handleTriggerMeeting} />
 
       {isDebugMode && (
         <DebugView

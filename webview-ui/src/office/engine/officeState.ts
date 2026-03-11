@@ -16,11 +16,16 @@ import {
   CHARACTER_HIT_HEIGHT,
   ZONE_WANDER_PREFERENCE,
   IDLE_ZONE_DELAY_SEC,
+  SEATED_CONVERSATION_CHANCE_PER_SEC,
   WALK_SPEED_PX_PER_SEC,
   WALK_FRAME_DURATION_SEC,
   TYPE_FRAME_DURATION_SEC,
   BUILD_FRAME_DURATION_SEC,
   SIT_WAIT_FRAME_DURATION_SEC,
+  MEETING_CHANCE_PER_SEC,
+  MEETING_MIN_PARTICIPANTS,
+  MEETING_MIN_DURATION_SEC,
+  MEETING_MAX_DURATION_SEC,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -34,6 +39,10 @@ import {
   getBlockedTiles,
 } from '../layout/layoutSerializer.js'
 import { getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
+import { IdleActionType } from '../types.js'
+import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation, disengageMeeting, trySeatedConversation } from './idleActions.js'
+import type { IdleActionContext } from './idleActions.js'
+import { addBehaviourEntry } from '../../behaviourLog.js'
 
 export class OfficeState {
   layout: OfficeLayout
@@ -49,6 +58,8 @@ export class OfficeState {
   cameraFollowId: number | null = null
   hoveredAgentId: number | null = null
   hoveredTile: { col: number; row: number } | null = null
+  /** Maps agent ID → original seat ID before joining a meeting (to restore after) */
+  meetingOriginalSeats: Map<number, string | null> = new Map()
   /** Maps "parentId:toolId" → sub-agent character ID (negative) */
   subagentIdMap: Map<string, number> = new Map()
   /** Reverse lookup: sub-agent character ID → parent info */
@@ -214,13 +225,254 @@ export class OfficeState {
     return result
   }
 
+  /** Build context object for idle action functions */
+  private buildIdleActionContext(): IdleActionContext {
+    return {
+      characters: this.characters,
+      walkableTiles: this.walkableTiles,
+      tileMap: this.tileMap,
+      blockedTiles: this.blockedTiles,
+      furniture: this.layout.furniture,
+      seats: this.seats,
+      getFurnitureFootprint: (type: string) => {
+        const entry = getCatalogEntry(type)
+        return entry ? { w: entry.footprintW, h: entry.footprintH } : null
+      },
+      findPathUnblocked: (ch: Character, toCol: number, toRow: number) => {
+        return this.withOwnSeatUnblocked(ch, () =>
+          findPath(ch.tileCol, ch.tileRow, toCol, toRow, this.tileMap, this.blockedTiles)
+        )
+      },
+    }
+  }
+
+  /** Send a character back to their assigned seat after an idle action completes */
+  private returnToSeat(ch: Character): void {
+    addBehaviourEntry({ agentId: ch.id, agentName: ch.nametag || `Agent ${ch.id}`, message: 'heading back to desk', type: 'idle' })
+    if (!ch.seatId) {
+      ch.state = CharacterState.IDLE
+      ch.idleAction = IdleActionType.WANDER
+      return
+    }
+    const seat = this.seats.get(ch.seatId)
+    if (!seat) {
+      ch.state = CharacterState.IDLE
+      ch.idleAction = IdleActionType.WANDER
+      return
+    }
+    const path = this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+    )
+    if (path.length > 0) {
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.idleAction = IdleActionType.WANDER // treat return-walk as wander so normal WALK handling applies
+    } else {
+      ch.state = CharacterState.IDLE
+      ch.idleAction = IdleActionType.WANDER
+    }
+  }
+
+  /** Check if a meeting is currently in progress */
+  private hasMeetingInProgress(): boolean {
+    for (const ch of this.characters.values()) {
+      if (ch.idleAction === IdleActionType.MEETING) return true
+    }
+    return false
+  }
+
+  /** Get free (unassigned, unoccupied) seats in MEETING_ROOM zones.
+   *  Checks the raw zones array directly (not walkableTiles) because
+   *  chair tiles are blocked/non-walkable but still have zone assignments.
+   *  Returns array of seat UIDs. */
+  private getFreeMeetingZoneSeats(): string[] {
+    const zones = this.layout.zones
+    if (!zones) {
+      console.log(`[Meeting] No zones array on layout`)
+      return []
+    }
+
+    console.log(`[Meeting] Layout: ${this.layout.cols}x${this.layout.rows}, zones length=${zones.length}, seats=${this.seats.size}`)
+    const freeSeats: string[] = []
+    for (const [uid, seat] of this.seats) {
+      const idx = seat.seatRow * this.layout.cols + seat.seatCol
+      const zone = zones[idx]
+      const isMeeting = zone === ZoneTypeValues.MEETING_ROOM
+      console.log(`[Meeting] Seat "${uid}" at (${seat.seatCol},${seat.seatRow}) idx=${idx}: zone=${JSON.stringify(zone)} isMeeting=${isMeeting} assigned=${seat.assigned}`)
+      if (!isMeeting) continue
+      if (seat.assigned) continue
+      if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
+      freeSeats.push(uid)
+    }
+    return freeSeats
+  }
+
+  /** Try to start a meeting. Returns null on success, or a reason string on failure. */
+  tryStartMeeting(): string | null {
+    // Don't start a new meeting if one is already in progress
+    if (this.hasMeetingInProgress()) {
+      console.log('[Meeting] Already in progress')
+      return 'Meeting already in progress'
+    }
+
+    // Find free meeting zone seats
+    const freeSeats = this.getFreeMeetingZoneSeats()
+    console.log(`[Meeting] Free meeting seats: ${freeSeats.length}, zones: ${this.zoneTiles.size}, seats total: ${this.seats.size}`)
+    if (freeSeats.length < MEETING_MIN_PARTICIPANTS) {
+      return `Not enough free meeting seats (${freeSeats.length}/${MEETING_MIN_PARTICIPANTS})`
+    }
+
+    // Collect eligible idle agents (non-subagent, non-remote, not active, not waiting, no idle action, not in matrix effect)
+    const eligible: Character[] = []
+    for (const ch of this.characters.values()) {
+      if (ch.isSubagent || ch.isRemote || ch.isActive || ch.isWaiting) {
+        console.log(`[Meeting] Skipping ${ch.id}: sub=${ch.isSubagent} remote=${ch.isRemote} active=${ch.isActive} waiting=${ch.isWaiting}`)
+        continue
+      }
+      if (ch.matrixEffect !== null) continue
+      if (ch.idleAction !== null && ch.idleAction !== IdleActionType.WANDER) {
+        console.log(`[Meeting] Skipping ${ch.id}: idleAction=${ch.idleAction}`)
+        continue
+      }
+      eligible.push(ch)
+    }
+    if (eligible.length < MEETING_MIN_PARTICIPANTS) {
+      return `Not enough idle agents (${eligible.length}/${MEETING_MIN_PARTICIPANTS})`
+    }
+
+    // Limit participants to available seats
+    const participantCount = Math.min(eligible.length, freeSeats.length)
+    if (participantCount < MEETING_MIN_PARTICIPANTS) return 'Not enough participants for available seats'
+
+    // Shuffle eligible agents and pick participants
+    for (let i = eligible.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const tmp = eligible[i]; eligible[i] = eligible[j]; eligible[j] = tmp
+    }
+    const participants = eligible.slice(0, participantCount)
+
+    // Set a shared meeting duration
+    const duration = MEETING_MIN_DURATION_SEC + Math.random() * (MEETING_MAX_DURATION_SEC - MEETING_MIN_DURATION_SEC)
+
+    // Assign each participant to a meeting seat and start walking
+    for (let i = 0; i < participants.length; i++) {
+      const ch = participants[i]
+      const seatId = freeSeats[i]
+      const seat = this.seats.get(seatId)!
+
+      // Save original seat
+      this.meetingOriginalSeats.set(ch.id, ch.seatId)
+
+      // Disengage from any current idle action
+      if (ch.idleAction === IdleActionType.CONVERSATION) {
+        disengageConversation(ch, this.buildIdleActionContext())
+      }
+      if (ch.idleAction) {
+        ch.idleAction = null
+        ch.conversationPartnerId = null
+        ch.conversationPhase = null
+        ch.idleActionTimer = 0
+        ch.bubbleType = null
+        ch.bubbleTimer = 0
+      }
+
+      // Free old seat, assign meeting seat
+      if (ch.seatId) {
+        const oldSeat = this.seats.get(ch.seatId)
+        if (oldSeat) oldSeat.assigned = false
+      }
+      seat.assigned = true
+      ch.seatId = seatId
+
+      // Set up meeting state
+      ch.idleAction = IdleActionType.MEETING
+      ch.conversationPhase = 'approaching'
+      ch.idleActionTimer = duration
+      ch.conversationPartnerId = null // meetings don't use partner ID
+      ch.preConversationDir = ch.dir
+
+      // Pathfind to meeting seat
+      const path = this.withOwnSeatUnblocked(ch, () =>
+        findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+      )
+      if (path.length > 0) {
+        ch.path = path
+        ch.moveProgress = 0
+        ch.state = CharacterState.WALK
+        ch.frame = 0
+        ch.frameTimer = 0
+      } else {
+        // Already at meeting seat — sit immediately
+        ch.conversationPhase = 'talking'
+        ch.state = CharacterState.SIT_IDLE
+        ch.dir = seat.facingDir
+        ch.frame = 0
+        ch.frameTimer = 0
+      }
+
+      const name = ch.nametag || `Agent ${ch.id}`
+      addBehaviourEntry({ agentId: ch.id, agentName: name, message: 'heading to meeting', type: 'idle' })
+    }
+
+    return null
+  }
+
+  /** Restore a character's original seat after leaving a meeting */
+  restoreMeetingSeat(ch: Character): void {
+    const originalSeatId = this.meetingOriginalSeats.get(ch.id)
+    this.meetingOriginalSeats.delete(ch.id)
+
+    if (originalSeatId === undefined) return
+
+    // Free current meeting seat
+    if (ch.seatId) {
+      const currentSeat = this.seats.get(ch.seatId)
+      if (currentSeat) currentSeat.assigned = false
+    }
+
+    // Try to reclaim original seat
+    if (originalSeatId && this.seats.has(originalSeatId)) {
+      const origSeat = this.seats.get(originalSeatId)!
+      if (!origSeat.assigned) {
+        origSeat.assigned = true
+        ch.seatId = originalSeatId
+        return
+      }
+    }
+
+    // Original seat taken — find any free seat
+    const newSeatId = this.findFreeSeat()
+    if (newSeatId) {
+      this.seats.get(newSeatId)!.assigned = true
+      ch.seatId = newSeatId
+    } else {
+      ch.seatId = null
+    }
+  }
+
+  /** Check if a seat tile is inside a MEETING_ROOM zone */
+  private isMeetingZoneSeat(seat: Seat): boolean {
+    const zones = this.layout.zones
+    if (!zones) return false
+    const idx = seat.seatRow * this.layout.cols + seat.seatCol
+    return zones[idx] === ZoneTypeValues.MEETING_ROOM
+  }
+
   private findFreeSeat(): string | null {
+    // Prefer non-meeting-zone seats
+    for (const [uid, seat] of this.seats) {
+      if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow) && !this.isMeetingZoneSeat(seat)) return uid
+    }
+    // Fallback: any seat not flagged as assigned (even if someone is walking through), still skip meeting
+    for (const [uid, seat] of this.seats) {
+      if (!seat.assigned && !this.isMeetingZoneSeat(seat)) return uid
+    }
+    // Last resort: meeting zone seats
     for (const [uid, seat] of this.seats) {
       if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) return uid
-    }
-    // Fallback: any seat not flagged as assigned (even if someone is walking through)
-    for (const [uid, seat] of this.seats) {
-      if (!seat.assigned) return uid
     }
     return null
   }
@@ -230,9 +482,10 @@ export class OfficeState {
     for (const [uid, seat] of this.seats) {
       if (seat.assigned) continue
       if (seat.seatCol === avoidCol && seat.seatRow === avoidRow) continue
+      if (this.isMeetingZoneSeat(seat)) continue
       if (!this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) return uid
     }
-    // Fallback: any unassigned seat not at the avoided tile
+    // Fallback: any unassigned seat not at the avoided tile (including meeting)
     for (const [uid, seat] of this.seats) {
       if (!seat.assigned && !(seat.seatCol === avoidCol && seat.seatRow === avoidRow)) return uid
     }
@@ -244,9 +497,10 @@ export class OfficeState {
     for (const [uid, seat] of this.seats) {
       if (uid === excludeSeatId) continue
       if (seat.assigned) continue
+      if (this.isMeetingZoneSeat(seat)) continue
       if (!this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) return uid
     }
-    // Fallback: any unassigned seat that's different
+    // Fallback: any unassigned seat that's different (including meeting)
     for (const [uid, seat] of this.seats) {
       if (uid === excludeSeatId) continue
       if (!seat.assigned) return uid
@@ -429,6 +683,14 @@ export class OfficeState {
     const ch = this.characters.get(id)
     if (!ch) return
     if (ch.matrixEffect === 'despawn') return // already despawning
+    // Disengage from conversation or meeting if in one
+    if (ch.idleAction === IdleActionType.CONVERSATION) {
+      disengageConversation(ch, this.buildIdleActionContext())
+    }
+    if (ch.idleAction === IdleActionType.MEETING) {
+      disengageMeeting(ch, this.buildIdleActionContext())
+      this.meetingOriginalSeats.delete(ch.id)
+    }
     // Free seat and clear selection immediately
     if (ch.seatId) {
       const seat = this.seats.get(ch.seatId)
@@ -707,9 +969,34 @@ export class OfficeState {
         this.rebuildFurnitureInstances()
         return
       }
+      const name = ch.nametag || `Agent ${id}`
+      if (active && !wasActive) {
+        addBehaviourEntry({ agentId: id, agentName: name, message: 'started working', type: 'status' })
+      } else if (!active && wasActive) {
+        addBehaviourEntry({ agentId: id, agentName: name, message: 'finished working', type: 'status' })
+      }
       if (active) {
         ch.isWaiting = false
         ch.idleZoneTimer = 0
+        // Disengage from conversation if in one
+        if (ch.idleAction === IdleActionType.CONVERSATION) {
+          disengageConversation(ch, this.buildIdleActionContext())
+        }
+        // Disengage from meeting if in one — only this agent leaves
+        if (ch.idleAction === IdleActionType.MEETING) {
+          disengageMeeting(ch, this.buildIdleActionContext())
+          this.restoreMeetingSeat(ch)
+        }
+        // Clear any idle action
+        if (ch.idleAction) {
+          ch.idleAction = null
+          ch.conversationPartnerId = null
+          ch.conversationPhase = null
+          ch.idleActionTimer = 0
+          ch.bubbleType = null
+          ch.bubbleTimer = 0
+          ch.currentTool = null
+        }
         // Reassign to a workspace zone seat when becoming active
         const oldSeatId = ch.seatId
         this.reassignToZoneSeat(ch, [ZoneTypeValues.WORKSPACE])
@@ -929,7 +1216,7 @@ export class OfficeState {
     if (ch.bubbleType === 'permission') {
       ch.bubbleType = null
       ch.bubbleTimer = 0
-    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') {
+    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
       // Trigger immediate fade (0.3s remaining)
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC)
     }
@@ -1037,7 +1324,7 @@ export class OfficeState {
           }
         }
         // Tick bubble timers
-        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') {
+        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
           ch.bubbleTimer -= dt
           if (ch.bubbleTimer <= 0) { ch.bubbleType = null; ch.bubbleTimer = 0 }
         }
@@ -1072,6 +1359,55 @@ export class OfficeState {
         }
       }
 
+      // ── Seated Conversation Check ────────────────────────────────
+      // SIT_IDLE characters can start conversations with nearby seated partners
+      if (ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+        if (Math.random() < SEATED_CONVERSATION_CHANCE_PER_SEC * dt) {
+          const idleCtx = this.buildIdleActionContext()
+          trySeatedConversation(ch, idleCtx)
+        }
+      }
+
+      // ── Meeting Trigger ──────────────────────────────────────────
+      // Once per tick (driven by first eligible character), try to start a meeting
+      if (ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+        if (Math.random() < MEETING_CHANCE_PER_SEC * dt) {
+          this.tryStartMeeting()
+        }
+      }
+
+      // ── Idle Action System ──────────────────────────────────────
+      // When a character enters IDLE with no action assigned, pick one from the weighted registry
+      if (ch.state === CharacterState.IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+        const idleCtx = this.buildIdleActionContext()
+        const action = pickIdleAction(ch, idleCtx)
+        if (!initIdleAction(ch, action, idleCtx)) {
+          // Init failed — fall back to wander
+          ch.idleAction = IdleActionType.WANDER
+        }
+      }
+
+      // Update non-wander idle actions (conversation, visit, think, meeting)
+      if (ch.idleAction && ch.idleAction !== IdleActionType.WANDER && !ch.isActive) {
+        const wasMeeting = ch.idleAction === IdleActionType.MEETING
+        const idleCtx = this.buildIdleActionContext()
+        const stillRunning = updateIdleAction(ch, dt, idleCtx)
+        if (!stillRunning) {
+          // Action completed — restore meeting seats if applicable, then return to seat
+          if (wasMeeting) {
+            this.restoreMeetingSeat(ch)
+            // Also restore seats for any other participants who ended simultaneously
+            for (const other of this.characters.values()) {
+              if (other.id !== ch.id && other.idleAction === null && this.meetingOriginalSeats.has(other.id)) {
+                this.restoreMeetingSeat(other)
+                this.returnToSeat(other)
+              }
+            }
+          }
+          this.returnToSeat(ch)
+        }
+      }
+
       // Determine zone-preferred walkable tiles for idle wandering
       let preferredTiles = this.walkableTiles
       if (!ch.isActive && ch.state === CharacterState.IDLE && this.zoneTiles.size > 0 && Math.random() < ZONE_WANDER_PREFERENCE) {
@@ -1085,8 +1421,8 @@ export class OfficeState {
         updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles)
       )
 
-      // Tick bubble timer for waiting/talking bubbles
-      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking') {
+      // Tick bubble timer for waiting/talking/idle bubbles
+      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
         ch.bubbleTimer -= dt
         if (ch.bubbleTimer <= 0) {
           ch.bubbleType = null

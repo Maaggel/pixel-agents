@@ -235,14 +235,21 @@ function processProgressRecord(
 	}
 
 	const parentToolName = agent.activeToolNames.get(parentToolId);
-	if (parentToolName !== 'Task' && parentToolName !== 'Agent') return;
+	if (parentToolName !== 'Task' && parentToolName !== 'Agent') {
+		if (dataType === 'agent_progress') {
+			console.log(`[Pixel Agents] Agent ${agentId}: agent_progress ignored — parent tool "${parentToolId}" has name "${parentToolName}" (expected Task/Agent)`);
+		}
+		return;
+	}
 
 	const msg = data.message as Record<string, unknown> | undefined;
 	if (!msg) return;
 
 	const msgType = msg.type as string;
+	// Support both nested format (data.message.message.content) and
+	// flat format (data.message.content) — Claude Code JSONL may use either
 	const innerMsg = msg.message as Record<string, unknown> | undefined;
-	const content = innerMsg?.content;
+	const content = innerMsg?.content ?? msg.content;
 	if (!Array.isArray(content)) return;
 
 	if (msgType === 'assistant') {

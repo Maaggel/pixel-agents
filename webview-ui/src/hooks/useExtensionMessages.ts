@@ -76,6 +76,7 @@ export interface ExtensionMessageState {
   showNametags: boolean
   setShowNametags: (enabled: boolean) => void
   detectedAgents: DetectedAgentInfo[]
+  devLogs: string[]
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -108,6 +109,7 @@ export function useExtensionMessages(
   const [claudeExtAvailable, setClaudeExtAvailable] = useState(false)
   const [showNametags, setShowNametags] = useState(false)
   const [detectedAgents, setDetectedAgents] = useState<DetectedAgentInfo[]>([])
+  const [devLogs, setDevLogs] = useState<string[]>([])
 
   // Ref for accessing agentTools inside message handler without stale closure
   const agentToolsRef = useRef(agentTools)
@@ -581,6 +583,15 @@ export function useExtensionMessages(
         os.setAgentTool(id, null)
         os.setAgentActive(id, false)
         os.clearPermissionBubble(id)
+      } else if (msg.type === 'devConsoleLog') {
+        const entry = msg.entry as string
+        setDevLogs((prev) => {
+          const next = [...prev, entry]
+          return next.length > 200 ? next.slice(-200) : next
+        })
+      } else if (msg.type === 'devConsoleHistory') {
+        const entries = msg.entries as string[]
+        setDevLogs(entries.slice(-200))
       } else if (msg.type === 'remoteAgents') {
         const remoteList = msg.agents as Array<{
           id: number
@@ -710,5 +721,5 @@ export function useExtensionMessages(
     }
   }, [getOfficeState])
 
-  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents }
+  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents, devLogs }
 }

@@ -42,6 +42,17 @@ export interface FurnitureAsset {
   backgroundTiles?: number
   orientation?: string
   state?: string
+  /** Sprite IDs for meeting cycle animation (resolved from file paths during load) */
+  meetingCycle?: string[]
+  randomMeetingCycle?: boolean
+  /** Interval in seconds between cycle frame changes (min/max for random range) */
+  meetingCycleIntervalMin?: number
+  meetingCycleIntervalMax?: number
+  /** Sprite IDs for work cycle animation (resolved from file paths during load) */
+  workCycle?: string[]
+  randomWorkCycle?: boolean
+  workCycleIntervalMin?: number
+  workCycleIntervalMax?: number
 }
 
 export interface LoadedAssets {
@@ -92,6 +103,62 @@ export async function loadFurnitureAssets(
         const spriteData = pngToSpriteData(pngBuffer, asset.width, asset.height)
 
         sprites.set(asset.id, spriteData)
+
+        // Load meetingCycle frame sprites (file paths → sprite IDs)
+        if (Array.isArray((asset as FurnitureAsset & { meetingCycle?: unknown[] }).meetingCycle)) {
+          const rawCycle = (asset as FurnitureAsset & { meetingCycle?: string[] }).meetingCycle!
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            // Derive sprite ID from filename without extension
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Meeting cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          // Replace file paths with resolved sprite IDs in catalog entry
+          asset.meetingCycle = resolvedIds
+        }
+
+        // Load workCycle frame sprites (file paths → sprite IDs)
+        if (Array.isArray((asset as FurnitureAsset & { workCycle?: unknown[] }).workCycle)) {
+          const rawCycle = (asset as FurnitureAsset & { workCycle?: string[] }).workCycle!
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Work cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading work cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.workCycle = resolvedIds
+        }
       } catch (err) {
         console.warn(`  ⚠️  Error loading ${asset.id}: ${err instanceof Error ? err.message : err}`)
       }

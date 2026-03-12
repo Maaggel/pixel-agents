@@ -1,5 +1,5 @@
-import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types.js'
-import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types.js'
+import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction, ZoneType as ZoneTypeConst } from '../types.js'
+import type { TileType as TileTypeVal, ZoneType, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types.js'
 import { getCatalogEntry } from './furnitureCatalog.js'
 import { getColorizedSprite } from '../colorize.js'
 
@@ -16,8 +16,31 @@ export function layoutToTileMap(layout: OfficeLayout): TileTypeVal[][] {
   return map
 }
 
+/** Returns true if any footprint tile or adjacent tile (1-tile radius) is a MEETING_ROOM zone. */
+function isFurnitureNearMeetingZone(
+  item: PlacedFurniture,
+  footprintW: number,
+  footprintH: number,
+  zones: Array<ZoneType | null>,
+  cols: number,
+  rows: number,
+): boolean {
+  for (let dr = 0; dr < footprintH; dr++) {
+    for (let dc = 0; dc < footprintW; dc++) {
+      const br = item.row + dr
+      const bc = item.col + dc
+      // Check this tile and adjacent tiles (cardinal directions)
+      for (const [nr, nc] of [[br, bc], [br - 1, bc], [br + 1, bc], [br, bc - 1], [br, bc + 1]] as [number, number][]) {
+        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue
+        if (zones[nr * cols + nc] === ZoneTypeConst.MEETING_ROOM) return true
+      }
+    }
+  }
+  return false
+}
+
 /** Convert placed furniture into renderable FurnitureInstance[] */
-export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): FurnitureInstance[] {
+export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?: { zones?: Array<ZoneType | null>; cols: number; rows: number }): FurnitureInstance[] {
   // Pre-compute desk zY per tile so surface items can sort in front of desks
   const deskZByTile = new Map<string, number>()
   for (const item of furniture) {
@@ -72,7 +95,38 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       sprite = getColorizedSprite(`furn-${item.type}-${h}-${s}-${bv}-${cv}-${item.color.colorize ? 1 : 0}`, entry.sprite, item.color)
     }
 
-    instances.push({ sprite, x, y, zY })
+    const instance: FurnitureInstance = {
+      sprite, x, y, zY, uid: item.uid,
+      col: item.col, row: item.row,
+      footprintW: entry.footprintW, footprintH: entry.footprintH,
+    }
+
+    // Attach meeting cycle data from catalog entry
+    if (entry.meetingCycleSprites && entry.meetingCycleSprites.length > 0) {
+      instance.meetingCycleSprites = entry.meetingCycleSprites
+      if (entry.randomMeetingCycle) instance.randomMeetingCycle = true
+      if (entry.meetingCycleIntervalMin !== undefined) instance.meetingCycleIntervalMin = entry.meetingCycleIntervalMin
+      if (entry.meetingCycleIntervalMax !== undefined) instance.meetingCycleIntervalMax = entry.meetingCycleIntervalMax
+      instance.meetingCycleIdx = 0
+
+      // Compute whether this furniture is near a meeting zone
+      if (layout?.zones) {
+        instance.isNearMeetingZone = isFurnitureNearMeetingZone(
+          item, entry.footprintW, entry.footprintH, layout.zones, layout.cols, layout.rows,
+        )
+      }
+    }
+
+    // Attach work cycle data from catalog entry
+    if (entry.workCycleSprites && entry.workCycleSprites.length > 0) {
+      instance.workCycleSprites = entry.workCycleSprites
+      if (entry.randomWorkCycle) instance.randomWorkCycle = true
+      if (entry.workCycleIntervalMin !== undefined) instance.workCycleIntervalMin = entry.workCycleIntervalMin
+      if (entry.workCycleIntervalMax !== undefined) instance.workCycleIntervalMax = entry.workCycleIntervalMax
+      instance.workCycleIdx = 0
+    }
+
+    instances.push(instance)
   }
   return instances
 }

@@ -207,3 +207,11 @@ export const MEETING_BUBBLE_SHOW_MAX_SEC = 6.0
 export const MEETING_BUBBLE_GAP_MIN_SEC = 1.5
 export const MEETING_BUBBLE_GAP_MAX_SEC = 4.0
 export const MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC = 3.0
+/** Default interval in seconds between meeting cycle frame changes (when no min/max defined) */
+export const MEETING_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
+/** Offset applied when only one bound (min or max) is defined for meeting cycle interval */
+export const MEETING_CYCLE_INTERVAL_OFFSET_SEC = 2.0
+/** Default interval in seconds between work cycle frame changes (when no min/max defined) */
+export const WORK_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
+/** Offset applied when only one bound (min or max) is defined for work cycle interval */
+export const WORK_CYCLE_INTERVAL_OFFSET_SEC = 2.0

@@ -8,9 +8,9 @@ export interface DetectedAgentDefinition {
 	/** Display name: 'Orchestrator' or title-cased filename */
 	name: string;
 	/** Source of the definition */
-	source: 'claude-md' | 'agent-file';
-	/** Absolute path to the .md file */
-	filePath: string;
+	source: 'claude-md' | 'agent-file' | 'default';
+	/** Absolute path to the .md file (optional for 'default' source) */
+	filePath?: string;
 	/** Workspace folder path this agent belongs to */
 	workspaceFolder: string;
 }

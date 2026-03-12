@@ -26,6 +26,10 @@ import {
   MEETING_MIN_PARTICIPANTS,
   MEETING_MIN_DURATION_SEC,
   MEETING_MAX_DURATION_SEC,
+  MEETING_CYCLE_DEFAULT_INTERVAL_SEC,
+  MEETING_CYCLE_INTERVAL_OFFSET_SEC,
+  WORK_CYCLE_DEFAULT_INTERVAL_SEC,
+  WORK_CYCLE_INTERVAL_OFFSET_SEC,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -65,13 +69,19 @@ export class OfficeState {
   /** Reverse lookup: sub-agent character ID → parent info */
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map()
   private nextSubagentId = -1
+  /** Meeting cycle timers: uid → seconds until next frame change */
+  private meetingCycleTimers: Map<string, number> = new Map()
+  /** Work cycle timers: uid → seconds until next frame change */
+  private workCycleTimers: Map<string, number> = new Map()
+  /** Cached flood-filled meeting rooms (invalidated on layout change) */
+  private cachedMeetingRooms: Array<Set<string>> | null = null
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
     this.seats = layoutToSeats(this.layout.furniture)
     this.blockedTiles = getBlockedTiles(this.layout.furniture)
-    this.furniture = layoutToFurnitureInstances(this.layout.furniture)
+    this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
   }
@@ -80,6 +90,7 @@ export class OfficeState {
    *  @param shift Optional pixel shift to apply when grid expands left/up */
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
     this.layout = layout
+    this.cachedMeetingRooms = null
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
     this.blockedTiles = getBlockedTiles(layout.furniture)
@@ -325,6 +336,35 @@ export class OfficeState {
     return rooms
   }
 
+  private getMeetingRoomsCached(): Array<Set<string>> {
+    if (!this.cachedMeetingRooms) this.cachedMeetingRooms = this.getMeetingRooms()
+    return this.cachedMeetingRooms
+  }
+
+  /** Check if a meeting is physically active near a given furniture item.
+   *  A meeting is "active" in this room only when at least one meeting participant
+   *  has physically walked to a tile inside the room (not just been assigned). */
+  private isMeetingActiveNearFurniture(f: { row: number; col: number; footprintH: number; footprintW: number }, rooms: Array<Set<string>>): boolean {
+    if (rooms.length === 0) return false
+    for (let dr = 0; dr < f.footprintH; dr++) {
+      for (let dc = 0; dc < f.footprintW; dc++) {
+        const br = f.row + dr
+        const bc = f.col + dc
+        for (const [nr, nc] of [[br, bc], [br - 1, bc], [br + 1, bc], [br, bc - 1], [br, bc + 1]] as [number, number][]) {
+          for (const room of rooms) {
+            if (!room.has(`${nc},${nr}`)) continue
+            // This furniture is adjacent to this room — check if anyone is physically inside it
+            for (const ch of this.characters.values()) {
+              if (ch.idleAction !== IdleActionType.MEETING) continue
+              if (room.has(`${ch.tileCol},${ch.tileRow}`)) return true
+            }
+          }
+        }
+      }
+    }
+    return false
+  }
+
   /** Get free seats grouped by meeting room. Each entry is one room's free seats.
    *  Returns the room with the most free seats (best candidate for a meeting). */
   private getFreeMeetingZoneSeats(): string[] {
@@ -341,7 +381,6 @@ export class OfficeState {
       for (const [uid, seat] of this.seats) {
         const key = `${seat.seatCol},${seat.seatRow}`
         if (!room.has(key)) continue
-        if (seat.assigned) continue
         if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
         freeInRoom.push(uid)
       }
@@ -1259,7 +1298,7 @@ export class OfficeState {
     }
 
     if (autoOnTiles.size === 0) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture)
+      this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
       return
     }
 
@@ -1282,7 +1321,7 @@ export class OfficeState {
       return item
     })
 
-    this.furniture = layoutToFurnitureInstances(modifiedFurniture)
+    this.furniture = layoutToFurnitureInstances(modifiedFurniture, this.layout)
   }
 
   setAgentTool(id: number, tool: string | null): void {
@@ -1561,6 +1600,174 @@ export class OfficeState {
     for (const id of toDelete) {
       this.characters.delete(id)
     }
+
+    // ── Meeting cycle furniture animation ────────────────────────
+    this.updateMeetingCycleSprites(dt)
+
+    // ── Work cycle furniture animation ───────────────────────────
+    this.updateWorkCycleSprites(dt)
+  }
+
+  /** Advance meeting cycle sprite animations for furniture near active meeting zones. */
+  private updateMeetingCycleSprites(dt: number): void {
+    const rooms = this.getMeetingRoomsCached()
+
+    for (const f of this.furniture) {
+      if (!f.meetingCycleSprites || !f.isNearMeetingZone || !f.uid) continue
+
+      const active = this.isMeetingActiveNearFurniture(f, rooms)
+      const uid = f.uid
+
+      if (!active) {
+        if (f.activeMeetingSprite !== null && f.activeMeetingSprite !== undefined) {
+          f.activeMeetingSprite = null
+          f.meetingCycleIdx = 0
+          this.meetingCycleTimers.delete(uid)
+        }
+        continue
+      }
+
+      let timeLeft = this.meetingCycleTimers.get(uid)
+
+      if (timeLeft === undefined) {
+        // First tick: immediately show first frame, schedule next change
+        f.meetingCycleIdx = f.randomMeetingCycle
+          ? Math.floor(Math.random() * f.meetingCycleSprites.length)
+          : 0
+        f.activeMeetingSprite = f.meetingCycleSprites[f.meetingCycleIdx]
+        this.meetingCycleTimers.set(uid, this.computeMeetingCycleInterval(f))
+        continue
+      }
+
+      // Restore sprite if missing (e.g. after rebuildFurnitureInstances)
+      if (!f.activeMeetingSprite) f.activeMeetingSprite = f.meetingCycleSprites[f.meetingCycleIdx ?? 0]
+
+      timeLeft -= dt
+      if (timeLeft <= 0) {
+        const count = f.meetingCycleSprites.length
+        f.meetingCycleIdx = f.randomMeetingCycle
+          ? Math.floor(Math.random() * count)
+          : ((f.meetingCycleIdx ?? 0) + 1) % count
+        f.activeMeetingSprite = f.meetingCycleSprites[f.meetingCycleIdx]
+        timeLeft = this.computeMeetingCycleInterval(f)
+      }
+      this.meetingCycleTimers.set(uid, timeLeft)
+    }
+  }
+
+  /** Compute the next meeting cycle interval in seconds for a furniture instance. */
+  private computeMeetingCycleInterval(f: { meetingCycleIntervalMin?: number; meetingCycleIntervalMax?: number }): number {
+    const min = f.meetingCycleIntervalMin
+    const max = f.meetingCycleIntervalMax
+    if (min !== undefined && max !== undefined) {
+      return min + Math.random() * (max - min)
+    }
+    if (min !== undefined) {
+      return min + Math.random() * MEETING_CYCLE_INTERVAL_OFFSET_SEC
+    }
+    if (max !== undefined) {
+      const lo = Math.max(0, max - MEETING_CYCLE_INTERVAL_OFFSET_SEC)
+      return lo + Math.random() * (max - lo)
+    }
+    return MEETING_CYCLE_DEFAULT_INTERVAL_SEC
+  }
+
+  /** Advance work cycle sprite animations for furniture being looked at by active agents. */
+  private updateWorkCycleSprites(dt: number): void {
+    // Build set of tiles currently being faced by active agents (same logic as autoOnTiles)
+    const facingTiles = new Set<string>()
+    for (const ch of this.characters.values()) {
+      if (!ch.isActive || !ch.seatId) continue
+      const seat = this.seats.get(ch.seatId)
+      if (!seat) continue
+      const dCol = seat.facingDir === Direction.RIGHT ? 1 : seat.facingDir === Direction.LEFT ? -1 : 0
+      const dRow = seat.facingDir === Direction.DOWN ? 1 : seat.facingDir === Direction.UP ? -1 : 0
+      for (let d = 1; d <= AUTO_ON_FACING_DEPTH; d++) {
+        facingTiles.add(`${seat.seatCol + dCol * d},${seat.seatRow + dRow * d}`)
+      }
+      for (let d = 1; d <= AUTO_ON_SIDE_DEPTH; d++) {
+        const baseCol = seat.seatCol + dCol * d
+        const baseRow = seat.seatRow + dRow * d
+        if (dCol !== 0) {
+          facingTiles.add(`${baseCol},${baseRow - 1}`)
+          facingTiles.add(`${baseCol},${baseRow + 1}`)
+        } else {
+          facingTiles.add(`${baseCol - 1},${baseRow}`)
+          facingTiles.add(`${baseCol + 1},${baseRow}`)
+        }
+      }
+    }
+
+    for (const f of this.furniture) {
+      if (!f.workCycleSprites || !f.uid) continue
+
+      // Check if any footprint tile of this furniture is being looked at
+      let beingWorkedAt = false
+      outer: for (let dr = 0; dr < f.footprintH; dr++) {
+        for (let dc = 0; dc < f.footprintW; dc++) {
+          if (facingTiles.has(`${f.col + dc},${f.row + dr}`)) {
+            beingWorkedAt = true
+            break outer
+          }
+        }
+      }
+
+      const uid = f.uid
+      if (!beingWorkedAt) {
+        // Clear work sprite when no agent is looking at it
+        if (f.activeWorkSprite !== null && f.activeWorkSprite !== undefined) {
+          f.activeWorkSprite = null
+          f.workCycleIdx = 0
+          this.workCycleTimers.delete(uid)
+        }
+        continue
+      }
+
+      let timeLeft = this.workCycleTimers.get(uid)
+
+      if (timeLeft === undefined) {
+        // First tick: immediately show first frame, schedule next change
+        f.workCycleIdx = f.randomWorkCycle
+          ? Math.floor(Math.random() * f.workCycleSprites.length)
+          : 0
+        f.activeWorkSprite = f.workCycleSprites[f.workCycleIdx]
+        this.workCycleTimers.set(uid, this.computeWorkCycleInterval(f))
+        continue
+      }
+
+      // Restore sprite if missing (e.g. after rebuildFurnitureInstances)
+      if (!f.activeWorkSprite) f.activeWorkSprite = f.workCycleSprites[f.workCycleIdx ?? 0]
+
+      timeLeft -= dt
+      if (timeLeft <= 0) {
+        const count = f.workCycleSprites.length
+        if (f.randomWorkCycle) {
+          f.workCycleIdx = Math.floor(Math.random() * count)
+        } else {
+          f.workCycleIdx = ((f.workCycleIdx ?? 0) + 1) % count
+        }
+        f.activeWorkSprite = f.workCycleSprites[f.workCycleIdx]
+        timeLeft = this.computeWorkCycleInterval(f)
+      }
+      this.workCycleTimers.set(uid, timeLeft)
+    }
+  }
+
+  /** Compute the next work cycle interval in seconds for a furniture instance. */
+  private computeWorkCycleInterval(f: { workCycleIntervalMin?: number; workCycleIntervalMax?: number }): number {
+    const min = f.workCycleIntervalMin
+    const max = f.workCycleIntervalMax
+    if (min !== undefined && max !== undefined) {
+      return min + Math.random() * (max - min)
+    }
+    if (min !== undefined) {
+      return min + Math.random() * WORK_CYCLE_INTERVAL_OFFSET_SEC
+    }
+    if (max !== undefined) {
+      const lo = Math.max(0, max - WORK_CYCLE_INTERVAL_OFFSET_SEC)
+      return lo + Math.random() * (max - lo)
+    }
+    return WORK_CYCLE_DEFAULT_INTERVAL_SEC
   }
 
   getCharacters(): Character[] {

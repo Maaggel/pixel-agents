@@ -222,22 +222,23 @@ export function useEditorActions(
   }, [getOfficeState, editorState, applyEdit])
 
   const handleRotateSelected = useCallback(() => {
-    // If in furniture placement mode, cycle the selected type through the rotation group
+    // If placed furniture is selected, rotate it (takes priority over ghost rotation)
+    const uid = editorState.selectedFurnitureUid
+    if (uid) {
+      const os = getOfficeState()
+      const newLayout = rotateFurniture(os.getLayout(), uid, 'cw')
+      if (newLayout !== os.getLayout()) {
+        applyEdit(newLayout)
+      }
+      return
+    }
+    // If in furniture placement mode with no placed item selected, cycle the ghost type
     if (editorState.activeTool === EditTool.FURNITURE_PLACE) {
       const rotated = getRotatedType(editorState.selectedFurnitureType, 'cw')
       if (rotated) {
         editorState.selectedFurnitureType = rotated
         setEditorTick((n) => n + 1)
       }
-      return
-    }
-    // Otherwise rotate the selected placed furniture
-    const uid = editorState.selectedFurnitureUid
-    if (!uid) return
-    const os = getOfficeState()
-    const newLayout = rotateFurniture(os.getLayout(), uid, 'cw')
-    if (newLayout !== os.getLayout()) {
-      applyEdit(newLayout)
     }
   }, [getOfficeState, editorState, applyEdit])
 

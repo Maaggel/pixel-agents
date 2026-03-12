@@ -42,7 +42,7 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
       style={{
         position: 'absolute',
         top: 8,
-        right: 60,
+        right: 56,
         zIndex: 50,
         display: 'flex',
         flexDirection: 'column',

@@ -27,6 +27,16 @@ export interface LoadedAssetData {
     canPlaceOnSurfaces?: boolean
     backgroundTiles?: number
     canPlaceOnWalls?: boolean
+    /** Resolved sprite IDs for meeting cycle animation frames */
+    meetingCycle?: string[]
+    randomMeetingCycle?: boolean
+    meetingCycleIntervalMin?: number
+    meetingCycleIntervalMax?: number
+    /** Resolved sprite IDs for work cycle animation frames */
+    workCycle?: string[]
+    randomWorkCycle?: boolean
+    workCycleIntervalMin?: number
+    workCycleIntervalMax?: number
   }>
   sprites: Record<string, SpriteData>
 }
@@ -92,6 +102,22 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       console.warn(`No sprite data for asset ${asset.id}`)
       return null
     }
+    // Resolve meetingCycle sprite IDs to SpriteData arrays
+    let meetingCycleSprites: SpriteData[] | undefined
+    if (asset.meetingCycle && asset.meetingCycle.length > 0) {
+      const resolved = asset.meetingCycle
+        .map((id) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) meetingCycleSprites = resolved
+    }
+    // Resolve workCycle sprite IDs to SpriteData arrays
+    let workCycleSprites: SpriteData[] | undefined
+    if (asset.workCycle && asset.workCycle.length > 0) {
+      const resolved = asset.workCycle
+        .map((id) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) workCycleSprites = resolved
+    }
     return {
       type: asset.id,
       label: asset.label,
@@ -104,6 +130,14 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.canPlaceOnSurfaces ? { canPlaceOnSurfaces: true } : {}),
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
+      ...(meetingCycleSprites ? { meetingCycleSprites } : {}),
+      ...(asset.randomMeetingCycle ? { randomMeetingCycle: true } : {}),
+      ...(asset.meetingCycleIntervalMin !== undefined ? { meetingCycleIntervalMin: asset.meetingCycleIntervalMin } : {}),
+      ...(asset.meetingCycleIntervalMax !== undefined ? { meetingCycleIntervalMax: asset.meetingCycleIntervalMax } : {}),
+      ...(workCycleSprites ? { workCycleSprites } : {}),
+      ...(asset.randomWorkCycle ? { randomWorkCycle: true } : {}),
+      ...(asset.workCycleIntervalMin !== undefined ? { workCycleIntervalMin: asset.workCycleIntervalMin } : {}),
+      ...(asset.workCycleIntervalMax !== undefined ? { workCycleIntervalMax: asset.workCycleIntervalMax } : {}),
     }
   }).filter((e): e is CatalogEntryWithCategory => e !== null)
 

@@ -44,16 +44,15 @@ export function detectAgents(workspaceFolder: string): DetectedAgentDefinition[]
 		}
 	} catch { /* ignore */ }
 
-	// Add main agent: "Orchestrator" if sub-agents exist, "Main" otherwise
-	if (hasClaudeMd) {
-		agents.unshift({
-			definitionId: 'main',
-			name: hasSubAgents ? 'Orchestrator' : 'Main',
-			source: 'claude-md',
-			filePath: claudeMdPath,
-			workspaceFolder,
-		});
-	}
+	// Add main agent: always emitted so every workspace folder has a lead avatar.
+	// Uses 'claude-md' source when CLAUDE.md exists, 'default' otherwise.
+	agents.unshift({
+		definitionId: 'main',
+		name: hasSubAgents ? 'Orchestrator' : 'Lead',
+		source: hasClaudeMd ? 'claude-md' : 'default',
+		filePath: hasClaudeMd ? claudeMdPath : undefined,
+		workspaceFolder,
+	});
 
 	return agents;
 }
@@ -260,7 +259,7 @@ export function watchAgentDefinitions(
 }
 
 function serializeDefinitions(defs: DetectedAgentDefinition[]): string {
-	return defs.map(d => `${d.definitionId}:${d.source}:${d.filePath}`).sort().join('|');
+	return defs.map(d => `${d.definitionId}:${d.source}:${d.filePath ?? ''}`).sort().join('|');
 }
 
 // ── Session Marker Files ────────────────────────────────────────

@@ -17,6 +17,8 @@ import { PNG } from 'pngjs'
 // ── Config ──────────────────────────────────────────────────
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3000', 10)
 const PROJECT_ROOT = resolve(import.meta.dirname, '..')
+const PKG = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf-8'))
+const VERSION = PKG.version || '?.?.?'
 const WEBVIEW_DIST = join(PROJECT_ROOT, 'dist', 'webview')
 const ASSETS_DIR = join(PROJECT_ROOT, 'dist', 'assets')
 // Fallback to webview-ui/public/assets if dist/assets doesn't exist (dev mode)
@@ -125,6 +127,21 @@ function loadWallTiles() {
   return sprites
 }
 
+function loadCycleFrames(framePaths, width, height, sprites) {
+  const resolvedIds = []
+  for (const framePath of framePaths) {
+    const spriteId = framePath.split('/').pop().replace(/\.[^.]+$/, '')  // basename without ext
+    let fp = framePath.startsWith('assets/') ? framePath : `assets/${framePath}`
+    const fullPath = join(ASSETS_ROOT, fp)
+    if (!existsSync(fullPath)) continue
+    try {
+      sprites[spriteId] = pngToSpriteData(readFileSync(fullPath), width, height)
+      resolvedIds.push(spriteId)
+    } catch { /* skip bad frames */ }
+  }
+  return resolvedIds
+}
+
 function loadFurnitureAssets() {
   const catalogPath = join(ASSETS_ROOT, 'assets', 'furniture', 'furniture-catalog.json')
   if (!existsSync(catalogPath)) return null
@@ -137,6 +154,11 @@ function loadFurnitureAssets() {
     const assetPath = join(ASSETS_ROOT, filePath)
     if (!existsSync(assetPath)) continue
     sprites[asset.id] = pngToSpriteData(readFileSync(assetPath), asset.width, asset.height)
+    // Load meetingCycle / workCycle frame PNGs and resolve paths to sprite IDs
+    if (Array.isArray(asset.meetingCycle) && asset.meetingCycle.length > 0)
+      asset.meetingCycle = loadCycleFrames(asset.meetingCycle, asset.width, asset.height, sprites)
+    if (Array.isArray(asset.workCycle) && asset.workCycle.length > 0)
+      asset.workCycle = loadCycleFrames(asset.workCycle, asset.width, asset.height, sprites)
   }
   return { catalog, sprites }
 }
@@ -209,6 +231,13 @@ window.acquireVsCodeApi = function() {
           if (data.furniture) dispatch({ type: 'furnitureAssetsLoaded', catalog: data.furniture.catalog, sprites: data.furniture.sprites });
           dispatch({ type: 'settingsLoaded', soundEnabled: false, showNametags: true, claudeExtAvailable: false });
           dispatch({ type: 'layoutLoaded', layout: data.layout });
+          // Emit CONN entry for Dev Console
+          const now = new Date();
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const ss = String(now.getSeconds()).padStart(2, '0');
+          const conn = '[' + hh + ':' + mm + ':' + ss + '] CONN   v${VERSION} — standalone browser connected';
+          dispatch({ type: 'devConsoleHistory', entries: [conn] });
           // Start polling for sync updates
           startSyncPolling();
         });
@@ -228,6 +257,14 @@ window.acquireVsCodeApi = function() {
 
 function dispatch(data) {
   window.postMessage(data, '*');
+}
+
+function devLog(entry) {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  dispatch({ type: 'devConsoleLog', entry: '[' + hh + ':' + mm + ':' + ss + '] ' + entry });
 }
 
 let lastLayoutSnapshot = '';
@@ -282,6 +319,7 @@ function startSyncPolling() {
           newFolderNames[id] = agent.name;
           newWorkspaceFolders[id] = agent.workspaceFolder;
           if (agent.workspaceName) projectName = agent.workspaceName;
+          devLog('CREATE #' + id + ' "' + agent.name + '"' + (agent.seatId ? ' seat=' + agent.seatId : ''));
         }
       }
       if (newAgentIds.length > 0) {
@@ -299,6 +337,7 @@ function startSyncPolling() {
       for (const id of knownAgents.keys()) {
         if (!currentAgents.has(id)) {
           dispatch({ type: 'agentClosed', id });
+          devLog('CLOSE  #' + id);
         }
       }
 
@@ -306,6 +345,17 @@ function startSyncPolling() {
       for (const [id, agent] of currentAgents) {
         const snap = JSON.stringify(agent);
         if (knownAgents.get(id) !== snap) {
+          const prev = knownAgents.get(id) ? JSON.parse(knownAgents.get(id)) : null;
+          const toolChange = prev && prev.currentTool !== agent.currentTool;
+          const activeChange = prev && prev.isActive !== agent.isActive;
+          const waitChange = prev && prev.isWaiting !== agent.isWaiting;
+          if (activeChange || toolChange || waitChange) {
+            const parts = [];
+            if (activeChange) parts.push(agent.isActive ? 'active' : 'idle');
+            if (toolChange && agent.currentTool) parts.push('tool=' + agent.currentTool);
+            if (waitChange && agent.isWaiting) parts.push('waiting');
+            devLog('STATUS #' + id + ' "' + agent.name + '" ' + parts.join(' '));
+          }
           dispatch({
             type: 'agentStateUpdate',
             id: agent.id,

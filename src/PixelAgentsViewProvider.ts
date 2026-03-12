@@ -18,7 +18,7 @@ import {
 } from './agentManager.js';
 import { ensureProjectScan, autoAdoptActiveConversations, startFileWatching, readNewLines } from './fileWatcher.js';
 import { loadFurnitureAssets, sendAssetsToWebview, loadFloorTiles, sendFloorTilesToWebview, loadWallTiles, sendWallTilesToWebview, loadCharacterSprites, sendCharacterSpritesToWebview, loadDefaultLayout } from './assetLoader.js';
-import { WORKSPACE_KEY_AGENT_SEATS, GLOBAL_KEY_SOUND_ENABLED, GLOBAL_KEY_SHOW_NAMETAGS, JSONL_POLL_INTERVAL_MS, REMOTE_ID_BASE, SYNC_WRITE_DEBOUNCE_MS } from './constants.js';
+import { WORKSPACE_KEY_AGENT_SEATS, GLOBAL_KEY_SOUND_ENABLED, GLOBAL_KEY_SHOW_NAMETAGS, JSONL_POLL_INTERVAL_MS, REMOTE_ID_BASE, SYNC_WRITE_DEBOUNCE_MS, BUILD_NUMBER } from './constants.js';
 import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layoutPersistence.js';
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, updateAgentConfig, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
@@ -66,6 +66,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
 	// WebviewPanel support (editor tab)
 	private panels = new Set<vscode.WebviewPanel>();
+	// Dev Console ring buffer (last 200 entries)
+	private devLogs: string[] = [];
+	// Output channel — always visible in VS Code Output tab regardless of webview state
+	private readonly outputChannel = vscode.window.createOutputChannel('Pixel Agents');
 
 	/**
 	 * Stable proxy that always delegates postMessage to the current broadcaster.
@@ -78,9 +82,13 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		postMessage: (msg: unknown) => {
 			// Trigger sync write when agent display state changes so the
 			// standalone browser (which polls sync files) sees activity.
-			const m = msg as { type?: string };
+			const m = msg as { type?: string; id?: number; definitionId?: string; projectName?: string };
 			if (m.type === 'agentStateUpdate') {
 				this.scheduleSyncWrite();
+			}
+			// Dev Console: intercept binding/lifecycle/status events to emit log entries
+			if (m.type === 'agentBound' || m.type === 'agentUnbound' || m.type === 'agentCreated' || m.type === 'agentClosed' || m.type === 'agentStatus') {
+				this.emitDevLog(m as Record<string, unknown>);
 			}
 			return this.broadcaster?.postMessage(msg) ?? Promise.resolve(false);
 		},
@@ -208,14 +216,14 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 							this.fileWatchers, this.pollingTimers, this.permissionTimers,
 							this.jsonlPollTimers,
 						);
-						this.webview?.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
+						this.webviewProxy.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
 					} else {
 						removeAgent(
 							id, this.agents,
 							this.fileWatchers, this.pollingTimers, this.permissionTimers,
 							this.jsonlPollTimers, this.persistAgents,
 						);
-						this.webview?.postMessage({ type: 'agentClosed', id });
+						this.webviewProxy.postMessage({ type: 'agentClosed', id });
 					}
 					this.scheduleSyncWrite();
 				}
@@ -271,7 +279,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 						this.fileWatchers, this.pollingTimers, this.permissionTimers,
 						this.jsonlPollTimers, this.persistAgents,
 					);
-					this.webview?.postMessage({ type: 'agentClosed', id: message.id });
+					this.webviewProxy.postMessage({ type: 'agentClosed', id: message.id });
 				}
 			}
 		} else if (message.type === 'saveAgentSeats') {
@@ -319,6 +327,26 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			const showNametags = this.context.globalState.get<boolean>(GLOBAL_KEY_SHOW_NAMETAGS, false);
 			const claudeExtAvailable = vscode.extensions.getExtension('anthropic.claude-code') !== undefined;
 			senderWebview.postMessage({ type: 'settingsLoaded', soundEnabled, showNametags, claudeExtAvailable });
+
+			// Heartbeat: always emit a CONN entry and send full history
+			{
+				const now = new Date();
+				const hh = String(now.getHours()).padStart(2, '0');
+				const mm = String(now.getMinutes()).padStart(2, '0');
+				const ss = String(now.getSeconds()).padStart(2, '0');
+				const connEntry = `[${hh}:${mm}:${ss}] CONN   v1.4.3 build ${BUILD_NUMBER} — webview ${isSidebar ? 'sidebar' : 'panel'} connected — ${this.agents.size} agent(s) tracked`;
+				this.devLogs.push(connEntry);
+				this.outputChannel.appendLine(connEntry);
+				for (const [aid, ag] of this.agents) {
+					const jsonl = ag.jsonlFile ? ag.jsonlFile.split(/[\\/]/).pop() : 'none';
+					const hasTerm = ag.terminalRef ? 'terminal' : 'no-terminal';
+					const defId = ag.agentDefinitionId ?? 'ad-hoc';
+					const agEntry = `[${hh}:${mm}:${ss}] CONN     agent #${aid} def=${defId} ${hasTerm} jsonl=${jsonl}`;
+					this.devLogs.push(agEntry);
+					this.outputChannel.appendLine(agEntry);
+				}
+			}
+			senderWebview.postMessage({ type: 'devConsoleHistory', entries: this.devLogs });
 
 			const wsFolders = vscode.workspace.workspaceFolders;
 			if (wsFolders && wsFolders.length > 1) {
@@ -520,7 +548,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		this.persistAgents();
 		const projectName = this.getProjectName();
 		console.log(`[Pixel Agents] Agent ${id}: created for Claude extension conversation`);
-		this.webview?.postMessage({ type: 'agentCreated', id, projectName });
+		this.webviewProxy.postMessage({ type: 'agentCreated', id, projectName });
 
 		// Poll for new JSONL file that wasn't in the snapshot
 		const pollTimer = setInterval(() => {
@@ -726,7 +754,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				unboundDefinitions.delete(marker.definitionId);
 				removePlaceholder(marker.definitionId, agent.id);
 				console.log(`[Pixel Agents] Agent ${agent.id}: bound restored agent to definition "${marker.definitionId}"`);
-				this.webview?.postMessage({ type: 'agentBound', id: agent.id, definitionId: marker.definitionId });
+				this.webviewProxy.postMessage({ type: 'agentBound', id: agent.id, definitionId: marker.definitionId });
 				this.persistAgents();
 			}
 		}
@@ -744,7 +772,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 				unboundDefinitions.delete(definitionId);
 				removePlaceholder(definitionId, agent.id);
 				console.log(`[Pixel Agents] Agent ${agent.id}: auto-bound to definition "${definitionId}" (only match in ${projectDir})`);
-				this.webview?.postMessage({ type: 'agentBound', id: agent.id, definitionId });
+				this.webviewProxy.postMessage({ type: 'agentBound', id: agent.id, definitionId });
 				this.persistAgents();
 			}
 		}
@@ -963,7 +991,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		// Remove agents that disappeared
 		for (const prevId of this.lastSyncSentIds) {
 			if (!currentIds.has(prevId)) {
-				this.webview?.postMessage({ type: 'agentClosed', id: prevId });
+				this.webviewProxy.postMessage({ type: 'agentClosed', id: prevId });
 			}
 		}
 
@@ -989,6 +1017,48 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		this.lastSyncSentIds = currentIds;
+	}
+
+	/** Format and emit a Dev Console log entry, buffering it for late-joining webviews. */
+	private emitDevLog(msg: Record<string, unknown>): void {
+		const now = new Date();
+		const ts = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+		const id = msg.id as number | undefined;
+		const defId = msg.definitionId as string | undefined;
+		const agent = id !== undefined ? this.agents.get(id) : undefined;
+		const folder = vscode.workspace.workspaceFolders?.find(f => agent?.projectDir?.startsWith(f.uri.fsPath))?.name ?? 'unknown';
+
+		let event = '';
+		let detail = '';
+		switch (msg.type) {
+			case 'agentBound':
+				event = 'BIND';
+				detail = `${folder}/${defId ?? '?'} → agent #${id} (session adopted)`;
+				break;
+			case 'agentUnbound':
+				event = 'UNBIND';
+				detail = `${folder}/${defId ?? '?'} ← agent #${id} terminal closed → idle`;
+				break;
+			case 'agentCreated':
+				event = 'CREATE';
+				detail = `agent #${id} created (${(msg.projectName as string) ?? folder})`;
+				break;
+			case 'agentClosed':
+				event = 'CLOSE';
+				detail = `agent #${id} removed`;
+				break;
+			case 'agentStatus':
+				event = 'STATUS';
+				detail = `agent #${id} → ${msg.status as string}`;
+				break;
+		}
+
+		if (!event) return;
+		const entry = `[${ts}] ${event.padEnd(6)} ${detail}`;
+		this.devLogs.push(entry);
+		if (this.devLogs.length > 200) this.devLogs.shift();
+		this.outputChannel.appendLine(entry);
+		this.broadcaster?.postMessage({ type: 'devConsoleLog', entry });
 	}
 
 	private getRemoteId(windowId: string, localId: number): number {
@@ -1090,6 +1160,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			clearInterval(this.projectScanTimer.current);
 			this.projectScanTimer.current = null;
 		}
+		this.outputChannel.dispose();
 	}
 }
 

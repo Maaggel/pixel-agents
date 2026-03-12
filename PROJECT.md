@@ -4,6 +4,24 @@ This document captures future feature ideas, organized by priority and complexit
 
 ---
 
+## FUTURE: Standalone-only architecture
+
+**Current situation**: The extension ships both a VS Code webview panel *and* a `standalone/server.mjs` that serves the same React UI in a browser. This creates duplication:
+- Asset loading / sprite resolution is implemented independently in `assetLoader.ts` (extension) and `loadFurnitureAssets()` (standalone server), and must be kept in sync manually.
+- Dev Console logging, cycle sprite resolution, and any new message types must be wired twice.
+- The VS Code webview panel is essentially a browser view inside a frame.
+
+**Proposed direction**: Replace the VS Code webview panel with an embedded browser that points at the standalone server running locally. The extension would:
+1. Start `server.mjs` as a child process on activation (or reuse an already-running instance).
+2. Open a `WebviewPanel` whose HTML is just an `<iframe src="http://localhost:<port>">` (or use `SimpleBrowser`/`vscode.env.openExternal` to open the browser tab directly).
+3. All game logic, asset loading, and UI live only in the standalone server — no duplicate paths.
+
+**Benefits**: Single source of truth for rendering; browser DevTools work naturally; easier to test outside VS Code.
+
+**Blockers**: VS Code webview security model (CSP) restricts iframes to `vscode-resource:` URIs by default — needs `localhost` exception. The `postMessage` bridge between extension and webview also needs to become HTTP polling or WebSocket (which `server.mjs` already supports for sync). Layout save/load would go entirely through the HTTP API.
+
+---
+
 ## KNOWN ISSUE: Standalone browser requires webview panel open
 
 **Status**: Partially fixed — `initHeadless()` now runs in `activate()` to restore agents, detect agent definitions, adopt active conversations, and start the sync manager without the webview. However, the **character visual positions** (`characterVisualStates`) are only reported by the webview's game loop, so the sync file won't have `visual` data until the panel is opened at least once. This means agents show in the browser but may lack position/animation data.

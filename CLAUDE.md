@@ -177,6 +177,8 @@ npm install && cd webview-ui && npm install && cd .. && npm run build
 ```
 Build: type-check → lint → esbuild (extension) → vite (webview). F5 for Extension Dev Host.
 
+**Packaging VSIX**: Run `vsce package` to produce the `.vsix` file. **Before each `vsce package` run**, increment `BUILD_NUMBER` in `src/constants.ts` by 1. When `version` in `package.json` is bumped to a new value, reset `BUILD_NUMBER` back to 1.
+
 ## TypeScript Constraints
 
 - No `enum` (`erasableSyntaxOnly`) — use `as const` objects

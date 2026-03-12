@@ -97,7 +97,7 @@ const ACTIVE_FILE_MAX_AGE_MS = 120_000;
  *  Only `result` type means the session is complete (claude exited).
  *  `turn_duration` just means a turn finished — the session may still be active
  *  (user is reading the response, about to send next prompt). */
-function isSessionEnded(filePath: string): boolean {
+export function isSessionEnded(filePath: string): boolean {
 	try {
 		const fd = fs.openSync(filePath, 'r');
 		try {
@@ -119,6 +119,16 @@ function isSessionEnded(filePath: string): boolean {
 		}
 	} catch {
 		return false;
+	}
+}
+
+/** Returns true if a JSONL file hasn't been modified in > ACTIVE_FILE_MAX_AGE_MS (stale session). */
+function isStaleSession(filePath: string): boolean {
+	try {
+		const age = Date.now() - fs.statSync(filePath).mtimeMs;
+		return age > ACTIVE_FILE_MAX_AGE_MS;
+	} catch {
+		return true; // Can't stat → treat as stale
 	}
 }
 
@@ -344,27 +354,51 @@ function adoptTerminalForFile(
 			}
 		}
 	} else {
-		// No marker — try heuristic: if only one detected agent in this project is unbound, auto-bind
+		// No marker — prefer the lead ('main') definition; fallback to single-match heuristic.
+		// The lead is eligible even if it already has a JSONL from a previous session (no terminal):
+		// a new terminal always represents the user's current active session.
+		let preferred: [number, AgentState] | null = null;
 		const unboundDetected: Array<[number, AgentState]> = [];
 		for (const [existingId, existingAgent] of agents) {
-			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
-				&& existingAgent.projectDir === projectDir) {
-				unboundDetected.push([existingId, existingAgent]);
+			if (!existingAgent.terminalRef && existingAgent.projectDir === projectDir) {
+				if (existingAgent.agentDefinitionId === 'main') {
+					// Lead: bind regardless of whether it has an old JSONL
+					preferred = [existingId, existingAgent];
+				} else if (existingAgent.agentDefinitionId && !existingAgent.jsonlFile) {
+					unboundDetected.push([existingId, existingAgent]);
+				}
 			}
 		}
-		if (unboundDetected.length === 1) {
-			const [existingId, existingAgent] = unboundDetected[0];
+		const bindCandidate = preferred ?? (unboundDetected.length === 1 ? unboundDetected[0] : null);
+		if (bindCandidate) {
+			const [existingId, existingAgent] = bindCandidate;
 			definitionId = existingAgent.agentDefinitionId;
+			// If lead has an old JSONL from a previous session, stop watching it and reset state
+			if (existingAgent.jsonlFile && existingAgent.jsonlFile !== jsonlFile) {
+				reassignAgentToFile(existingId, jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview, persistAgents);
+				existingAgent.terminalRef = terminal;
+				activeAgentIdRef.current = existingId;
+				persistAgents();
+				console.log(`[Pixel Agents] Agent ${existingId}: terminal "${terminal.name}" took over lead from previous session`);
+				webview?.postMessage({ type: 'agentBound', id: existingId, definitionId });
+				return;
+			}
 			existingAgent.terminalRef = terminal;
-			existingAgent.jsonlFile = jsonlFile;
-			existingAgent.fileOffset = 0;
-			existingAgent.lineBuffer = '';
 			activeAgentIdRef.current = existingId;
-			persistAgents();
-			console.log(`[Pixel Agents] Agent ${existingId}: auto-bound terminal "${terminal.name}" to definition "${definitionId}" (only unbound agent)`);
+			if (existingAgent.jsonlFile === jsonlFile) {
+				// File scan already bound this JSONL — just attach terminal, preserve read offset
+				persistAgents();
+				console.log(`[Pixel Agents] Agent ${existingId}: terminal "${terminal.name}" attached (JSONL already watching)`);
+			} else {
+				existingAgent.jsonlFile = jsonlFile;
+				existingAgent.fileOffset = 0;
+				existingAgent.lineBuffer = '';
+				persistAgents();
+				console.log(`[Pixel Agents] Agent ${existingId}: auto-bound terminal "${terminal.name}" to definition "${definitionId}"`);
+				startFileWatching(existingId, jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
+				readNewLines(existingId, agents, permissionTimers, webview);
+			}
 			webview?.postMessage({ type: 'agentBound', id: existingId, definitionId });
-			startFileWatching(existingId, jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
-			readNewLines(existingId, agents, permissionTimers, webview);
 			return;
 		}
 	}
@@ -428,7 +462,28 @@ function adoptFileWithoutTerminal(
 		}
 	}
 	if (!bindTarget) {
-		// No marker match — check for unbound config agents in the SAME project dir
+		// No marker match — prefer the lead ('main') definition if it's unbound.
+		// If the lead has no live terminal, its old session is already orphaned — new session takes over.
+		for (const [existingId, existingAgent] of agents) {
+			if (existingAgent.agentDefinitionId === 'main' && !existingAgent.terminalRef
+				&& existingAgent.projectDir === projectDir) {
+				if (!existingAgent.jsonlFile) {
+					// Lead is unbound — bind normally
+					bindTarget = [existingId, existingAgent];
+					break;
+				} else {
+					// Lead has no terminal → its old session is orphaned; new session takes over
+					console.log(`[Pixel Agents] Agent ${existingId}: lead reassigned to new JSONL (old session orphaned)`);
+					reassignAgentToFile(existingId, jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview, persistAgents);
+					webview?.postMessage({ type: 'agentBound', id: existingId, definitionId: 'main' });
+					return;
+				}
+			}
+		}
+	}
+
+	if (!bindTarget) {
+		// Fallback: if exactly one other unbound config agent in this project, bind to it
 		const unboundConfigAgents: Array<[number, AgentState]> = [];
 		for (const [existingId, existingAgent] of agents) {
 			if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
@@ -436,7 +491,6 @@ function adoptFileWithoutTerminal(
 				unboundConfigAgents.push([existingId, existingAgent]);
 			}
 		}
-		// If exactly one unbound config agent in this project, bind to it
 		if (unboundConfigAgents.length === 1) {
 			bindTarget = unboundConfigAgents[0];
 		}

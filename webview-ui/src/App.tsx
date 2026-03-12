@@ -14,6 +14,7 @@ import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
 import { ZoomControls } from './components/ZoomControls.js'
 import { BottomToolbar } from './components/BottomToolbar.js'
 import { DebugView } from './components/DebugView.js'
+import { DevConsole } from './components/DevConsole.js'
 import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
 import type { ViewOptions } from './components/ViewOptionsPanel.js'
 import { BehaviourLog } from './components/BehaviourLog.js'
@@ -125,7 +126,7 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, showNametags, setShowNametags } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, showNametags, setShowNametags, devLogs } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
 
   // Report local character positions to the extension for cross-window sync
   useEffect(() => {
@@ -149,8 +150,10 @@ function App() {
   }, [])
 
   const [isDebugMode, setIsDebugMode] = useState(false)
+  const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false)
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
+  const handleToggleDevConsole = useCallback(() => setIsDevConsoleOpen((prev) => !prev), [])
 
   const handleToggleNametags = useCallback(() => {
     const newVal = !showNametags
@@ -289,6 +292,37 @@ function App() {
 
       {viewOptions.showZoom && (
         <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+      )}
+
+      {/* Dev Console toggle button */}
+      <button
+        onClick={handleToggleDevConsole}
+        title="Toggle Dev Console"
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          zIndex: 55,
+          background: isDevConsoleOpen ? 'var(--pixel-accent)' : 'var(--pixel-btn-bg)',
+          color: isDevConsoleOpen ? '#fff' : 'var(--pixel-text-dim)',
+          border: '2px solid var(--pixel-border)',
+          borderRadius: 0,
+          padding: '2px 7px',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          cursor: 'pointer',
+          letterSpacing: '0.05em',
+        }}
+      >
+        DEV
+      </button>
+
+      {isDevConsoleOpen && (
+        <DevConsole
+          logs={devLogs}
+          version={devLogs.find(l => l.includes('] CONN'))?.match(/v[\d.]+ build \d+/)?.[0] ?? ''}
+          onClose={handleToggleDevConsole}
+        />
       )}
 
       {/* Vignette overlay */}

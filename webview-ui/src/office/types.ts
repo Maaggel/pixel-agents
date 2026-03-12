@@ -78,12 +78,42 @@ export interface Seat {
 
 export interface FurnitureInstance {
   sprite: SpriteData
+  /** Grid column of top-left footprint tile (for work cycle proximity check) */
+  col: number
+  /** Grid row of top-left footprint tile */
+  row: number
+  /** Footprint width in tiles */
+  footprintW: number
+  /** Footprint height in tiles */
+  footprintH: number
   /** Pixel x (top-left) */
   x: number
   /** Pixel y (top-left) */
   y: number
   /** Y value used for depth sorting (typically bottom edge) */
   zY: number
+  /** Stable furniture uid from PlacedFurniture (for meeting cycle state tracking) */
+  uid?: string
+  /** Cycle frame sprites for meeting animation. Present when catalog entry has meetingCycle. */
+  meetingCycleSprites?: SpriteData[]
+  randomMeetingCycle?: boolean
+  /** Interval bounds in seconds. Undefined = use default. */
+  meetingCycleIntervalMin?: number
+  meetingCycleIntervalMax?: number
+  /** Whether this furniture is inside or adjacent to a meeting zone tile. */
+  isNearMeetingZone?: boolean
+  /** Current cycle frame index (mutated by game loop). */
+  meetingCycleIdx?: number
+  /** Sprite to render instead of base sprite when meeting is active. Set/cleared by game loop. */
+  activeMeetingSprite?: SpriteData | null
+  /** Cycle frame sprites for work animation. Present when catalog entry has workCycle. */
+  workCycleSprites?: SpriteData[]
+  randomWorkCycle?: boolean
+  workCycleIntervalMin?: number
+  workCycleIntervalMax?: number
+  workCycleIdx?: number
+  /** Sprite to render instead of base sprite when an active agent is looking at this. Set/cleared by game loop. */
+  activeWorkSprite?: SpriteData | null
 }
 
 export interface ToolActivity {
@@ -142,6 +172,17 @@ export interface FurnitureCatalogEntry {
   backgroundTiles?: number
   /** Whether this item can be placed on wall tiles */
   canPlaceOnWalls?: boolean
+  /** Resolved cycle frame sprites for meeting animation. */
+  meetingCycleSprites?: SpriteData[]
+  randomMeetingCycle?: boolean
+  /** Interval bounds in seconds for meeting cycle frame changes. */
+  meetingCycleIntervalMin?: number
+  meetingCycleIntervalMax?: number
+  /** Resolved cycle frame sprites for work animation (shown when active agent looks at this). */
+  workCycleSprites?: SpriteData[]
+  randomWorkCycle?: boolean
+  workCycleIntervalMin?: number
+  workCycleIntervalMax?: number
 }
 
 export interface PlacedFurniture {

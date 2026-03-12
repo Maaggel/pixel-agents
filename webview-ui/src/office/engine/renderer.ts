@@ -120,7 +120,7 @@ export function renderScene(
 
   // Furniture
   for (const f of furniture) {
-    const cached = getCachedSprite(f.sprite, zoom)
+    const cached = getCachedSprite(f.activeWorkSprite ?? f.activeMeetingSprite ?? f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
     drawables.push({

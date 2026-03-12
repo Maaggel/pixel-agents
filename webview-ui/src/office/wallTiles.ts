@@ -114,6 +114,7 @@ export function getWallInstances(
         x: c * TILE_SIZE,
         y: r * TILE_SIZE + wallInfo.offsetY,
         zY: (r + 1) * TILE_SIZE,
+        col: c, row: r, footprintW: 1, footprintH: 1,
       })
     }
   }

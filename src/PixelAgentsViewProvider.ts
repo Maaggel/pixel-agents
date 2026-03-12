@@ -58,6 +58,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	// workspace always writes to the same sync file, even across window reloads.
 	private readonly windowId = PixelAgentsViewProvider.workspaceSyncId();
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
+	private lastSyncSentIds: Set<number> = new Set();
+	private lastSyncStateKeys: Map<number, string> = new Map();
 	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
 	private remoteIdMap = new Map<string, number>();
 	private nextRemoteId = REMOTE_ID_BASE;
@@ -145,8 +147,18 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			this.webviewProxy, this.persistAgents,
 		);
 
-		const projectDir = getProjectDirPath();
-		if (projectDir) {
+		// Detect agent definitions FIRST so config agents exist before auto-adoption.
+		// This ensures adoptFileWithoutTerminal can bind JSONL files to config agents
+		// instead of creating duplicate entries.
+		this.detectAndSendAgents();
+
+		// Scan all workspace folders for active JSONL files (multi-root support)
+		const scannedDirs = new Set<string>();
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		for (const folder of folders) {
+			const projectDir = getProjectDirPath(folder.uri.fsPath);
+			if (!projectDir || scannedDirs.has(projectDir)) continue;
+			scannedDirs.add(projectDir);
 			ensureProjectScan(
 				projectDir, this.knownJsonlFiles, this.projectScanTimer, this.activeAgentId,
 				this.nextAgentId, this.agents,
@@ -161,8 +173,6 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			);
 		}
 
-		// Detect agent definitions so writeSyncState includes them
-		this.detectAndSendAgents();
 		this.bindActiveAgentsToDefinitions();
 
 		this.startSyncManager();
@@ -662,7 +672,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	 */
 	private bindActiveAgentsToDefinitions(): void {
 		// Collect detected agent IDs that are not yet bound to any active agent
-		const unboundDefinitions = new Map<string, number>(); // definitionId → config id
+		const unboundDefinitions = new Map<string, { configId: number; projectDir: string }>(); // definitionId → info
 		for (const def of this.detectedDefinitions) {
 			const folders = vscode.workspace.workspaceFolders;
 			if (!folders) continue;
@@ -680,7 +690,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 						}
 					}
 					if (!alreadyBound) {
-						unboundDefinitions.set(def.definitionId, configId);
+						const defProjectDir = getProjectDirPath(def.workspaceFolder);
+						if (defProjectDir) unboundDefinitions.set(def.definitionId, { configId, projectDir: defProjectDir });
 					}
 				}
 			}
@@ -720,15 +731,19 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			}
 		}
 
-		// If there's exactly one unbound definition and one unmatched active agent, auto-bind
-		if (unboundDefinitions.size === 1) {
-			const unmatchedAgents = [...this.agents.values()].filter(a => !a.agentDefinitionId && a.jsonlFile);
-			if (unmatchedAgents.length === 1) {
-				const [definitionId] = unboundDefinitions.keys();
-				const agent = unmatchedAgents[0];
+		// Auto-bind: for each unbound definition, if there's exactly one unmatched
+		// active agent in the SAME project directory, bind them together.
+		// This scopes per-project so multi-root workspaces don't interfere.
+		for (const [definitionId, { projectDir }] of unboundDefinitions) {
+			const unmatchedInProject = [...this.agents.values()].filter(a =>
+				!a.agentDefinitionId && a.jsonlFile && a.projectDir === projectDir
+			);
+			if (unmatchedInProject.length === 1) {
+				const agent = unmatchedInProject[0];
 				agent.agentDefinitionId = definitionId;
+				unboundDefinitions.delete(definitionId);
 				removePlaceholder(definitionId, agent.id);
-				console.log(`[Pixel Agents] Agent ${agent.id}: auto-bound to definition "${definitionId}" (only match)`);
+				console.log(`[Pixel Agents] Agent ${agent.id}: auto-bound to definition "${definitionId}" (only match in ${projectDir})`);
 				this.webview?.postMessage({ type: 'agentBound', id: agent.id, definitionId });
 				this.persistAgents();
 			}
@@ -813,8 +828,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 		const now = Date.now();
 		for (const agent of this.agents.values()) {
-			// Skip agents with no session at all (no terminal AND no JSONL file)
-			if (!agent.terminalRef && !agent.jsonlFile) continue;
+			// Skip ad-hoc agents with no session (no terminal AND no JSONL file).
+			// Config agents (agentDefinitionId set) stay visible as idle characters
+			// even when unbound — prevents despawn/respawn flicker on conversation switch.
+			if (!agent.terminalRef && !agent.jsonlFile && !agent.agentDefinitionId) continue;
 			// Dedup by jsonlFile: keep the more recently active agent
 			if (agent.jsonlFile) {
 				const existing = seenJsonlFiles.get(agent.jsonlFile);
@@ -916,6 +933,62 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			updatedAt: Date.now(),
 		};
 		this.syncManager.writeState(state);
+
+		// ── Sync-based webview reconciliation (same logic as standalone bridge) ──
+		// Compare current agent list to what we last sent. Send standard messages
+		// (existingAgents, agentClosed, agentStateUpdate) so the webview works
+		// identically to the standalone browser — single source of truth.
+		const currentIds = new Set(agents.map(a => a.localId));
+		const newAgentIds: number[] = [];
+		const newAgentMeta: Record<number, { palette?: number; hueShift?: number; seatId?: string }> = {};
+		const newFolderNames: Record<number, string> = {};
+
+		for (const a of agents) {
+			if (!this.lastSyncSentIds.has(a.localId)) {
+				newAgentIds.push(a.localId);
+				newAgentMeta[a.localId] = { palette: a.palette, hueShift: a.hueShift, seatId: a.seatId ?? undefined };
+				newFolderNames[a.localId] = a.name;
+			}
+		}
+		if (newAgentIds.length > 0) {
+			this.webview?.postMessage({
+				type: 'existingAgents',
+				agents: newAgentIds,
+				agentMeta: newAgentMeta,
+				folderNames: newFolderNames,
+				projectName: this.getProjectName(),
+			});
+		}
+
+		// Remove agents that disappeared
+		for (const prevId of this.lastSyncSentIds) {
+			if (!currentIds.has(prevId)) {
+				this.webview?.postMessage({ type: 'agentClosed', id: prevId });
+			}
+		}
+
+		// Update state for agents whose state actually changed (avoids hammering the webview every tick)
+		for (const a of agents) {
+			const stateKey = `${a.isActive}|${a.currentTool}|${a.currentToolStatus}|${a.bubbleType}|${a.idleHint}`;
+			if (this.lastSyncStateKeys.get(a.localId) !== stateKey) {
+				this.lastSyncStateKeys.set(a.localId, stateKey);
+				this.webview?.postMessage({
+					type: 'agentStateUpdate',
+					id: a.localId,
+					isActive: a.isActive,
+					currentTool: a.currentTool,
+					toolStatus: a.currentToolStatus,
+					bubbleType: a.bubbleType,
+					idleHint: a.idleHint,
+				});
+			}
+		}
+		// Clean up state keys for removed agents
+		for (const prevId of this.lastSyncSentIds) {
+			if (!currentIds.has(prevId)) this.lastSyncStateKeys.delete(prevId);
+		}
+
+		this.lastSyncSentIds = currentIds;
 	}
 
 	private getRemoteId(windowId: string, localId: number): number {

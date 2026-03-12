@@ -91,6 +91,47 @@ Fair warning: the import pipeline is not exactly straightforward — the out-of-
 
 The extension will still work without the tileset — you'll get the default characters and basic layout, but the full furniture catalog requires the imported assets.
 
+### Adding Custom Furniture
+
+You can add your own furniture items without the full tileset pipeline. Each item needs a 16×N pixel PNG sprite and a catalog entry:
+
+1. **Create the sprite** — draw a 16×16 (1×1 tile) or larger PNG at `webview-ui/public/assets/furniture/<category>/YOUR_ITEM.png`. Use transparency for empty pixels. Standard tile size is 16×16 per footprint tile.
+
+2. **Add a catalog entry** — edit `webview-ui/public/assets/furniture/furniture-catalog.json` and add an entry to the `assets` array:
+   ```json
+   {
+     "id": "YOUR_ITEM",
+     "name": "YOUR_ITEM",
+     "label": "Your Item",
+     "category": "misc",
+     "file": "furniture/misc/YOUR_ITEM.png",
+     "width": 16,
+     "height": 16,
+     "footprintW": 1,
+     "footprintH": 1,
+     "isDesk": false
+   }
+   ```
+
+3. **Rebuild** — run `npm run build` to copy assets to `dist/`, then restart the extension or standalone server.
+
+**Catalog fields:**
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier (used as furniture type in layouts) |
+| `name` | Internal name (usually matches id) |
+| `label` | Display name shown in the editor palette |
+| `category` | Editor tab: `desks`, `chairs`, `storage`, `electronics`, `decor`, `wall`, `misc` |
+| `file` | Path relative to `assets/` directory |
+| `width` / `height` | Sprite dimensions in pixels |
+| `footprintW` / `footprintH` | Tile footprint (e.g. 2×2 for a large desk) |
+| `isDesk` | `true` if agents can work at this furniture (enables auto-on for electronics) |
+| `canPlaceOnSurfaces` | `true` for items that sit on top of desks (monitors, mugs) |
+| `canPlaceOnWalls` | `true` for wall-mounted items (paintings, clocks) |
+| `backgroundTiles` | Number of top footprint rows that characters can walk through |
+| `groupId` | Shared ID for rotation/state groups (items that rotate or toggle on/off) |
+| `orientation` | `front`, `back`, `left`, or `right` — for chairs (seat facing) and rotation groups |
+
 ## Speech Bubbles & Tool Icons
 
 Characters show different speech bubbles depending on their state:

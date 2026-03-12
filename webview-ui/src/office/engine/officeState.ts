@@ -352,7 +352,9 @@ export class OfficeState {
     }
     if (eligible.length === 0) return []
     // Randomly pick one eligible room
-    return eligible[Math.floor(Math.random() * eligible.length)]
+    const picked = Math.floor(Math.random() * eligible.length)
+    console.log(`[Meeting] ${eligible.length} eligible rooms, randomly picked index ${picked} (${eligible[picked].length} seats)`)
+    return eligible[picked]
   }
 
   /** Try to start a meeting. Returns null on success, or a reason string on failure. */

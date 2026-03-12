@@ -9,7 +9,7 @@
  */
 
 import { createServer } from 'http'
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, renameSync } from 'fs'
 import { join, extname, resolve } from 'path'
 import { homedir } from 'os'
 import { PNG } from 'pngjs'
@@ -213,7 +213,13 @@ window.acquireVsCodeApi = function() {
           startSyncPolling();
         });
       }
-      // Ignore other messages (saveLayout, saveAgentSeats, etc.) in read-only mode
+      if (msg.type === 'saveLayout' && msg.layout) {
+        fetch('/api/layout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msg.layout),
+        }).catch(() => {});
+      }
     },
     getState: function() { return null; },
     setState: function() {},
@@ -376,6 +382,32 @@ const server = createServer((req, res) => {
   if (pathname === '/api/sync') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
     res.end(JSON.stringify(loadSyncWindows()))
+    return
+  }
+
+  if (pathname === '/api/layout' && req.method === 'POST') {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => {
+      try {
+        const layout = JSON.parse(body)
+        if (layout && layout.version === 1 && Array.isArray(layout.tiles)) {
+          const dir = join(homedir(), '.pixel-agents')
+          if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+          const tmp = LAYOUT_FILE + '.tmp'
+          writeFileSync(tmp, JSON.stringify(layout), 'utf-8')
+          renameSync(tmp, LAYOUT_FILE)
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end('{"ok":true}')
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end('{"error":"Invalid layout"}')
+        }
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end('{"error":"Invalid JSON"}')
+      }
+    })
     return
   }
 

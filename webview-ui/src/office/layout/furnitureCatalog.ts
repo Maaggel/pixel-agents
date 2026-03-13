@@ -27,6 +27,8 @@ export interface LoadedAssetData {
     canPlaceOnSurfaces?: boolean
     backgroundTiles?: number
     canPlaceOnWalls?: boolean
+    interactable?: boolean
+    isSeat?: boolean
     /** Resolved sprite IDs for meeting cycle animation frames */
     meetingCycle?: string[]
     randomMeetingCycle?: boolean
@@ -37,6 +39,11 @@ export interface LoadedAssetData {
     randomWorkCycle?: boolean
     workCycleIntervalMin?: number
     workCycleIntervalMax?: number
+    /** Resolved sprite IDs for interaction cycle animation frames */
+    interactionCycle?: string[]
+    randomInteractionCycle?: boolean
+    interactionCycleIntervalMin?: number
+    interactionCycleIntervalMax?: number
   }>
   sprites: Record<string, SpriteData>
 }
@@ -50,11 +57,11 @@ export interface CatalogEntryWithCategory extends FurnitureCatalogEntry {
 export const FURNITURE_CATALOG: CatalogEntryWithCategory[] = [
   // ── Original hand-drawn sprites ──
   { type: FurnitureType.DESK,       label: 'Desk',       footprintW: 2, footprintH: 2, sprite: DESK_SQUARE_SPRITE,  isDesk: true,  category: 'desks' },
-  { type: FurnitureType.BOOKSHELF,  label: 'Bookshelf',  footprintW: 1, footprintH: 2, sprite: BOOKSHELF_SPRITE,    isDesk: false, category: 'storage' },
-  { type: FurnitureType.PLANT,      label: 'Plant',      footprintW: 1, footprintH: 1, sprite: PLANT_SPRITE,        isDesk: false, category: 'decor' },
-  { type: FurnitureType.COOLER,     label: 'Cooler',     footprintW: 1, footprintH: 1, sprite: COOLER_SPRITE,       isDesk: false, category: 'misc' },
-  { type: FurnitureType.WHITEBOARD, label: 'Whiteboard', footprintW: 2, footprintH: 1, sprite: WHITEBOARD_SPRITE,   isDesk: false, category: 'decor' },
-  { type: FurnitureType.CHAIR,      label: 'Chair',      footprintW: 1, footprintH: 1, sprite: CHAIR_SPRITE,        isDesk: false, category: 'chairs' },
+  { type: FurnitureType.BOOKSHELF,  label: 'Bookshelf',  footprintW: 1, footprintH: 2, sprite: BOOKSHELF_SPRITE,    isDesk: false, category: 'storage', interactable: true },
+  { type: FurnitureType.PLANT,      label: 'Plant',      footprintW: 1, footprintH: 1, sprite: PLANT_SPRITE,        isDesk: false, category: 'decor', interactable: true },
+  { type: FurnitureType.COOLER,     label: 'Cooler',     footprintW: 1, footprintH: 1, sprite: COOLER_SPRITE,       isDesk: false, category: 'misc', interactable: true },
+  { type: FurnitureType.WHITEBOARD, label: 'Whiteboard', footprintW: 2, footprintH: 1, sprite: WHITEBOARD_SPRITE,   isDesk: false, category: 'decor', interactable: true },
+  { type: FurnitureType.CHAIR,      label: 'Chair',      footprintW: 1, footprintH: 1, sprite: CHAIR_SPRITE,        isDesk: false, category: 'chairs', isSeat: true },
   { type: FurnitureType.PC,         label: 'PC',         footprintW: 1, footprintH: 1, sprite: PC_SPRITE,           isDesk: false, category: 'electronics' },
   { type: FurnitureType.LAMP,       label: 'Lamp',       footprintW: 1, footprintH: 1, sprite: LAMP_SPRITE,         isDesk: false, category: 'decor' },
 
@@ -118,6 +125,16 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
         .filter((s): s is SpriteData => s !== undefined)
       if (resolved.length > 0) workCycleSprites = resolved
     }
+    // Resolve interactionCycle sprite IDs to SpriteData arrays
+    let interactionCycleSprites: SpriteData[] | undefined
+    if (asset.interactionCycle && asset.interactionCycle.length > 0) {
+      console.log(`[InteractionCycle] Asset ${asset.id} has interactionCycle IDs:`, asset.interactionCycle,
+        'resolved:', asset.interactionCycle.map((id: string) => !!assets.sprites[id]))
+      const resolved = asset.interactionCycle
+        .map((id: string) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) interactionCycleSprites = resolved
+    }
     return {
       type: asset.id,
       label: asset.label,
@@ -130,6 +147,8 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.canPlaceOnSurfaces ? { canPlaceOnSurfaces: true } : {}),
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
+      ...(asset.interactable ? { interactable: true } : {}),
+      ...(asset.isSeat ? { isSeat: true } : {}),
       ...(meetingCycleSprites ? { meetingCycleSprites } : {}),
       ...(asset.randomMeetingCycle ? { randomMeetingCycle: true } : {}),
       ...(asset.meetingCycleIntervalMin !== undefined ? { meetingCycleIntervalMin: asset.meetingCycleIntervalMin } : {}),
@@ -138,6 +157,10 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.randomWorkCycle ? { randomWorkCycle: true } : {}),
       ...(asset.workCycleIntervalMin !== undefined ? { workCycleIntervalMin: asset.workCycleIntervalMin } : {}),
       ...(asset.workCycleIntervalMax !== undefined ? { workCycleIntervalMax: asset.workCycleIntervalMax } : {}),
+      ...(interactionCycleSprites ? { interactionCycleSprites } : {}),
+      ...(asset.randomInteractionCycle ? { randomInteractionCycle: true } : {}),
+      ...(asset.interactionCycleIntervalMin !== undefined ? { interactionCycleIntervalMin: asset.interactionCycleIntervalMin } : {}),
+      ...(asset.interactionCycleIntervalMax !== undefined ? { interactionCycleIntervalMax: asset.interactionCycleIntervalMax } : {}),
     }
   }).filter((e): e is CatalogEntryWithCategory => e !== null)
 

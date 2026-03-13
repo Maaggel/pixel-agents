@@ -35,9 +35,10 @@ export function createSyncManager(
 		}
 	} catch { /* ignore */ }
 
-	/** Clean up orphaned .json.tmp files and stale sync files from dead processes. */
+	/** Clean up orphaned .json.tmp files and stale sync files. */
 	function cleanupStaleFiles(): void {
 		try {
+			const now = Date.now();
 			const files = fs.readdirSync(syncDir);
 			for (const f of files) {
 				const filePath = path.join(syncDir, f);
@@ -47,14 +48,14 @@ export function createSyncManager(
 					continue;
 				}
 				if (!f.endsWith('.json')) continue;
-				// Check if the process that wrote this file is still alive
 				try {
 					const raw = fs.readFileSync(filePath, 'utf-8');
 					const state = JSON.parse(raw) as SyncWindowState;
-					try {
-						process.kill(state.pid, 0);
-					} catch {
-						// Process is dead — remove stale file
+					// Active windows write updatedAt every ~1s via stateTickInterval.
+					// If updatedAt is older than the stale timeout, the window is dead.
+					// Note: process.kill(pid, 0) is unreliable on Windows because
+					// Code.exe sub-processes can survive window closure / PIDs get reused.
+					if (now - state.updatedAt > SYNC_STALE_TIMEOUT_MS) {
 						try { fs.unlinkSync(filePath); } catch { /* ignore */ }
 					}
 				} catch {
@@ -77,15 +78,10 @@ export function createSyncManager(
 				try {
 					const raw = fs.readFileSync(filePath, 'utf-8');
 					const state = JSON.parse(raw) as SyncWindowState;
-					// Check staleness
+					// Active windows write updatedAt every ~1s. If stale, the window is dead.
 					if (now - state.updatedAt > SYNC_STALE_TIMEOUT_MS) {
-						// Check if process is still alive
-						try {
-							process.kill(state.pid, 0);
-						} catch {
-							try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-							continue;
-						}
+						try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+						continue;
 					}
 					windows.push(state);
 				} catch { /* skip bad files */ }

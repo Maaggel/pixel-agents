@@ -179,10 +179,54 @@ export function autoAdoptActiveConversations(
 
 		// Count live Claude terminals to limit adoption.
 		// If no terminals are found (headless startup), adopt at most 1 (most recent).
+		// Also count unbound definition agents — they should always be adoptable since
+		// they represent configured agents that just need a JSONL file to track.
 		const liveTerminalCount = vscode.window.terminals.filter(t =>
 			t.name.startsWith('Claude') || t.name.startsWith('claude')
 		).length;
-		const maxAdopt = Math.max(liveTerminalCount - trackedFiles.size, liveTerminalCount === 0 ? 1 : 0);
+		let unboundDefinitionCount = 0;
+		for (const agent of agents.values()) {
+			if (agent.agentDefinitionId && !agent.jsonlFile && !agent.terminalRef) {
+				unboundDefinitionCount++;
+			}
+		}
+		const maxAdopt = Math.max(
+			liveTerminalCount - trackedFiles.size,
+			liveTerminalCount === 0 ? 1 : 0,
+			unboundDefinitionCount,
+		);
+
+		// ── Stale session reassignment (startup only) ──
+		// If a definition agent is already bound to a JSONL that is stale (>2 min old),
+		// but there's a fresher active file, reassign. This handles the case where a
+		// terminal session went idle but a new CLI conversation started externally.
+		if (candidates.length > 0) {
+			const candidateFiles = new Set(candidates.map(c => c.file));
+			for (const [agentId, agent] of agents) {
+				if (!agent.agentDefinitionId || !agent.jsonlFile) continue;
+				if (candidateFiles.has(agent.jsonlFile)) continue; // already tracking a candidate
+				// Check if the bound file is stale
+				try {
+					const stat = fs.statSync(agent.jsonlFile);
+					const age = now - stat.mtimeMs;
+					if (age < ACTIVE_FILE_MAX_AGE_MS) continue; // still fresh
+				} catch { continue; }
+				// Pick the most recent candidate (first in sorted list)
+				const best = candidates.find(c => !trackedFiles.has(c.file));
+				if (best) {
+					console.log(`[Pixel Agents] Agent ${agentId}: startup reassign from stale to active: ${path.basename(best.file)} (age: ${Math.round(best.ageMs / 1000)}s)`);
+					reassignAgentToFile(
+						agentId, best.file,
+						agents, fileWatchers, pollingTimers, permissionTimers,
+						webview, persistAgents,
+					);
+					trackedFiles.add(best.file);
+					// Remove from candidates so it won't be adopted again
+					const idx = candidates.indexOf(best);
+					if (idx !== -1) candidates.splice(idx, 1);
+				}
+			}
+		}
 
 		let adopted = 0;
 		for (const c of candidates) {
@@ -314,6 +358,7 @@ function scanForNewJsonlFiles(
 			}
 		}
 	}
+
 }
 
 function adoptTerminalForFile(

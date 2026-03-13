@@ -39,6 +39,8 @@ export interface FurnitureAsset {
   partOfGroup?: boolean
   groupId?: string
   canPlaceOnSurfaces?: boolean
+  interactable?: boolean
+  isSeat?: boolean
   backgroundTiles?: number
   orientation?: string
   state?: string
@@ -53,6 +55,11 @@ export interface FurnitureAsset {
   randomWorkCycle?: boolean
   workCycleIntervalMin?: number
   workCycleIntervalMax?: number
+  /** Sprite IDs for interaction cycle animation (resolved from file paths during load) */
+  interactionCycle?: string[]
+  randomInteractionCycle?: boolean
+  interactionCycleIntervalMin?: number
+  interactionCycleIntervalMax?: number
 }
 
 export interface LoadedAssets {
@@ -158,6 +165,33 @@ export async function loadFurnitureAssets(
             }
           }
           asset.workCycle = resolvedIds
+        }
+
+        // Load interactionCycle frame sprites (file paths → sprite IDs)
+        if (Array.isArray((asset as FurnitureAsset & { interactionCycle?: unknown[] }).interactionCycle)) {
+          const rawCycle = (asset as FurnitureAsset & { interactionCycle?: string[] }).interactionCycle!
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Interaction cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading interaction cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.interactionCycle = resolvedIds
         }
       } catch (err) {
         console.warn(`  ⚠️  Error loading ${asset.id}: ${err instanceof Error ? err.message : err}`)

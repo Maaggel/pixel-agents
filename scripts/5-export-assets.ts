@@ -193,6 +193,16 @@ for (const asset of assets) {
       entry.canPlaceOnSurfaces = true
     }
 
+    // Interactable flag (idle characters can visit this furniture)
+    if (asset.interactable) {
+      entry.interactable = true
+    }
+
+    // Seat flag (generates a seat for characters to sit on)
+    if (asset.isSeat) {
+      entry.isSeat = true
+    }
+
     // Background tiles
     if (asset.backgroundTiles && asset.backgroundTiles > 0) {
       entry.backgroundTiles = asset.backgroundTiles

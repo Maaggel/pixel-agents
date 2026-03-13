@@ -43,6 +43,8 @@ export interface FurnitureAsset {
   partOfGroup?: boolean
   groupId?: string
   canPlaceOnSurfaces?: boolean
+  interactable?: boolean
+  isSeat?: boolean
   backgroundTiles?: number
 }
 

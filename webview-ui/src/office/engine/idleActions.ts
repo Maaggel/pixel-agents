@@ -14,7 +14,6 @@ import {
   THINK_MAX_DURATION_SEC,
   VISIT_MIN_DURATION_SEC,
   VISIT_MAX_DURATION_SEC,
-  INTERESTING_FURNITURE_PATTERNS,
   SEATED_CONVERSATION_MAX_DISTANCE,
   IDLE_CHAT_BUBBLE_VARIANT_COUNT,
   MEETING_BUBBLE_SHOW_MIN_SEC,
@@ -24,6 +23,7 @@ import {
   MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC,
   MEETING_MIN_PARTICIPANTS,
 } from '../../constants.js'
+import { getCatalogEntry } from '../layout/furnitureCatalog.js'
 
 // ── Idle Action Registry ───────────────────────────────────────
 // Adding a new action: 1) add to IdleActionType in types.ts
@@ -56,8 +56,8 @@ function randomRange(min: number, max: number): number {
 }
 
 function isInterestingFurniture(type: string): boolean {
-  const lower = type.toLowerCase()
-  return INTERESTING_FURNITURE_PATTERNS.some(p => lower.includes(p))
+  const entry = getCatalogEntry(type)
+  return entry?.interactable === true
 }
 
 /** Find a walkable tile adjacent to the given furniture piece */
@@ -362,39 +362,49 @@ export function initIdleAction(
     }
 
     case IdleActionType.VISIT_FURNITURE: {
-      // Pick a random interesting furniture piece
+      // Pick a random interesting furniture piece — try several until one works
       const interesting = ctx.furniture.filter(f => isInterestingFurniture(f.type))
       if (interesting.length === 0) return false
 
-      const target = interesting[Math.floor(Math.random() * interesting.length)]
-      const footprint = ctx.getFurnitureFootprint(target.type)
-      const fw = footprint ? footprint.w : 1
-      const fh = footprint ? footprint.h : 1
-
-      const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles)
-      if (!adj) return false
-
-      const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
-      if (path.length === 0 && (ch.tileCol !== adj.col || ch.tileRow !== adj.row)) return false
-
-      ch.idleActionTimer = randomRange(VISIT_MIN_DURATION_SEC, VISIT_MAX_DURATION_SEC)
-      ch.conversationPhase = 'approaching' // reuse phase for state tracking
-      if (path.length > 0) {
-        ch.path = path
-        ch.moveProgress = 0
-        ch.state = CharacterState.WALK
-        ch.frame = 0
-        ch.frameTimer = 0
-      } else {
-        // Already at the tile — start visiting immediately
-        ch.dir = adj.facingDir
-        ch.conversationPhase = 'talking' // "talking" phase = standing at furniture
+      // Shuffle to try in random order
+      for (let i = interesting.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [interesting[i], interesting[j]] = [interesting[j], interesting[i]]
       }
-      // Store facing direction for when we arrive
-      ch.wanderTimer = adj.facingDir // repurpose wanderTimer to store target facing dir
-      const label = target.type.replace(/_/g, ' ').toLowerCase()
-      logIdle(ch, `going to look at the ${label}`)
-      return true
+
+      for (const target of interesting) {
+        const footprint = ctx.getFurnitureFootprint(target.type)
+        const fw = footprint ? footprint.w : 1
+        const fh = footprint ? footprint.h : 1
+
+        const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles)
+        if (!adj) continue
+
+        const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
+        if (path.length === 0 && (ch.tileCol !== adj.col || ch.tileRow !== adj.row)) continue
+
+        ch.idleActionTimer = randomRange(VISIT_MIN_DURATION_SEC, VISIT_MAX_DURATION_SEC)
+        ch.conversationPhase = 'approaching' // reuse phase for state tracking
+        if (path.length > 0) {
+          ch.path = path
+          ch.moveProgress = 0
+          ch.state = CharacterState.WALK
+          ch.frame = 0
+          ch.frameTimer = 0
+        } else {
+          // Already at the tile — start visiting immediately
+          ch.dir = adj.facingDir
+          ch.conversationPhase = 'talking' // "talking" phase = standing at furniture
+        }
+        // Store facing direction for when we arrive (use preConversationDir to avoid
+        // corrupting wanderTimer which is a float timer, not a Direction)
+        ch.preConversationDir = adj.facingDir
+        const entry = getCatalogEntry(target.type)
+        const label = entry?.label ?? target.type.replace(/_/g, ' ').toLowerCase()
+        logIdle(ch, `going to look at the ${label}`)
+        return true
+      }
+      return false
     }
 
     case IdleActionType.STAND_AND_THINK: {
@@ -614,7 +624,8 @@ function updateVisitFurniture(ch: Character, dt: number): boolean {
     // Wait for walk to complete
     if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
       ch.conversationPhase = 'talking' // arrived, start visiting
-      ch.dir = ch.wanderTimer as typeof ch.dir // restore target facing dir
+      ch.dir = ch.preConversationDir ?? Direction.DOWN // restore target facing dir
+      ch.preConversationDir = null
       ch.state = CharacterState.IDLE
       ch.frame = 0
       // Show idle think bubble while visiting furniture

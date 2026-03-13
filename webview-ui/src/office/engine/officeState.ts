@@ -30,6 +30,8 @@ import {
   MEETING_CYCLE_INTERVAL_OFFSET_SEC,
   WORK_CYCLE_DEFAULT_INTERVAL_SEC,
   WORK_CYCLE_INTERVAL_OFFSET_SEC,
+  INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC,
+  INTERACTION_CYCLE_INTERVAL_OFFSET_SEC,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -73,6 +75,8 @@ export class OfficeState {
   private meetingCycleTimers: Map<string, number> = new Map()
   /** Work cycle timers: uid → seconds until next frame change */
   private workCycleTimers: Map<string, number> = new Map()
+  /** Interaction cycle timers: uid → seconds until next frame change */
+  private interactionCycleTimers: Map<string, number> = new Map()
   /** Cached flood-filled meeting rooms (invalidated on layout change) */
   private cachedMeetingRooms: Array<Set<string>> | null = null
 
@@ -1606,6 +1610,9 @@ export class OfficeState {
 
     // ── Work cycle furniture animation ───────────────────────────
     this.updateWorkCycleSprites(dt)
+
+    // ── Interaction cycle furniture animation ──────────────────
+    this.updateInteractionCycleSprites(dt)
   }
 
   /** Advance meeting cycle sprite animations for furniture near active meeting zones. */
@@ -1768,6 +1775,134 @@ export class OfficeState {
       return lo + Math.random() * (max - lo)
     }
     return WORK_CYCLE_DEFAULT_INTERVAL_SEC
+  }
+
+  private interactionCycleDebugLogged = false
+  /** Advance interaction cycle sprite animations for furniture being interacted with by idle characters
+   *  or being looked at by any seated character (active or idle). */
+  private updateInteractionCycleSprites(dt: number): void {
+    if (!this.interactionCycleDebugLogged) {
+      this.interactionCycleDebugLogged = true
+      const withCycles = this.furniture.filter(f => f.interactionCycleSprites && f.interactionCycleSprites.length > 0)
+      console.log(`[InteractionCycle] ${withCycles.length} furniture items have interaction cycles out of ${this.furniture.length} total`)
+      for (const f of withCycles) {
+        console.log(`  - uid=${f.uid} at (${f.col},${f.row}) sprites=${f.interactionCycleSprites!.length}`)
+      }
+      const sittingChars = [...this.characters.values()].filter(ch => ch.seatId && isSittingState(ch.state))
+      console.log(`[InteractionCycle] ${sittingChars.length} seated characters`)
+      for (const ch of sittingChars) {
+        const seat = this.seats.get(ch.seatId!)
+        console.log(`  - Agent ${ch.id} seat=${ch.seatId} facingDir=${seat?.facingDir} at tile (${ch.tileCol},${ch.tileRow})`)
+      }
+    }
+    // Build set of tiles being faced by any seated character (active or idle)
+    const facingTiles = new Set<string>()
+    for (const ch of this.characters.values()) {
+      if (!ch.seatId) continue
+      if (!isSittingState(ch.state)) continue
+      const seat = this.seats.get(ch.seatId)
+      if (!seat) continue
+      const dCol = seat.facingDir === Direction.RIGHT ? 1 : seat.facingDir === Direction.LEFT ? -1 : 0
+      const dRow = seat.facingDir === Direction.DOWN ? 1 : seat.facingDir === Direction.UP ? -1 : 0
+      for (let d = 1; d <= AUTO_ON_FACING_DEPTH; d++) {
+        facingTiles.add(`${seat.seatCol + dCol * d},${seat.seatRow + dRow * d}`)
+      }
+      for (let d = 1; d <= AUTO_ON_SIDE_DEPTH; d++) {
+        const baseCol = seat.seatCol + dCol * d
+        const baseRow = seat.seatRow + dRow * d
+        if (dCol !== 0) {
+          facingTiles.add(`${baseCol},${baseRow - 1}`)
+          facingTiles.add(`${baseCol},${baseRow + 1}`)
+        } else {
+          facingTiles.add(`${baseCol - 1},${baseRow}`)
+          facingTiles.add(`${baseCol + 1},${baseRow}`)
+        }
+      }
+    }
+
+    // Build set of tiles adjacent to characters doing VISIT_FURNITURE idle action (in 'talking' phase)
+    const interactingTiles = new Set<string>()
+    for (const ch of this.characters.values()) {
+      if (ch.idleAction !== IdleActionType.VISIT_FURNITURE) continue
+      if (ch.conversationPhase !== 'talking') continue
+      // The character is standing adjacent to furniture — add tiles they're facing
+      const dCol = ch.dir === Direction.RIGHT ? 1 : ch.dir === Direction.LEFT ? -1 : 0
+      const dRow = ch.dir === Direction.DOWN ? 1 : ch.dir === Direction.UP ? -1 : 0
+      // Add the tile they're looking at (1 deep)
+      interactingTiles.add(`${ch.tileCol + dCol},${ch.tileRow + dRow}`)
+      // Also add 1 tile further (for multi-tile furniture)
+      interactingTiles.add(`${ch.tileCol + dCol * 2},${ch.tileRow + dRow * 2}`)
+    }
+
+    for (const f of this.furniture) {
+      if (!f.interactionCycleSprites || !f.uid) continue
+
+      // Check if any footprint tile is being interacted with or looked at
+      let beingInteracted = false
+      outer: for (let dr = 0; dr < f.footprintH; dr++) {
+        for (let dc = 0; dc < f.footprintW; dc++) {
+          const key = `${f.col + dc},${f.row + dr}`
+          if (interactingTiles.has(key) || facingTiles.has(key)) {
+            beingInteracted = true
+            break outer
+          }
+        }
+      }
+
+      const uid = f.uid
+      if (!beingInteracted) {
+        if (f.activeInteractionSprite !== null && f.activeInteractionSprite !== undefined) {
+          f.activeInteractionSprite = null
+          f.interactionCycleIdx = 0
+          this.interactionCycleTimers.delete(uid)
+        }
+        continue
+      }
+
+      let timeLeft = this.interactionCycleTimers.get(uid)
+
+      if (timeLeft === undefined) {
+        f.interactionCycleIdx = f.randomInteractionCycle
+          ? Math.floor(Math.random() * f.interactionCycleSprites.length)
+          : 0
+        f.activeInteractionSprite = f.interactionCycleSprites[f.interactionCycleIdx]
+        this.interactionCycleTimers.set(uid, this.computeInteractionCycleInterval(f))
+        continue
+      }
+
+      // Restore sprite if missing (e.g. after rebuildFurnitureInstances)
+      if (!f.activeInteractionSprite) f.activeInteractionSprite = f.interactionCycleSprites[f.interactionCycleIdx ?? 0]
+
+      timeLeft -= dt
+      if (timeLeft <= 0) {
+        const count = f.interactionCycleSprites.length
+        if (f.randomInteractionCycle) {
+          f.interactionCycleIdx = Math.floor(Math.random() * count)
+        } else {
+          f.interactionCycleIdx = ((f.interactionCycleIdx ?? 0) + 1) % count
+        }
+        f.activeInteractionSprite = f.interactionCycleSprites[f.interactionCycleIdx]
+        timeLeft = this.computeInteractionCycleInterval(f)
+      }
+      this.interactionCycleTimers.set(uid, timeLeft)
+    }
+  }
+
+  /** Compute the next interaction cycle interval in seconds for a furniture instance. */
+  private computeInteractionCycleInterval(f: { interactionCycleIntervalMin?: number; interactionCycleIntervalMax?: number }): number {
+    const min = f.interactionCycleIntervalMin
+    const max = f.interactionCycleIntervalMax
+    if (min !== undefined && max !== undefined) {
+      return min + Math.random() * (max - min)
+    }
+    if (min !== undefined) {
+      return min + Math.random() * INTERACTION_CYCLE_INTERVAL_OFFSET_SEC
+    }
+    if (max !== undefined) {
+      const lo = Math.max(0, max - INTERACTION_CYCLE_INTERVAL_OFFSET_SEC)
+      return lo + Math.random() * (max - lo)
+    }
+    return INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC
   }
 
   getCharacters(): Character[] {

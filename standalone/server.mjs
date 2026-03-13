@@ -133,10 +133,11 @@ function loadCycleFrames(framePaths, width, height, sprites) {
     const spriteId = framePath.split('/').pop().replace(/\.[^.]+$/, '')  // basename without ext
     let fp = framePath.startsWith('assets/') ? framePath : `assets/${framePath}`
     const fullPath = join(ASSETS_ROOT, fp)
-    if (!existsSync(fullPath)) continue
+    if (!existsSync(fullPath)) { console.log(`  [CycleFrames] NOT FOUND: ${fullPath}`); continue }
     try {
       sprites[spriteId] = pngToSpriteData(readFileSync(fullPath), width, height)
       resolvedIds.push(spriteId)
+      console.log(`  [CycleFrames] Loaded: ${spriteId} from ${fullPath}`)
     } catch { /* skip bad frames */ }
   }
   return resolvedIds
@@ -159,6 +160,8 @@ function loadFurnitureAssets() {
       asset.meetingCycle = loadCycleFrames(asset.meetingCycle, asset.width, asset.height, sprites)
     if (Array.isArray(asset.workCycle) && asset.workCycle.length > 0)
       asset.workCycle = loadCycleFrames(asset.workCycle, asset.width, asset.height, sprites)
+    if (Array.isArray(asset.interactionCycle) && asset.interactionCycle.length > 0)
+      asset.interactionCycle = loadCycleFrames(asset.interactionCycle, asset.width, asset.height, sprites)
   }
   return { catalog, sprites }
 }

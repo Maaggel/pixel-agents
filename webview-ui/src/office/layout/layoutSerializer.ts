@@ -66,7 +66,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
     let zY = y + spriteH
 
     // Chair z-sorting: ensure characters sitting on chairs render correctly
-    if (entry.category === 'chairs') {
+    if (entry.isSeat) {
       if (entry.orientation === 'back') {
         // Back-facing chairs render IN FRONT of the seated character
         // (the chair back visually occludes the character behind it)
@@ -124,6 +124,15 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       if (entry.workCycleIntervalMin !== undefined) instance.workCycleIntervalMin = entry.workCycleIntervalMin
       if (entry.workCycleIntervalMax !== undefined) instance.workCycleIntervalMax = entry.workCycleIntervalMax
       instance.workCycleIdx = 0
+    }
+
+    // Attach interaction cycle data from catalog entry
+    if (entry.interactionCycleSprites && entry.interactionCycleSprites.length > 0) {
+      instance.interactionCycleSprites = entry.interactionCycleSprites
+      if (entry.randomInteractionCycle) instance.randomInteractionCycle = true
+      if (entry.interactionCycleIntervalMin !== undefined) instance.interactionCycleIntervalMin = entry.interactionCycleIntervalMin
+      if (entry.interactionCycleIntervalMax !== undefined) instance.interactionCycleIntervalMax = entry.interactionCycleIntervalMax
+      instance.interactionCycleIdx = 0
     }
 
     instances.push(instance)
@@ -208,7 +217,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   // Multi-tile chairs (e.g. 2-tile couches) produce multiple seats.
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
-    if (!entry || entry.category !== 'chairs') continue
+    if (!entry || !entry.isSeat) continue
 
     let seatCount = 0
     for (let dr = 0; dr < entry.footprintH; dr++) {

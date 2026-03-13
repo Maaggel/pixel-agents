@@ -192,8 +192,6 @@ export const SEATED_CONVERSATION_MAX_DISTANCE = 4
 export const IDLE_CHAT_BUBBLE_VARIANT_COUNT = 16
 /** Chance per second that a SIT_IDLE character will try to start a seated conversation */
 export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
-/** Furniture type substrings considered "interesting" for visit_furniture action */
-export const INTERESTING_FURNITURE_PATTERNS = ['plant', 'cooler', 'whiteboard', 'bookshelf', 'water'] as const
 
 // ── Meetings ───────────────────────────────────────────────
 export const MEETING_MIN_DURATION_SEC = 45.0
@@ -215,3 +213,7 @@ export const MEETING_CYCLE_INTERVAL_OFFSET_SEC = 2.0
 export const WORK_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
 /** Offset applied when only one bound (min or max) is defined for work cycle interval */
 export const WORK_CYCLE_INTERVAL_OFFSET_SEC = 2.0
+/** Default interval in seconds between interaction cycle frame changes (when no min/max defined) */
+export const INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
+/** Offset applied when only one bound (min or max) is defined for interaction cycle interval */
+export const INTERACTION_CYCLE_INTERVAL_OFFSET_SEC = 2.0

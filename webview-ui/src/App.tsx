@@ -149,10 +149,16 @@ function App() {
     return () => clearInterval(timer)
   }, [])
 
-  const [isDebugMode, setIsDebugMode] = useState(false)
+  const [isDebugMode, setIsDebugMode] = useState(() => {
+    try { return localStorage.getItem('pixel-agents-debug') === 'true' } catch { return false }
+  })
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false)
 
-  const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
+  const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => {
+    const next = !prev
+    try { localStorage.setItem('pixel-agents-debug', String(next)) } catch { /* ignore */ }
+    return next
+  }), [])
   const handleToggleDevConsole = useCallback(() => setIsDevConsoleOpen((prev) => !prev), [])
 
   const handleToggleNametags = useCallback(() => {

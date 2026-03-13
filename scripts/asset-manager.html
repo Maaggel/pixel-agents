@@ -326,6 +326,14 @@
           <input id="f-ontop" type="checkbox">
           <label for="f-ontop">Can Place On Surfaces</label>
         </div>
+        <div class="checkbox-item">
+          <input id="f-interactable" type="checkbox">
+          <label for="f-interactable">Interactable (idle visit)</label>
+        </div>
+        <div class="checkbox-item">
+          <input id="f-isseat" type="checkbox">
+          <label for="f-isseat">Is Seat</label>
+        </div>
       </div>
 
       <!-- Rotation Group -->
@@ -713,6 +721,8 @@ function loadForm(idx) {
   document.getElementById('f-isdesk').checked = !!a.isDesk
   document.getElementById('f-walls').checked = !!a.canPlaceOnWalls
   document.getElementById('f-ontop').checked = !!a.canPlaceOnSurfaces
+  document.getElementById('f-interactable').checked = !!a.interactable
+  document.getElementById('f-isseat').checked = !!a.isSeat
   document.getElementById('f-grouped').checked = !!a.partOfGroup
   document.getElementById('f-group-id').value = a.groupId || ''
   document.getElementById('f-orientation').value = a.orientation || 'front'
@@ -793,6 +803,8 @@ document.getElementById('btn-save').onclick = () => {
   a.isDesk = document.getElementById('f-isdesk').checked
   a.canPlaceOnWalls = document.getElementById('f-walls').checked
   a.canPlaceOnSurfaces = document.getElementById('f-ontop').checked
+  a.interactable = document.getElementById('f-interactable').checked
+  a.isSeat = document.getElementById('f-isseat').checked
   // Rotation
   a.partOfGroup = document.getElementById('f-grouped').checked
   a.groupId = document.getElementById('f-group-id').value.trim() || null

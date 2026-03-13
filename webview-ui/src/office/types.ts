@@ -114,6 +114,14 @@ export interface FurnitureInstance {
   workCycleIdx?: number
   /** Sprite to render instead of base sprite when an active agent is looking at this. Set/cleared by game loop. */
   activeWorkSprite?: SpriteData | null
+  /** Cycle frame sprites for interaction animation. Present when catalog entry has interactionCycle. */
+  interactionCycleSprites?: SpriteData[]
+  randomInteractionCycle?: boolean
+  interactionCycleIntervalMin?: number
+  interactionCycleIntervalMax?: number
+  interactionCycleIdx?: number
+  /** Sprite to render instead of base sprite when a character is interacting with this. Set/cleared by game loop. */
+  activeInteractionSprite?: SpriteData | null
 }
 
 export interface ToolActivity {
@@ -172,6 +180,10 @@ export interface FurnitureCatalogEntry {
   backgroundTiles?: number
   /** Whether this item can be placed on wall tiles */
   canPlaceOnWalls?: boolean
+  /** Whether idle characters can walk up to and interact with this furniture */
+  interactable?: boolean
+  /** Whether this furniture generates a seat (characters can sit here) */
+  isSeat?: boolean
   /** Resolved cycle frame sprites for meeting animation. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -183,6 +195,11 @@ export interface FurnitureCatalogEntry {
   randomWorkCycle?: boolean
   workCycleIntervalMin?: number
   workCycleIntervalMax?: number
+  /** Resolved cycle frame sprites for interaction animation (shown when character interacts with this). */
+  interactionCycleSprites?: SpriteData[]
+  randomInteractionCycle?: boolean
+  interactionCycleIntervalMin?: number
+  interactionCycleIntervalMax?: number
 }
 
 export interface PlacedFurniture {

@@ -1,5 +1,5 @@
 // ── Build Identity ───────────────────────────────────────────
-export const BUILD_NUMBER = 8;   // increment each VSIX package
+export const BUILD_NUMBER = 14;   // increment each VSIX package
 
 // ── Timing (ms) ──────────────────────────────────────────────
 export const JSONL_POLL_INTERVAL_MS = 1000;

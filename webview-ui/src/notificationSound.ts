@@ -7,11 +7,15 @@ import {
   NOTIFICATION_VOLUME,
 } from './constants.js'
 
-let soundEnabled = true
+let soundEnabled = (() => {
+  try { const v = localStorage.getItem('pixel-agents-sound'); if (v !== null) return v === 'true' } catch { /* ignore */ }
+  return true
+})()
 let audioCtx: AudioContext | null = null
 
 export function setSoundEnabled(enabled: boolean): void {
   soundEnabled = enabled
+  try { localStorage.setItem('pixel-agents-sound', String(enabled)) } catch { /* ignore */ }
 }
 
 export function isSoundEnabled(): boolean {

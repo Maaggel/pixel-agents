@@ -177,7 +177,7 @@ npm install && cd webview-ui && npm install && cd .. && npm run build
 ```
 Build: type-check → lint → esbuild (extension) → vite (webview). F5 for Extension Dev Host.
 
-**Packaging VSIX**: Run `vsce package` to produce the `.vsix` file. **Before each `vsce package` run**, increment `BUILD_NUMBER` in `src/constants.ts` by 1. When `version` in `package.json` is bumped to a new value, reset `BUILD_NUMBER` back to 1.
+**Packaging VSIX**: Run `vsce package -o "build/pixel-agents-{version}-build{BUILD_NUMBER}.vsix"` to produce the `.vsix` file. **CRITICAL: Before EVERY `vsce package` run**, you MUST increment `BUILD_NUMBER` in `src/constants.ts` by 1 — no exceptions, even if you just built moments ago. When `version` in `package.json` is bumped to a new value, reset `BUILD_NUMBER` back to 1. The output filename MUST include the build number (e.g., `pixel-agents-1.4.4-build14.vsix`).
 
 ## TypeScript Constraints
 

@@ -269,6 +269,41 @@ Standalone Node.js server (`standalone/server.mjs`) serves webview in browser. R
 
 ---
 
+## 15. In-Browser Asset Manager (Standalone)
+
+**Problem**: The `scripts/asset-manager.html` is a powerful tool for editing furniture metadata (categories, footprints, flags like `interactable`, `isSeat`, `canPlaceOnWalls`, etc.), but it's a standalone file that must be opened manually and works with the raw `tileset-metadata-final.json`. There's no way to directly edit the live `furniture-catalog.json` from within the standalone browser UI.
+
+**Goal**: Make the asset manager accessible from the standalone server's Settings menu and have it edit `furniture-catalog.json` directly (the file that the game actually loads).
+
+**Approach**:
+1. **Serve asset-manager.html** from the standalone server at `/asset-manager`
+2. **Add "Asset Manager" button** in the Settings modal (only visible in standalone mode via `window.__STANDALONE__` flag set by the bridge script)
+3. **Adapt asset-manager.html** to work in two modes:
+   - **Tileset mode** (existing): loads a tileset PNG + `tileset-metadata-final.json` via file picker — for the full extraction pipeline
+   - **Catalog mode** (new): loads `furniture-catalog.json` directly from the standalone server's API, shows each asset as individual sprites (loaded from the server), and saves back via HTTP POST
+4. **New API endpoints** in `server.mjs`:
+   - `GET /api/catalog` — returns the current `furniture-catalog.json`
+   - `POST /api/catalog` — writes updated catalog back to disk
+   - `GET /api/asset-sprite/:id` — serves individual furniture PNG files
+5. **Catalog editor UI**: Either adapt asset-manager.html with a catalog-mode branch, or create a simpler dedicated page (`catalog-editor.html`) that focuses on the fields most commonly edited:
+   - `interactable` (checkbox) — idle characters visit this
+   - `isSeat` (checkbox) — generates a seat
+   - `isDesk` (checkbox) — desk surface
+   - `canPlaceOnSurfaces` / `canPlaceOnWalls` (checkboxes)
+   - `backgroundTiles` (number)
+   - `category` (dropdown)
+   - `label` (text)
+   - Visual preview of each sprite at the configured footprint size
+6. **Live reload**: After saving catalog changes, the standalone server should re-run `buildDynamicCatalog()` and push updated assets to connected browsers
+
+**Implementation notes**:
+- The standalone server already loads and caches `furniture-catalog.json` at startup (`cachedFurniture`). The catalog API would read/write the source file and invalidate the cache on write.
+- Sprite PNGs are already on disk at paths like `assets/furniture/decor/PLANT_1.png` — the asset sprite endpoint just serves these.
+- Consider using the same pixel-art CSS variables for consistent styling.
+- The tileset pipeline (`scripts/0-import-tileset.ts` through `5-export-assets.ts`) remains the canonical way to add NEW assets from a sprite sheet. The catalog editor is for tuning metadata of already-exported assets.
+
+---
+
 ## Priority Order (Remaining) — easiest first
 
 1. **Standalone Avatars Same Palette (#11)** — Likely just passing palette/hueShift through `addAgent()` correctly; small fix
@@ -281,4 +316,5 @@ Standalone Node.js server (`standalone/server.mjs`) serves webview in browser. R
 8. **Toggleable View Options (#10)** — New React component + visibility flags; moderate, mostly UI wiring
 9. **Rich Idle Behaviors (#5)** — Interactions, coffee runs, etc.; larger feature, depends on zone system
 10. **Sub-Agent Persistence Setting (#3)** — Nice-to-have toggle; simple but low priority
-11. **Item Editor Improvements (#2)** — Developer tooling; low user-facing priority
+11. **In-Browser Asset Manager (#15)** — Serve asset-manager in standalone, edit catalog.json directly; moderate, mostly server + UI wiring
+12. **Item Editor Improvements (#2)** — Developer tooling; low user-facing priority

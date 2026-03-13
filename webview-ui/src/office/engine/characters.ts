@@ -198,9 +198,10 @@ export function updateCharacter(
       }
       // After sitting idle for a while, stand up and wander
       // seatTimer counts down from a pre-set value (set on state entry)
-      // Pause countdown if in a seated conversation
+      // Pause countdown during meetings/conversations (they have their own timers)
+      // WANDER is treated as "no action" — it's just a marker from returnToSeat walk
       if (ch.seatTimer > 0) {
-        if (!ch.idleAction) ch.seatTimer -= dt
+        if (!ch.idleAction || ch.idleAction === IdleActionType.WANDER) ch.seatTimer -= dt
         break
       }
       ch.state = CharacterState.IDLE
@@ -408,27 +409,30 @@ export function updateCharacter(
 
 /** Get the correct sprite frame for a character's current state and direction */
 export function getCharacterSprite(ch: Character, sprites: CharacterSprites): SpriteData {
+  // Guard: ensure dir is a valid Direction (0-3) — can be corrupted when
+  // wanderTimer (a float) is cast to dir via idle action repurposing
+  const dir = (Number.isInteger(ch.dir) && ch.dir >= 0 && ch.dir <= 3) ? ch.dir : Direction.DOWN
   switch (ch.state) {
     case CharacterState.TYPE:
       if (isReadingTool(ch.currentTool)) {
-        return sprites.reading[ch.dir][ch.frame % 2]
+        return sprites.reading[dir][ch.frame % 2]
       }
-      return sprites.typing[ch.dir][ch.frame % 2]
+      return sprites.typing[dir][ch.frame % 2]
     case CharacterState.BUILD:
       // Build: cycle through walk frames 0-2 while seated (looking around animatedly)
-      return sprites.walk[ch.dir][ch.frame % 3]
+      return sprites.walk[dir][ch.frame % 3]
     case CharacterState.SIT_IDLE:
       // Sitting idle: slow reading animation (casually looking around)
-      return sprites.reading[ch.dir][ch.frame % 2]
+      return sprites.reading[dir][ch.frame % 2]
     case CharacterState.SIT_WAIT:
       // Waiting: slow reading animation (casually looking around)
-      return sprites.reading[ch.dir][ch.frame % 2]
+      return sprites.reading[dir][ch.frame % 2]
     case CharacterState.WALK:
-      return sprites.walk[ch.dir][ch.frame % 4]
+      return sprites.walk[dir][ch.frame % 4]
     case CharacterState.IDLE:
-      return sprites.walk[ch.dir][1]
+      return sprites.walk[dir][1]
     default:
-      return sprites.walk[ch.dir][1]
+      return sprites.walk[dir][1]
   }
 }
 

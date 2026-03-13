@@ -16,7 +16,7 @@ export function getProjectDirPath(cwd?: string): string | null {
 	if (!workspacePath) return null;
 	// Match Claude Code's hashing: only replace : \ / with -
 	// (preserves dots, underscores, spaces, etc. in path names)
-	const dirName = workspacePath.replace(/[:\\/]/g, '-');
+	const dirName = workspacePath.replace(/[:\\\/]/g, '-');
 	const projectDir = path.join(os.homedir(), '.claude', 'projects', dirName);
 	// Check if the dir exists as-is; if not, try case-insensitive match
 	// (Windows drive letter may be uppercase or lowercase)

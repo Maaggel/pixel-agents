@@ -1,5 +1,5 @@
 // ── Build Identity ───────────────────────────────────────────
-export const BUILD_NUMBER = 14;   // increment each VSIX package
+export const BUILD_NUMBER = 15;   // increment each VSIX package
 
 // ── Timing (ms) ──────────────────────────────────────────────
 export const JSONL_POLL_INTERVAL_MS = 1000;
@@ -10,6 +10,9 @@ export const PERMISSION_TIMER_DELAY_MS = 7000;
 export const TEXT_IDLE_DELAY_MS = 5000;
 export const THINKING_GRACE_MS = 30000;
 export const TOOL_ICON_HOLD_MS = 1200;
+/** After a tool finishes mid-turn (no turn_duration yet), stay active for this long
+ *  to cover the gap while Claude thinks between tool calls. */
+export const MID_TURN_THINKING_GRACE_MS = 30000;
 
 // ── Display Truncation ──────────────────────────────────────
 export const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;

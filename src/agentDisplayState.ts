@@ -1,6 +1,6 @@
 import type * as vscode from 'vscode';
 import type { AgentState } from './types.js';
-import { TEXT_IDLE_DELAY_MS, THINKING_GRACE_MS, TOOL_ICON_HOLD_MS } from './constants.js';
+import { TEXT_IDLE_DELAY_MS, THINKING_GRACE_MS, TOOL_ICON_HOLD_MS, MID_TURN_THINKING_GRACE_MS } from './constants.js';
 
 /**
  * Consolidated display state for an agent character.
@@ -54,6 +54,20 @@ export function computeAgentDisplayState(agent: AgentState, now?: number): Agent
 			toolStatus: agent.lastToolStatus,
 			bubbleType: agent.permissionSent ? 'permission' : null,
 			idleHint: null,
+		};
+	}
+
+	// ── 1c. Mid-turn thinking grace ──
+	// After a tool finishes but before the turn ends (no turn_duration yet),
+	// Claude may be thinking for 10-30s between tool calls. Stay active.
+	if (agent.lastToolDoneAt !== null && agent.turnEndedAt === null &&
+		(t - agent.lastToolDoneAt) < MID_TURN_THINKING_GRACE_MS) {
+		return {
+			isActive: true,
+			currentTool: null,
+			toolStatus: null,
+			bubbleType: agent.permissionSent ? 'permission' : null,
+			idleHint: 'thinking',
 		};
 	}
 

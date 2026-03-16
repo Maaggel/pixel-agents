@@ -44,6 +44,11 @@ export interface LoadedAssetData {
     randomInteractionCycle?: boolean
     interactionCycleIntervalMin?: number
     interactionCycleIntervalMax?: number
+    /** Resolved sprite IDs for idle cycle animation frames */
+    idleCycle?: string[]
+    randomIdleCycle?: boolean
+    idleCycleIntervalMin?: number
+    idleCycleIntervalMax?: number
   }>
   sprites: Record<string, SpriteData>
 }
@@ -135,6 +140,17 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
         .filter((s): s is SpriteData => s !== undefined)
       if (resolved.length > 0) interactionCycleSprites = resolved
     }
+    // Resolve idleCycle sprite IDs to SpriteData arrays
+    let idleCycleSprites: SpriteData[] | undefined
+    if (asset.idleCycle && asset.idleCycle.length > 0) {
+      console.log(`[IdleCycle] Asset ${asset.id} has idleCycle IDs:`, asset.idleCycle,
+        'resolved:', asset.idleCycle.map((id: string) => !!assets.sprites[id]))
+      const resolved = asset.idleCycle
+        .map((id: string) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) idleCycleSprites = resolved
+      console.log(`[IdleCycle] Asset ${asset.id}: ${resolved.length} sprites resolved`)
+    }
     return {
       type: asset.id,
       label: asset.label,
@@ -161,6 +177,10 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.randomInteractionCycle ? { randomInteractionCycle: true } : {}),
       ...(asset.interactionCycleIntervalMin !== undefined ? { interactionCycleIntervalMin: asset.interactionCycleIntervalMin } : {}),
       ...(asset.interactionCycleIntervalMax !== undefined ? { interactionCycleIntervalMax: asset.interactionCycleIntervalMax } : {}),
+      ...(idleCycleSprites ? { idleCycleSprites } : {}),
+      ...(asset.randomIdleCycle ? { randomIdleCycle: true } : {}),
+      ...(asset.idleCycleIntervalMin !== undefined ? { idleCycleIntervalMin: asset.idleCycleIntervalMin } : {}),
+      ...(asset.idleCycleIntervalMax !== undefined ? { idleCycleIntervalMax: asset.idleCycleIntervalMax } : {}),
     }
   }).filter((e): e is CatalogEntryWithCategory => e !== null)
 

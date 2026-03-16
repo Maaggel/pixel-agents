@@ -123,6 +123,14 @@ export interface FurnitureInstance {
   interactionCycleIdx?: number
   /** Sprite to render instead of base sprite when a character is interacting with this. Set/cleared by game loop. */
   activeInteractionSprite?: SpriteData | null
+  /** Cycle frame sprites for idle animation. Always runs when no other cycle is active. */
+  idleCycleSprites?: SpriteData[]
+  randomIdleCycle?: boolean
+  idleCycleIntervalMin?: number
+  idleCycleIntervalMax?: number
+  idleCycleIdx?: number
+  /** Sprite to render when no work/interaction/meeting cycle is active. Set/cleared by game loop. */
+  activeIdleSprite?: SpriteData | null
 }
 
 export interface ToolActivity {
@@ -201,6 +209,11 @@ export interface FurnitureCatalogEntry {
   randomInteractionCycle?: boolean
   interactionCycleIntervalMin?: number
   interactionCycleIntervalMax?: number
+  /** Resolved cycle frame sprites for idle animation (always runs when no other cycle is active). */
+  idleCycleSprites?: SpriteData[]
+  randomIdleCycle?: boolean
+  idleCycleIntervalMin?: number
+  idleCycleIntervalMax?: number
 }
 
 export interface PlacedFurniture {

@@ -226,3 +226,7 @@ export const WORK_CYCLE_INTERVAL_OFFSET_SEC = 2.0
 export const INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
 /** Offset applied when only one bound (min or max) is defined for interaction cycle interval */
 export const INTERACTION_CYCLE_INTERVAL_OFFSET_SEC = 2.0
+/** Default interval in seconds between idle cycle frame changes (when no min/max defined) */
+export const IDLE_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
+/** Offset applied when only one bound (min or max) is defined for idle cycle interval */
+export const IDLE_CYCLE_INTERVAL_OFFSET_SEC = 2.0

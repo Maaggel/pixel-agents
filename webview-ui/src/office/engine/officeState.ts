@@ -32,6 +32,8 @@ import {
   WORK_CYCLE_INTERVAL_OFFSET_SEC,
   INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC,
   INTERACTION_CYCLE_INTERVAL_OFFSET_SEC,
+  IDLE_CYCLE_DEFAULT_INTERVAL_SEC,
+  IDLE_CYCLE_INTERVAL_OFFSET_SEC,
   IDLE_ZONE_WEIGHT_REST,
   IDLE_ZONE_WEIGHT_KITCHEN,
   IDLE_ZONE_WEIGHT_OTHER,
@@ -81,6 +83,8 @@ export class OfficeState {
   private workCycleTimers: Map<string, number> = new Map()
   /** Interaction cycle timers: uid → seconds until next frame change */
   private interactionCycleTimers: Map<string, number> = new Map()
+  /** Idle cycle timers: uid → seconds until next frame change */
+  private idleCycleTimers: Map<string, number> = new Map()
   /** Cached flood-filled meeting rooms (invalidated on layout change) */
   private cachedMeetingRooms: Array<Set<string>> | null = null
 
@@ -1689,6 +1693,9 @@ export class OfficeState {
 
     // ── Interaction cycle furniture animation ──────────────────
     this.updateInteractionCycleSprites(dt)
+
+    // ── Idle cycle furniture animation ──────────────────────
+    this.updateIdleCycleSprites(dt)
   }
 
   /** Advance meeting cycle sprite animations for furniture near active meeting zones. */
@@ -1979,6 +1986,70 @@ export class OfficeState {
       return lo + Math.random() * (max - lo)
     }
     return INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC
+  }
+
+  /** Advance idle cycle sprite animations. Always runs when no other cycle (work/interaction/meeting) is active. */
+  private updateIdleCycleSprites(dt: number): void {
+    for (const f of this.furniture) {
+      if (!f.idleCycleSprites || !f.uid) continue
+
+      const uid = f.uid
+
+      // Idle cycle is suppressed when any other cycle is active on this furniture
+      if (f.activeWorkSprite || f.activeInteractionSprite || f.activeMeetingSprite) {
+        if (f.activeIdleSprite !== null && f.activeIdleSprite !== undefined) {
+          f.activeIdleSprite = null
+          f.idleCycleIdx = 0
+          this.idleCycleTimers.delete(uid)
+        }
+        continue
+      }
+
+      let timeLeft = this.idleCycleTimers.get(uid)
+
+      if (timeLeft === undefined) {
+        // First tick: immediately show first frame, schedule next change
+        f.idleCycleIdx = f.randomIdleCycle
+          ? Math.floor(Math.random() * f.idleCycleSprites.length)
+          : 0
+        f.activeIdleSprite = f.idleCycleSprites[f.idleCycleIdx]
+        this.idleCycleTimers.set(uid, this.computeIdleCycleInterval(f))
+        continue
+      }
+
+      // Restore sprite if missing (e.g. after rebuildFurnitureInstances)
+      if (!f.activeIdleSprite) f.activeIdleSprite = f.idleCycleSprites[f.idleCycleIdx ?? 0]
+
+      timeLeft -= dt
+      if (timeLeft <= 0) {
+        const count = f.idleCycleSprites.length
+        if (f.randomIdleCycle) {
+          f.idleCycleIdx = Math.floor(Math.random() * count)
+        } else {
+          f.idleCycleIdx = ((f.idleCycleIdx ?? 0) + 1) % count
+        }
+        f.activeIdleSprite = f.idleCycleSprites[f.idleCycleIdx]
+        timeLeft = this.computeIdleCycleInterval(f)
+      }
+      this.idleCycleTimers.set(uid, timeLeft)
+    }
+  }
+
+  /** Compute the next idle cycle interval in seconds for a furniture instance. */
+  private computeIdleCycleInterval(f: { idleCycleIntervalMin?: number; idleCycleIntervalMax?: number }): number {
+    const min = f.idleCycleIntervalMin
+    const max = f.idleCycleIntervalMax
+    if (min !== undefined && max !== undefined) {
+      return min + Math.random() * (max - min)
+    }
+    if (min !== undefined) {
+      return min + Math.random() * IDLE_CYCLE_INTERVAL_OFFSET_SEC
+    }
+    if (max !== undefined) {
+      const lo = Math.max(0, max - IDLE_CYCLE_INTERVAL_OFFSET_SEC)
+      return lo + Math.random() * (max - lo)
+    }
+    return IDLE_CYCLE_DEFAULT_INTERVAL_SEC
   }
 
   getCharacters(): Character[] {

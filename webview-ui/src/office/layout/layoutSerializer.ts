@@ -135,6 +135,16 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       instance.interactionCycleIdx = 0
     }
 
+    // Attach idle cycle data from catalog entry
+    if (entry.idleCycleSprites && entry.idleCycleSprites.length > 0) {
+      console.log(`[IdleCycle] Instance ${item.uid} (${item.type}): attaching ${entry.idleCycleSprites.length} idle cycle sprites`)
+      instance.idleCycleSprites = entry.idleCycleSprites
+      if (entry.randomIdleCycle) instance.randomIdleCycle = true
+      if (entry.idleCycleIntervalMin !== undefined) instance.idleCycleIntervalMin = entry.idleCycleIntervalMin
+      if (entry.idleCycleIntervalMax !== undefined) instance.idleCycleIntervalMax = entry.idleCycleIntervalMax
+      instance.idleCycleIdx = 0
+    }
+
     instances.push(instance)
   }
   return instances

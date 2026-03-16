@@ -2,6 +2,8 @@
 
 VS Code extension with embedded React webview: pixel art office where AI agents (Claude Code terminals) are animated characters.
 
+**Testing**: The developer ALWAYS uses the standalone viewer (`standalone.sh` / `standalone.bat`) for testing, not the Extension Dev Host. When debugging webview issues, check the standalone browser's DevTools console (F12), not VS Code's.
+
 ## Architecture
 
 ```

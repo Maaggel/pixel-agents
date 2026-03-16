@@ -60,6 +60,11 @@ export interface FurnitureAsset {
   randomInteractionCycle?: boolean
   interactionCycleIntervalMin?: number
   interactionCycleIntervalMax?: number
+  /** Sprite IDs for idle cycle animation (resolved from file paths during load) */
+  idleCycle?: string[]
+  randomIdleCycle?: boolean
+  idleCycleIntervalMin?: number
+  idleCycleIntervalMax?: number
 }
 
 export interface LoadedAssets {
@@ -192,6 +197,33 @@ export async function loadFurnitureAssets(
             }
           }
           asset.interactionCycle = resolvedIds
+        }
+
+        // Load idleCycle frame sprites (file paths → sprite IDs)
+        if (Array.isArray(asset.idleCycle)) {
+          const rawCycle = asset.idleCycle
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Idle cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading idle cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.idleCycle = resolvedIds
         }
       } catch (err) {
         console.warn(`  ⚠️  Error loading ${asset.id}: ${err instanceof Error ? err.message : err}`)

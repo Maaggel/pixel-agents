@@ -994,6 +994,28 @@ export const BUBBLE_IDLE_THINK_SPRITE: SpriteData = (() => {
   ]
 })()
 
+/** Idle eat bubble: fork and knife silhouette (11x13) — warm orange tint */
+export const BUBBLE_IDLE_EAT_SPRITE: SpriteData = (() => {
+  const B = '#886644' // warm border
+  const F = '#FFF3E0' // warm cream fill
+  const U = '#333333' // utensil dark
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, U, F, U, F, F, U, F, B],
+    [B, F, F, U, F, U, F, F, U, F, B],
+    [B, F, F, U, F, U, F, U, U, F, B],
+    [B, F, F, U, U, U, F, U, F, F, B],
+    [B, F, F, F, U, F, F, U, F, F, B],
+    [B, F, F, F, U, F, F, U, F, F, B],
+    [B, F, F, F, U, F, F, U, F, F, B],
+    [B, F, F, F, U, F, F, U, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 // ── Character Sprites ───────────────────────────────────────────
 // 16x24 characters with palette substitution
 

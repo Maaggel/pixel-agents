@@ -16,6 +16,7 @@ import {
   SEAT_REST_MAX_SEC,
   INITIAL_IDLE_SEAT_REST_MIN_SEC,
   INITIAL_IDLE_SEAT_REST_MAX_SEC,
+  SEAT_RETURN_SAME_CHANCE,
 } from '../../constants.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 
@@ -106,6 +107,7 @@ export function createCharacter(
     conversationPhase: null,
     chatBubbleVariant: 0,
     preConversationDir: null,
+    meetingGroupId: null,
     isSubagent: false,
     parentAgentId: null,
     matrixEffect: null,
@@ -121,6 +123,7 @@ export function updateCharacter(
   seats: Map<string, Seat>,
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
+  pickNewSeat?: (excludeSeatId: string | null) => string | null,
 ): void {
   ch.frameTimer += dt
 
@@ -204,6 +207,8 @@ export function updateCharacter(
         if (!ch.idleAction || ch.idleAction === IdleActionType.WANDER) ch.seatTimer -= dt
         break
       }
+      // Don't leave seat if an active idle action keeps us seated (e.g. eating, meeting)
+      if (ch.idleAction && ch.idleAction !== IdleActionType.WANDER) break
       ch.state = CharacterState.IDLE
       ch.frame = 0
       ch.frameTimer = 0
@@ -269,11 +274,26 @@ export function updateCharacter(
         }
         break
       }
+      // Skip wander logic when engaged in a non-wander idle action (conversation, meeting, etc.)
+      if (ch.idleAction && ch.idleAction !== IdleActionType.WANDER) break
+
       // Countdown wander timer
       ch.wanderTimer -= dt
       if (ch.wanderTimer <= 0) {
-        // Check if we've wandered enough — return to seat for a rest
+        // Check if we've wandered enough — return to a seat for a rest
         if (ch.wanderCount >= ch.wanderLimit && ch.seatId) {
+          // 40% chance to return to same seat, 60% chance to pick a new one
+          if (Math.random() >= SEAT_RETURN_SAME_CHANCE && pickNewSeat) {
+            const newSeatId = pickNewSeat(ch.seatId)
+            if (newSeatId) {
+              const oldSeat = seats.get(ch.seatId)
+              if (oldSeat) oldSeat.assigned = false
+              const newSeat = seats.get(newSeatId)
+              if (newSeat) newSeat.assigned = true
+              ch.seatId = newSeatId
+              logIdle(ch, 'heading to a new desk')
+            }
+          }
           const seat = seats.get(ch.seatId)
           if (seat) {
             const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)

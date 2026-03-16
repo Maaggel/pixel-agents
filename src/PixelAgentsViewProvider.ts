@@ -24,6 +24,8 @@ import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, updateAgentConfig, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
 import type { AgentDefinitionWatcher } from './agentDetector.js';
 import { computeAgentDisplayState, registerDisplayStateCallback, tickAllAgents } from './agentDisplayState.js';
+import { createRelayClient } from './relayClient.js';
+import type { RelayClient } from './relayClient.js';
 
 export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	nextAgentId = { current: 1 };
@@ -54,6 +56,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
 	// Cross-window sync
 	private syncManager: SyncManager | null = null;
+	private relayClient: RelayClient | null = null;
 	// Deterministic sync file ID based on workspace folder — ensures the same
 	// workspace always writes to the same sync file, even across window reloads.
 	private readonly windowId = PixelAgentsViewProvider.workspaceSyncId();
@@ -289,6 +292,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		} else if (message.type === 'saveLayout') {
 			this.layoutWatcher?.markOwnWrite();
 			writeLayoutToFile(message.layout as Record<string, unknown>);
+			this.relayClient?.pushLayout(message.layout as Record<string, unknown>);
 		} else if (message.type === 'useDefaultLayout') {
 			if (this.defaultLayout) {
 				this.layoutWatcher?.markOwnWrite();
@@ -808,6 +812,17 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 		this.syncManager = createSyncManager(this.windowId, (windows) => {
 			this.handleRemoteWindowChange(windows);
 		});
+		// Initialize remote relay if configured
+		const relayUrl = vscode.workspace.getConfiguration('pixel-agents').get<string>('relayUrl', '');
+		const relayToken = vscode.workspace.getConfiguration('pixel-agents').get<string>('relayToken', '');
+		if (relayUrl && relayToken) {
+			this.relayClient = createRelayClient(relayUrl, relayToken, (layout) => {
+				// Incoming layout from remote viewer — write to disk and push to webview
+				this.layoutWatcher?.markOwnWrite();
+				writeLayoutToFile(layout);
+				this.webview?.postMessage({ type: 'layoutLoaded', layout });
+			}, (msg) => this.outputChannel.appendLine(msg));
+		}
 		// Sync file writes whenever any agent's display state changes
 		// (timer fires, tool starts/ends, permission detected, etc.)
 		registerDisplayStateCallback(() => this.scheduleSyncWrite());
@@ -880,7 +895,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			let hueShift = 0;
 			let seatId: string | null = null;
 			const unnamedIdx = unnamedCounts.get(agentProjectName) ?? 0;
-			let name = unnamedIdx === 0 ? `${agentProjectName} Main` : `${agentProjectName} #${unnamedIdx + 1}`;
+			let name = unnamedIdx === 0 ? `${agentProjectName} Lead` : `${agentProjectName} #${unnamedIdx + 1}`;
 
 			if (agent.agentDefinitionId && config?.agents[agent.agentDefinitionId]) {
 				const ac = config.agents[agent.agentDefinitionId];
@@ -961,6 +976,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 			updatedAt: Date.now(),
 		};
 		this.syncManager.writeState(state);
+		this.relayClient?.pushState(state);
 
 		// ── Sync-based webview reconciliation (same logic as standalone bridge) ──
 		// Compare current agent list to what we last sent. Send standard messages
@@ -1137,6 +1153,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	dispose() {
+		this.relayClient?.dispose();
+		this.relayClient = null;
 		this.syncManager?.dispose();
 		this.syncManager = null;
 		if (this.syncWriteTimer) {

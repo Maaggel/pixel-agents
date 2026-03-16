@@ -22,6 +22,13 @@ export const SEAT_REST_MAX_SEC = 180.0
 /** How long agents sit at their desk before wandering after finishing work */
 export const INITIAL_IDLE_SEAT_REST_MIN_SEC = 45.0
 export const INITIAL_IDLE_SEAT_REST_MAX_SEC = 120.0
+/** Chance (0-1) to return to the same seat after wandering. 0.4 = 40% same, 60% new seat. */
+export const SEAT_RETURN_SAME_CHANCE = 0.4
+/** Weighted zone preferences for idle seat selection (rest > kitchen > work/any).
+ *  Weights are relative — if a zone has no free seats, its weight is redistributed. */
+export const IDLE_ZONE_WEIGHT_REST = 50
+export const IDLE_ZONE_WEIGHT_KITCHEN = 30
+export const IDLE_ZONE_WEIGHT_OTHER = 20
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3
@@ -186,6 +193,8 @@ export const THINK_MIN_DURATION_SEC = 0.5
 export const THINK_MAX_DURATION_SEC = 3.0
 export const VISIT_MIN_DURATION_SEC = 3.0
 export const VISIT_MAX_DURATION_SEC = 6.0
+export const EAT_MIN_DURATION_SEC = 15.0
+export const EAT_MAX_DURATION_SEC = 35.0
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4
 /** Number of idle chat bubble emoji variants */

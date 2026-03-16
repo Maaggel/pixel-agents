@@ -111,7 +111,7 @@ export function ensurePixelAgentsConfig(
 	if (existing) {
 		let changed = false;
 
-		// Add missing definitions
+		// Add missing definitions + sync names from definitions
 		for (const def of definitions) {
 			if (!existing.agents[def.definitionId]) {
 				existing.agents[def.definitionId] = {
@@ -121,6 +121,10 @@ export function ensurePixelAgentsConfig(
 					hueShift: 0,
 					seatId: null,
 				};
+				changed = true;
+			} else if (existing.agents[def.definitionId].name !== def.name) {
+				// Sync name from definition (e.g. "Main" → "Lead")
+				existing.agents[def.definitionId].name = def.name;
 				changed = true;
 			}
 		}

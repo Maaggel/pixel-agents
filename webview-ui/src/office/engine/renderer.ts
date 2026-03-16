@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -32,9 +32,6 @@ import {
   NAMETAG_MAX_CHARS,
   NAMETAG_DOT_GAP,
   FALLBACK_FLOOR_COLOR,
-  SEAT_OWN_COLOR,
-  SEAT_AVAILABLE_COLOR,
-  SEAT_BUSY_COLOR,
   GRID_LINE_COLOR,
   VOID_TILE_OUTLINE_COLOR,
   VOID_TILE_DASH_PATTERN,
@@ -195,45 +192,6 @@ export function renderScene(
 
   for (const d of drawables) {
     d.draw(ctx)
-  }
-}
-
-// ── Seat indicators ─────────────────────────────────────────────
-
-export function renderSeatIndicators(
-  ctx: CanvasRenderingContext2D,
-  seats: Map<string, Seat>,
-  characters: Map<number, Character>,
-  selectedAgentId: number | null,
-  hoveredTile: { col: number; row: number } | null,
-  offsetX: number,
-  offsetY: number,
-  zoom: number,
-): void {
-  if (selectedAgentId === null || !hoveredTile) return
-  const selectedChar = characters.get(selectedAgentId)
-  if (!selectedChar) return
-
-  // Only show indicator for the hovered seat tile
-  for (const [uid, seat] of seats) {
-    if (seat.seatCol !== hoveredTile.col || seat.seatRow !== hoveredTile.row) continue
-
-    const s = TILE_SIZE * zoom
-    const x = offsetX + seat.seatCol * s
-    const y = offsetY + seat.seatRow * s
-
-    if (selectedChar.seatId === uid) {
-      // Selected agent's own seat — blue
-      ctx.fillStyle = SEAT_OWN_COLOR
-    } else if (!seat.assigned) {
-      // Available seat — green
-      ctx.fillStyle = SEAT_AVAILABLE_COLOR
-    } else {
-      // Busy (assigned to another agent) — red
-      ctx.fillStyle = SEAT_BUSY_COLOR
-    }
-    ctx.fillRect(x, y, s, s)
-    break
   }
 }
 
@@ -471,7 +429,7 @@ export function renderBubbles(
 
     // Compute opacity: permission = full, talking/waiting/idle = fade in last 0.5s
     let alpha = 1.0
-    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
@@ -493,6 +451,8 @@ export function renderBubbles(
       sprite = IDLE_CHAT_BUBBLE_VARIANTS[ch.chatBubbleVariant % IDLE_CHAT_BUBBLE_VARIANTS.length]
     } else if (ch.bubbleType === 'idle_think') {
       sprite = BUBBLE_IDLE_THINK_SPRITE
+    } else if (ch.bubbleType === 'idle_eat') {
+      sprite = BUBBLE_IDLE_EAT_SPRITE
     } else if (ch.bubbleType === 'talking') {
       sprite = BUBBLE_TALKING_SPRITE
     } else {
@@ -730,10 +690,6 @@ export function renderFrame(
     renderZoneOverlay(ctx, editor.zones, editor.zoneCols, offsetX, offsetY, zoom)
   }
 
-  // Seat indicators (below furniture/characters, on top of floor)
-  if (selection) {
-    renderSeatIndicators(ctx, selection.seats, selection.characters, selection.selectedAgentId, selection.hoveredTile, offsetX, offsetY, zoom)
-  }
 
   // Build wall instances for z-sorting with furniture and characters
   const wallInstances = hasWallSprites()

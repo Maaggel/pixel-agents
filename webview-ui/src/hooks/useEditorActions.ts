@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { OfficeState } from '../office/engine/officeState.js'
 import type { EditorState } from '../office/editor/editorState.js'
 import { EditTool } from '../office/types.js'
@@ -41,6 +41,17 @@ export interface EditorActions {
   handleDragMove: (uid: string, newCol: number, newRow: number) => void
 }
 
+function loadSavedPan(): { x: number; y: number } {
+  try {
+    const saved = localStorage.getItem('pixel-agents-pan')
+    if (saved) {
+      const parsed = JSON.parse(saved) as { x: number; y: number }
+      if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) return parsed
+    }
+  } catch { /* ignore */ }
+  return { x: 0, y: 0 }
+}
+
 export function useEditorActions(
   getOfficeState: () => OfficeState,
   editorState: EditorState,
@@ -48,10 +59,32 @@ export function useEditorActions(
   const [isEditMode, setIsEditMode] = useState(false)
   const [editorTick, setEditorTick] = useState(0)
   const [isDirty, setIsDirty] = useState(false)
-  const [zoom, setZoom] = useState(defaultZoom)
+  const [zoom, setZoom] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pixel-agents-zoom')
+      if (saved !== null) {
+        const v = Number(saved)
+        if (Number.isFinite(v) && v >= ZOOM_MIN && v <= ZOOM_MAX) return v
+      }
+    } catch { /* ignore */ }
+    return defaultZoom()
+  })
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const panRef = useRef({ x: 0, y: 0 })
+  const panRef = useRef(loadSavedPan())
   const lastSavedLayoutRef = useRef<OfficeLayout | null>(null)
+
+  // Persist zoom to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('pixel-agents-zoom', String(zoom)) } catch { /* ignore */ }
+  }, [zoom])
+
+  // Persist pan to localStorage on an interval (panRef is mutable, not state)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try { localStorage.setItem('pixel-agents-pan', JSON.stringify(panRef.current)) } catch { /* ignore */ }
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Called by useExtensionMessages on layoutLoaded to set the initial checkpoint
   const setLastSavedLayout = useCallback((layout: OfficeLayout) => {
@@ -431,7 +464,7 @@ export function useEditorActions(
         editorState.selectedFurnitureUid = hit ? hit.uid : null
         setEditorTick((n) => n + 1)
       } else {
-        const placementRow = getWallPlacementRow(type, row)
+        const placementRow = getWallPlacementRow(type, row, col, layout)
         if (!canPlaceFurniture(layout, type, col, placementRow)) return
         const uid = `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
         const placed: PlacedFurniture = { uid, type, col, row: placementRow }

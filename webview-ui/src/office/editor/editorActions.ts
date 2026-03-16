@@ -96,10 +96,18 @@ export function toggleFurnitureState(layout: OfficeLayout, uid: string): OfficeL
   }
 }
 
-/** For wall items, offset the row so the bottom row aligns with the hovered tile. */
-export function getWallPlacementRow(type: string, row: number): number {
+/** For wall items, offset the row so the bottom row aligns with the hovered tile.
+ *  For dual items (canPlaceOnWalls + canPlaceOnSurfaces), only offset when hovering a wall tile. */
+export function getWallPlacementRow(type: string, row: number, col?: number, layout?: OfficeLayout): number {
   const entry = getCatalogEntry(type)
   if (!entry?.canPlaceOnWalls) return row
+  // Dual items: only use wall offset if the hovered tile is actually a wall
+  if (entry.canPlaceOnSurfaces && layout != null && col != null) {
+    if (row >= 0 && row < layout.rows && col >= 0 && col < layout.cols) {
+      const tileVal = layout.tiles[row * layout.cols + col]
+      if (tileVal !== TileType.WALL) return row // Floor placement — no offset
+    }
+  }
   return row - (entry.footprintH - 1)
 }
 
@@ -126,17 +134,33 @@ export function canPlaceFurniture(
     }
   }
 
+  // Determine actual placement mode: wall vs floor
+  // For items with both canPlaceOnWalls + canPlaceOnSurfaces, check if bottom row is on walls
+  let placingOnWall = false
+  if (entry.canPlaceOnWalls) {
+    const bottomRow = row + entry.footprintH - 1
+    if (bottomRow >= 0 && bottomRow < layout.rows) {
+      placingOnWall = true
+      for (let dc = 0; dc < entry.footprintW; dc++) {
+        const idx = bottomRow * layout.cols + (col + dc)
+        if (layout.tiles[idx] !== TileType.WALL) { placingOnWall = false; break }
+      }
+    }
+    // Wall-only items must be on walls; dual items can fall through to floor check
+    if (!placingOnWall && !entry.canPlaceOnSurfaces) return false
+  }
+
   // Wall/VOID placement check (background rows skip this check)
   const bgRows = entry.backgroundTiles || 0
   for (let dr = 0; dr < entry.footprintH; dr++) {
     if (dr < bgRows) continue
     if (row + dr < 0) continue // row above map (wall items extending upward)
-    // Wall items: only the bottom row must be on wall tiles; upper rows can overlap VOID/anything
-    if (entry.canPlaceOnWalls && dr < entry.footprintH - 1) continue
+    // Wall placement: only the bottom row must be on wall tiles; upper rows can overlap VOID/anything
+    if (placingOnWall && dr < entry.footprintH - 1) continue
     for (let dc = 0; dc < entry.footprintW; dc++) {
       const idx = (row + dr) * layout.cols + (col + dc)
       const tileVal = layout.tiles[idx]
-      if (entry.canPlaceOnWalls) {
+      if (placingOnWall) {
         if (tileVal !== TileType.WALL) return false
       } else {
         if (tileVal === TileType.VOID) return false // Cannot place on VOID

@@ -5,7 +5,7 @@
  * Serves the webview-ui build with a bridge that mocks the VS Code API,
  * reads layout/sync/assets from disk, and polls for live updates.
  *
- * Usage:  node standalone/server.js [--port 3000]
+ * Usage:  node standalone/server.js [--port 7600]
  */
 
 import { createServer } from 'http'
@@ -15,7 +15,7 @@ import { homedir } from 'os'
 import { PNG } from 'pngjs'
 
 // ── Config ──────────────────────────────────────────────────
-const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3000', 10)
+const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '7600', 10)
 const PROJECT_ROOT = resolve(import.meta.dirname, '..')
 const PKG = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf-8'))
 const VERSION = PKG.version || '?.?.?'

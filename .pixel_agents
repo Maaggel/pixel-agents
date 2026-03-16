@@ -4,7 +4,7 @@
   "agents": {
     "main": {
       "id": 1,
-      "name": "Main",
+      "name": "Lead",
       "palette": 0,
       "hueShift": 0,
       "seatId": null

@@ -244,6 +244,47 @@ export function autoAdoptActiveConversations(
 			);
 			adopted++;
 		}
+
+		// ── Fallback: bind unbound definition agents to latest non-ended JSONL ──
+		// If a definition agent (e.g. "Lead") still has no jsonlFile after the
+		// active-window pass (because the JSONL was older than 2 min at startup),
+		// bind it to the most recent non-ended JSONL regardless of age.
+		// This ensures the character reacts when the user resumes the session.
+		for (const agent of agents.values()) {
+			if (!agent.agentDefinitionId || agent.jsonlFile || agent.terminalRef) continue;
+			if (agent.projectDir !== projectDir) continue;
+			// Find the most recent non-ended JSONL not already tracked
+			let bestFile: string | null = null;
+			let bestMtime = 0;
+			for (const f of files) {
+				if (trackedFiles.has(f)) continue;
+				// Also skip files already adopted above
+				let alreadyAdopted = false;
+				for (const a of agents.values()) {
+					if (a.jsonlFile === f) { alreadyAdopted = true; break; }
+				}
+				if (alreadyAdopted) continue;
+				try {
+					const stat = fs.statSync(f);
+					if (stat.mtimeMs > bestMtime && !isSessionEnded(f)) {
+						bestMtime = stat.mtimeMs;
+						bestFile = f;
+					}
+				} catch { /* skip */ }
+			}
+			if (bestFile) {
+				const ageMs = now - bestMtime;
+				console.log(`[Pixel Agents] Agent ${agent.id}: fallback bind to latest JSONL: ${path.basename(bestFile)} (age: ${Math.round(ageMs / 1000)}s)`);
+				agent.jsonlFile = bestFile;
+				agent.fileOffset = 0;
+				agent.lineBuffer = '';
+				// Skip to end so we don't replay old history
+				try { agent.fileOffset = fs.statSync(bestFile).size; } catch { /* start from 0 */ }
+				trackedFiles.add(bestFile);
+				startFileWatching(agent.id, bestFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
+				persistAgents();
+			}
+		}
 	} catch (e) {
 		console.log(`[Pixel Agents] autoAdopt: error reading dir: ${e}`);
 	}

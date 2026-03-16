@@ -1,5 +1,5 @@
 // ── Build Identity ───────────────────────────────────────────
-export const BUILD_NUMBER = 15;   // increment each VSIX package
+export const BUILD_NUMBER = 7;   // increment each VSIX package
 
 // ── Timing (ms) ──────────────────────────────────────────────
 export const JSONL_POLL_INTERVAL_MS = 1000;
@@ -50,6 +50,10 @@ export const SYNC_POLL_INTERVAL_MS = 500;
 export const SYNC_STALE_TIMEOUT_MS = 30000;
 export const SYNC_WRITE_DEBOUNCE_MS = 200;
 export const REMOTE_ID_BASE = 100000;
+
+// ── Remote Relay ───────────────────────────────────────────
+export const RELAY_RECONNECT_BASE_MS = 1000;
+export const RELAY_RECONNECT_MAX_MS = 30000;
 
 // ── Settings Persistence ────────────────────────────────────
 export const GLOBAL_KEY_SOUND_ENABLED = 'pixel-agents.soundEnabled';

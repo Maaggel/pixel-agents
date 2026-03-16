@@ -8,7 +8,6 @@ import { TILE_SIZE, EditTool } from '../types.js'
 import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
-import { vscode } from '../../vscodeApi.js'
 import { unlockAudio } from '../../notificationSound.js'
 
 interface OfficeCanvasProps {
@@ -124,7 +123,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           if (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.ghostCol >= 0) {
             const entry = getCatalogEntry(editorState.selectedFurnitureType)
             if (entry) {
-              const placementRow = getWallPlacementRow(editorState.selectedFurnitureType, editorState.ghostRow)
+              const placementRow = getWallPlacementRow(editorState.selectedFurnitureType, editorState.ghostRow, editorState.ghostCol, officeState.getLayout())
               editorRender.ghostSprite = entry.sprite
               editorRender.ghostRow = placementRow
               editorRender.ghostValid = canPlaceFurniture(
@@ -382,18 +381,6 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         let cursor = 'default'
         if (hitId !== null) {
           cursor = 'pointer'
-        } else if (officeState.selectedAgentId !== null && tile) {
-          // Check if hovering over a clickable seat (available or own)
-          const seatId = officeState.getSeatAtTile(tile.col, tile.row)
-          if (seatId) {
-            const seat = officeState.seats.get(seatId)
-            if (seat) {
-              const selectedCh = officeState.characters.get(officeState.selectedAgentId)
-              if (!seat.assigned || (selectedCh && selectedCh.seatId === seatId)) {
-                cursor = 'pointer'
-              }
-            }
-          }
         }
         canvas.style.cursor = cursor
       }
@@ -566,42 +553,8 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         return
       }
 
-      // No agent hit — check seat click while agent is selected
+      // No agent hit — deselect
       if (officeState.selectedAgentId !== null) {
-        const selectedCh = officeState.characters.get(officeState.selectedAgentId)
-        // Skip seat reassignment for sub-agents
-        if (selectedCh && !selectedCh.isSubagent) {
-          const tile = screenToTile(e.clientX, e.clientY)
-          if (tile) {
-            const seatId = officeState.getSeatAtTile(tile.col, tile.row)
-            if (seatId) {
-              const seat = officeState.seats.get(seatId)
-              if (seat && selectedCh) {
-                if (selectedCh.seatId === seatId) {
-                  // Clicked own seat — send agent back to it
-                  officeState.sendToSeat(officeState.selectedAgentId)
-                  officeState.selectedAgentId = null
-                  officeState.cameraFollowId = null
-                  return
-                } else if (!seat.assigned) {
-                  // Clicked available seat — reassign
-                  officeState.reassignSeat(officeState.selectedAgentId, seatId)
-                  officeState.selectedAgentId = null
-                  officeState.cameraFollowId = null
-                  // Persist seat assignments (exclude sub-agents)
-                  const seats: Record<number, { palette: number; seatId: string | null }> = {}
-                  for (const ch of officeState.characters.values()) {
-                    if (ch.isSubagent) continue
-                    seats[ch.id] = { palette: ch.palette, seatId: ch.seatId }
-                  }
-                  vscode.postMessage({ type: 'saveAgentSeats', seats })
-                  return
-                }
-              }
-            }
-          }
-        }
-        // Clicked empty space — deselect
         officeState.selectedAgentId = null
         officeState.cameraFollowId = null
       }

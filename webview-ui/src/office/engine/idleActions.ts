@@ -14,6 +14,8 @@ import {
   THINK_MAX_DURATION_SEC,
   VISIT_MIN_DURATION_SEC,
   VISIT_MAX_DURATION_SEC,
+  EAT_MIN_DURATION_SEC,
+  EAT_MAX_DURATION_SEC,
   SEATED_CONVERSATION_MAX_DISTANCE,
   IDLE_CHAT_BUBBLE_VARIANT_COUNT,
   MEETING_BUBBLE_SHOW_MIN_SEC,
@@ -36,6 +38,8 @@ interface IdleActionEntry {
   needsPartner?: boolean
   /** Action requires "interesting" furniture in the layout */
   needsFurniture?: boolean
+  /** Action requires character to be seated in a specific zone type */
+  needsZone?: string
 }
 
 const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
@@ -43,6 +47,7 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.CONVERSATION, weight: 25, needsPartner: true },
   { type: IdleActionType.VISIT_FURNITURE, weight: 20, needsFurniture: true },
   { type: IdleActionType.STAND_AND_THINK, weight: 15 },
+  { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
 ]
 
 function logIdle(ch: Character, message: string): void {
@@ -58,6 +63,15 @@ function randomRange(min: number, max: number): number {
 function isInterestingFurniture(type: string): boolean {
   const entry = getCatalogEntry(type)
   return entry?.interactable === true
+}
+
+/** Check if a character's current seat is in the given zone type */
+function isCharacterInZone(ch: Character, zoneType: string, ctx: IdleActionContext): boolean {
+  if (!ctx.zones || !ch.seatId) return false
+  const seat = ctx.seats.get(ch.seatId)
+  if (!seat) return false
+  const idx = seat.seatRow * ctx.layoutCols + seat.seatCol
+  return ctx.zones[idx] === zoneType
 }
 
 /** Find a walkable tile adjacent to the given furniture piece */
@@ -220,6 +234,10 @@ export interface IdleActionContext {
   blockedTiles: Set<string>
   furniture: PlacedFurniture[]
   seats: Map<string, Seat>
+  /** Per-tile zone array (parallel to layout tiles), or undefined if no zones */
+  zones?: Array<string | null>
+  /** Number of columns in the layout grid (needed for zone index lookup) */
+  layoutCols: number
   /** Callback to get catalog footprint for a furniture type */
   getFurnitureFootprint: (type: string) => { w: number; h: number } | null
   /** Find path with own seat unblocked */
@@ -245,6 +263,7 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
   for (const entry of IDLE_ACTION_REGISTRY) {
     if (entry.needsPartner && idlePartnerCount === 0) continue
     if (entry.needsFurniture && !hasInterestingFurniture) continue
+    if (entry.needsZone && !isCharacterInZone(ch, entry.needsZone, ctx)) continue
     eligible.push(entry)
   }
 
@@ -429,6 +448,41 @@ export function initIdleAction(
       return true
     }
 
+    case IdleActionType.EATING: {
+      // Eating happens at the character's current kitchen zone seat
+      if (!ch.seatId) return false
+      const seat = ctx.seats.get(ch.seatId)
+      if (!seat) return false
+
+      ch.idleActionTimer = randomRange(EAT_MIN_DURATION_SEC, EAT_MAX_DURATION_SEC)
+
+      // Check if already at seat
+      if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+        ch.conversationPhase = 'talking'
+        ch.state = CharacterState.SIT_IDLE
+        ch.dir = seat.facingDir
+        ch.frame = 0
+        ch.frameTimer = 0
+        ch.bubbleType = 'idle_eat'
+        ch.bubbleTimer = ch.idleActionTimer + 1 // keep showing for full duration
+      } else {
+        // Walk back to seat first
+        ch.conversationPhase = 'approaching'
+        const path = ctx.findPathUnblocked(ch, seat.seatCol, seat.seatRow)
+        if (path.length > 0) {
+          ch.path = path
+          ch.moveProgress = 0
+          ch.state = CharacterState.WALK
+          ch.frame = 0
+          ch.frameTimer = 0
+        } else {
+          return false // can't reach seat
+        }
+      }
+      logIdle(ch, 'having a meal in the kitchen')
+      return true
+    }
+
     default:
       return false
   }
@@ -452,6 +506,8 @@ export function updateIdleAction(
       return updateStandAndThink(ch, dt)
     case IdleActionType.MEETING:
       return updateMeeting(ch, dt, ctx)
+    case IdleActionType.EATING:
+      return updateEating(ch, dt)
     default:
       return false
   }
@@ -493,13 +549,11 @@ function cycleMeetingBubble(ch: Character, dt: number): void {
   }
 }
 
-/** Get all characters currently in the same meeting (same idleAction === MEETING).
- *  Meetings are identified by shared conversationPartnerId chains — not needed here
- *  because all meeting participants are tracked externally via meetingOriginalSeats. */
+/** Get all characters currently in the same meeting (matched by meetingGroupId). */
 function getMeetingParticipants(ch: Character, ctx: IdleActionContext): Character[] {
   const participants: Character[] = []
   for (const [, other] of ctx.characters) {
-    if (other.idleAction === IdleActionType.MEETING && other.id !== ch.id) {
+    if (other.idleAction === IdleActionType.MEETING && other.id !== ch.id && other.meetingGroupId === ch.meetingGroupId) {
       participants.push(other)
     }
   }
@@ -676,6 +730,37 @@ function updateStandAndThink(ch: Character, dt: number): boolean {
   return false
 }
 
+function updateEating(ch: Character, dt: number): boolean {
+  if (ch.conversationPhase === 'approaching') {
+    // Wait for walk to seat
+    if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
+      // Arrived — sit down and start eating
+      ch.conversationPhase = 'talking'
+      ch.state = CharacterState.SIT_IDLE
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.bubbleType = 'idle_eat'
+      ch.bubbleTimer = ch.idleActionTimer + 1 // keep showing for full duration
+    }
+    return true
+  }
+
+  if (ch.conversationPhase === 'talking') {
+    ch.idleActionTimer -= dt
+
+    if (ch.idleActionTimer <= 0) {
+      logIdle(ch, 'finished eating')
+      ch.bubbleType = null
+      ch.bubbleTimer = 0
+      clearIdleAction(ch)
+      return false
+    }
+    return true
+  }
+
+  return false
+}
+
 /** Clear idle action state and prepare character to return to seat */
 function clearIdleAction(ch: Character): void {
   // Restore pre-conversation direction (e.g. facing their desk) if they were seated
@@ -687,6 +772,7 @@ function clearIdleAction(ch: Character): void {
   ch.conversationPartnerId = null
   ch.conversationPhase = null
   ch.idleActionTimer = 0
+  ch.meetingGroupId = null
   ch.currentTool = null
   // Don't clear bubbleType here — let it fade naturally or get cleared by the caller
 }
@@ -722,21 +808,22 @@ export function disengageConversation(ch: Character, ctx: IdleActionContext): vo
 export function disengageMeeting(ch: Character, ctx: IdleActionContext): void {
   if (ch.idleAction !== IdleActionType.MEETING) return
 
+  const groupId = ch.meetingGroupId
   clearIdleAction(ch)
   ch.bubbleType = null
   ch.bubbleTimer = 0
   ch.state = CharacterState.IDLE
   ch.frame = 0
 
-  // Check remaining participants
+  // Check remaining participants in the same meeting group
   const remaining: Character[] = []
   for (const [, other] of ctx.characters) {
-    if (other.id !== ch.id && other.idleAction === IdleActionType.MEETING) {
+    if (other.id !== ch.id && other.idleAction === IdleActionType.MEETING && other.meetingGroupId === groupId) {
       remaining.push(other)
     }
   }
 
-  // If not enough remain, end meeting for all
+  // If not enough remain in this group, end meeting for all in this group
   if (remaining.length < MEETING_MIN_PARTICIPANTS) {
     for (const other of remaining) {
       clearIdleAction(other)

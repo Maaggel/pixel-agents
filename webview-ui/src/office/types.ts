@@ -50,6 +50,7 @@ export const IdleActionType = {
   VISIT_FURNITURE: 'visit_furniture',
   STAND_AND_THINK: 'stand_and_think',
   MEETING: 'meeting',
+  EATING: 'eating',
 } as const
 export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
 
@@ -261,7 +262,7 @@ export interface Character {
   /** Assigned seat uid, or null if no seat */
   seatId: string | null
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | 'talking' | 'thinking' | 'idle_chat' | 'idle_think' | null
+  bubbleType: 'permission' | 'waiting' | 'talking' | 'thinking' | 'idle_chat' | 'idle_think' | 'idle_eat' | null
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
@@ -290,6 +291,8 @@ export interface Character {
   chatBubbleVariant: number
   /** Direction before conversation started (to restore after) */
   preConversationDir: Direction | null
+  /** Unique ID grouping characters in the same meeting (so multiple meetings can coexist) */
+  meetingGroupId: number | null
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
   /** Display name shown as nametag above character */

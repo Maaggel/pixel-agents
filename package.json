@@ -2,7 +2,7 @@
   "name": "pixel-agents",
   "displayName": "Pixel Agents",
   "description": "Pixel art office where your Claude Code agents come to life as animated characters",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
@@ -60,6 +60,16 @@
           "type": "string",
           "default": "",
           "description": "Custom project name displayed on agent nametags. Leave empty to use the workspace folder name."
+        },
+        "pixel-agents.relayUrl": {
+          "type": "string",
+          "default": "",
+          "description": "WebSocket URL for the remote relay server (e.g., wss://apps.blommemix.dk/pixelagents/ws). Leave empty to disable."
+        },
+        "pixel-agents.relayToken": {
+          "type": "string",
+          "default": "",
+          "description": "Authentication token for the remote relay server."
         }
       }
     }
@@ -76,7 +86,8 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "import-tileset": "tsx scripts/0-import-tileset.ts",
-    "standalone": "node standalone/server.mjs"
+    "standalone": "node standalone/server.mjs",
+    "relay": "node relay/server.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

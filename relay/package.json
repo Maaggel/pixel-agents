@@ -1,0 +1,10 @@
+{
+  "name": "pixel-agents-relay",
+  "version": "1.0.0",
+  "description": "WebSocket relay server for Pixel Agents remote viewer",
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "pngjs": "^7.0.0"
+  }
+}

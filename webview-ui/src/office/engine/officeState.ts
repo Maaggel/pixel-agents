@@ -32,6 +32,9 @@ import {
   WORK_CYCLE_INTERVAL_OFFSET_SEC,
   INTERACTION_CYCLE_DEFAULT_INTERVAL_SEC,
   INTERACTION_CYCLE_INTERVAL_OFFSET_SEC,
+  IDLE_ZONE_WEIGHT_REST,
+  IDLE_ZONE_WEIGHT_KITCHEN,
+  IDLE_ZONE_WEIGHT_OTHER,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -71,6 +74,7 @@ export class OfficeState {
   /** Reverse lookup: sub-agent character ID → parent info */
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map()
   private nextSubagentId = -1
+  private nextMeetingGroupId = 1
   /** Meeting cycle timers: uid → seconds until next frame change */
   private meetingCycleTimers: Map<string, number> = new Map()
   /** Work cycle timers: uid → seconds until next frame change */
@@ -249,6 +253,8 @@ export class OfficeState {
       blockedTiles: this.blockedTiles,
       furniture: this.layout.furniture,
       seats: this.seats,
+      zones: this.layout.zones ?? undefined,
+      layoutCols: this.layout.cols,
       getFurnitureFootprint: (type: string) => {
         const entry = getCatalogEntry(type)
         return entry ? { w: entry.footprintW, h: entry.footprintH } : null
@@ -291,12 +297,20 @@ export class OfficeState {
     }
   }
 
-  /** Check if a meeting is currently in progress */
-  private hasMeetingInProgress(): boolean {
+  /** Get the set of room indices that currently have an active meeting */
+  private getRoomsWithActiveMeetings(): Set<number> {
+    const rooms = this.getMeetingRoomsCached()
+    const activeRooms = new Set<number>()
     for (const ch of this.characters.values()) {
-      if (ch.idleAction === IdleActionType.MEETING) return true
+      if (ch.idleAction !== IdleActionType.MEETING || !ch.seatId) continue
+      const seat = this.seats.get(ch.seatId)
+      if (!seat) continue
+      const key = `${seat.seatCol},${seat.seatRow}`
+      for (let i = 0; i < rooms.length; i++) {
+        if (rooms[i].has(key)) { activeRooms.add(i); break }
+      }
     }
-    return false
+    return activeRooms
   }
 
   /** Identify separate meeting rooms by flood-filling connected meeting_room tiles.
@@ -347,7 +361,7 @@ export class OfficeState {
 
   /** Check if a meeting is physically active near a given furniture item.
    *  A meeting is "active" in this room only when at least one meeting participant
-   *  has physically walked to a tile inside the room (not just been assigned). */
+   *  whose assigned seat is in this room has physically arrived (not just passing through). */
   private isMeetingActiveNearFurniture(f: { row: number; col: number; footprintH: number; footprintW: number }, rooms: Array<Set<string>>): boolean {
     if (rooms.length === 0) return false
     for (let dr = 0; dr < f.footprintH; dr++) {
@@ -357,9 +371,13 @@ export class OfficeState {
         for (const [nr, nc] of [[br, bc], [br - 1, bc], [br + 1, bc], [br, bc - 1], [br, bc + 1]] as [number, number][]) {
           for (const room of rooms) {
             if (!room.has(`${nc},${nr}`)) continue
-            // This furniture is adjacent to this room — check if anyone is physically inside it
+            // This furniture is adjacent to this room — check if anyone assigned to THIS room is physically here
             for (const ch of this.characters.values()) {
-              if (ch.idleAction !== IdleActionType.MEETING) continue
+              if (ch.idleAction !== IdleActionType.MEETING || !ch.seatId) continue
+              // Verify the character's meeting seat is in THIS room (not just passing through)
+              const seat = this.seats.get(ch.seatId)
+              if (!seat || !room.has(`${seat.seatCol},${seat.seatRow}`)) continue
+              // Character belongs to this room's meeting — check they've arrived
               if (room.has(`${ch.tileCol},${ch.tileRow}`)) return true
             }
           }
@@ -370,17 +388,25 @@ export class OfficeState {
   }
 
   /** Get free seats grouped by meeting room. Each entry is one room's free seats.
-   *  Returns the room with the most free seats (best candidate for a meeting). */
+   *  Returns the room with the most free seats (best candidate for a meeting).
+   *  Excludes rooms where a meeting is already in progress. */
   private getFreeMeetingZoneSeats(): string[] {
-    const rooms = this.getMeetingRooms()
+    const rooms = this.getMeetingRoomsCached()
     if (rooms.length === 0) {
       console.log(`[Meeting] No meeting rooms found`)
       return []
     }
 
-    // For each room, collect free seats — only rooms with enough seats are eligible
+    const busyRooms = this.getRoomsWithActiveMeetings()
+
+    // For each room, collect free seats — only rooms with enough seats and no active meeting are eligible
     const eligible: string[][] = []
-    for (const room of rooms) {
+    for (let i = 0; i < rooms.length; i++) {
+      if (busyRooms.has(i)) {
+        console.log(`[Meeting] Room ${i} (${rooms[i].size} tiles): skipped — meeting in progress`)
+        continue
+      }
+      const room = rooms[i]
       const freeInRoom: string[] = []
       for (const [uid, seat] of this.seats) {
         const key = `${seat.seatCol},${seat.seatRow}`
@@ -388,7 +414,7 @@ export class OfficeState {
         if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
         freeInRoom.push(uid)
       }
-      console.log(`[Meeting] Room with ${room.size} tiles: ${freeInRoom.length} free seats`)
+      console.log(`[Meeting] Room ${i} (${room.size} tiles): ${freeInRoom.length} free seats`)
       if (freeInRoom.length >= MEETING_MIN_PARTICIPANTS) {
         eligible.push(freeInRoom)
       }
@@ -402,13 +428,7 @@ export class OfficeState {
 
   /** Try to start a meeting. Returns null on success, or a reason string on failure. */
   tryStartMeeting(): string | null {
-    // Don't start a new meeting if one is already in progress
-    if (this.hasMeetingInProgress()) {
-      console.log('[Meeting] Already in progress')
-      return 'Meeting already in progress'
-    }
-
-    // Find free meeting zone seats
+    // Find free meeting zone seats (rooms with active meetings are already excluded)
     const freeSeats = this.getFreeMeetingZoneSeats()
     const hasZonesArr = !!this.layout.zones
     const meetingZoneCount = hasZonesArr ? this.layout.zones!.filter(z => z === ZoneTypeValues.MEETING_ROOM).length : 0
@@ -461,6 +481,9 @@ export class OfficeState {
     // Distribute seats across facing directions so participants sit across from each other
     const distributedSeats = this.distributeMeetingSeats(freeSeats, participants.length)
 
+    // Assign a unique meeting group ID so multiple meetings can coexist
+    const meetingGroupId = this.nextMeetingGroupId++
+
     // Assign each participant to a meeting seat and start walking
     for (let i = 0; i < participants.length; i++) {
       const ch = participants[i]
@@ -493,6 +516,7 @@ export class OfficeState {
 
       // Set up meeting state
       ch.idleAction = IdleActionType.MEETING
+      ch.meetingGroupId = meetingGroupId
       ch.conversationPhase = 'approaching'
       ch.idleActionTimer = duration
       ch.conversationPartnerId = null // meetings don't use partner ID
@@ -659,22 +683,6 @@ export class OfficeState {
     return null
   }
 
-  /** Find a free seat excluding the given seat ID (for idle agents leaving their desk) */
-  private findFreeSeatExcluding(excludeSeatId: string | null): string | null {
-    for (const [uid, seat] of this.seats) {
-      if (uid === excludeSeatId) continue
-      if (seat.assigned) continue
-      if (this.isMeetingZoneSeat(seat)) continue
-      if (!this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) return uid
-    }
-    // Fallback: any unassigned seat that's different (including meeting)
-    for (const [uid, seat] of this.seats) {
-      if (uid === excludeSeatId) continue
-      if (!seat.assigned) return uid
-    }
-    return null
-  }
-
   /** Check if any character is sitting at the given tile (physical collision check) */
   private isTileOccupiedBySitting(col: number, row: number): boolean {
     for (const ch of this.characters.values()) {
@@ -684,27 +692,52 @@ export class OfficeState {
     return false
   }
 
-  /** Find the closest free seat within given zone types. Falls back to any free seat if none in zones. */
-  private findFreeSeatInZones(zoneTypes: ZoneType[], nearCol: number, nearRow: number): string | null {
+  /** Pick a free seat using weighted zone preferences: rest (50%) > kitchen (30%) > other (20%).
+   *  If a zone has no free seats its weight is redistributed to the remaining zones.
+   *  @param excludeSeatId Optional seat ID to exclude (current seat) */
+  findWeightedIdleZoneSeat(excludeSeatId: string | null): string | null {
     const zones = this.layout.zones
-    if (!zones || this.zoneTiles.size === 0) return this.findFreeSeat()
 
-    const zoneSet = new Set<string>(zoneTypes)
-    let bestId: string | null = null
-    let bestDist = Infinity
+    // Bucket free seats by zone category
+    const restSeats: string[] = []
+    const kitchenSeats: string[] = []
+    const otherSeats: string[] = []
+
     for (const [uid, seat] of this.seats) {
+      if (uid === excludeSeatId) continue
       if (seat.assigned) continue
       if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
-      const idx = seat.seatRow * this.layout.cols + seat.seatCol
-      const zone = zones[idx]
-      if (!zone || !zoneSet.has(zone)) continue
-      const d = Math.abs(seat.seatCol - nearCol) + Math.abs(seat.seatRow - nearRow)
-      if (d < bestDist) {
-        bestDist = d
-        bestId = uid
+
+      if (zones) {
+        const idx = seat.seatRow * this.layout.cols + seat.seatCol
+        const zone = zones[idx]
+        if (zone === ZoneTypeValues.REST_AREA) { restSeats.push(uid); continue }
+        if (zone === ZoneTypeValues.KITCHEN) { kitchenSeats.push(uid); continue }
+      }
+      // Unzoned, workspace, or meeting — all go in "other"
+      otherSeats.push(uid)
+    }
+
+    // Build weighted buckets, skipping empty ones (redistributing weight)
+    const buckets: Array<{ seats: string[]; weight: number }> = []
+    if (restSeats.length > 0) buckets.push({ seats: restSeats, weight: IDLE_ZONE_WEIGHT_REST })
+    if (kitchenSeats.length > 0) buckets.push({ seats: kitchenSeats, weight: IDLE_ZONE_WEIGHT_KITCHEN })
+    if (otherSeats.length > 0) buckets.push({ seats: otherSeats, weight: IDLE_ZONE_WEIGHT_OTHER })
+
+    if (buckets.length === 0) return null
+
+    // Weighted random pick of bucket, then random seat within bucket
+    const totalWeight = buckets.reduce((sum, b) => sum + b.weight, 0)
+    let roll = Math.random() * totalWeight
+    for (const bucket of buckets) {
+      roll -= bucket.weight
+      if (roll <= 0) {
+        return bucket.seats[Math.floor(Math.random() * bucket.seats.length)]
       }
     }
-    return bestId ?? this.findFreeSeat()
+    // Fallback (shouldn't reach here)
+    const last = buckets[buckets.length - 1]
+    return last.seats[Math.floor(Math.random() * last.seats.length)]
   }
 
   /**
@@ -1206,7 +1239,7 @@ export class OfficeState {
     const ch = this.characters.get(id)
     if (!ch || ch.isActive) return
     const oldSeatId = ch.seatId
-    this.reassignToZoneSeat(ch, [ZoneTypeValues.KITCHEN, ZoneTypeValues.REST_AREA])
+    this.reassignToWeightedIdleZoneSeat(ch)
     // Clear idle zone timer so it doesn't fire again
     ch.idleZoneTimer = 0
     if (ch.seatId && ch.seatId !== oldSeatId) {
@@ -1227,34 +1260,22 @@ export class OfficeState {
   }
 
   /** Reassign a character to the closest free seat in the given zone types.
-   *  If already seated in a matching zone, stays put. Frees old seat.
-   *  When no zones are defined, picks any different free seat so idle agents leave their desk. */
+   *  If already seated in a matching zone, stays put. Frees old seat. */
   private reassignToZoneSeat(ch: Character, zoneTypes: ZoneType[]): void {
     const zones = this.layout.zones
     const hasZones = zones && this.zoneTiles.size > 0
 
-    if (hasZones) {
-      // Check if current seat is already in a matching zone
-      if (ch.seatId) {
-        const seat = this.seats.get(ch.seatId)
-        if (seat) {
-          const idx = seat.seatRow * this.layout.cols + seat.seatCol
-          const zone = zones![idx]
-          if (zone && zoneTypes.includes(zone as ZoneType)) return // already in right zone
-        }
+    if (hasZones && ch.seatId) {
+      const seat = this.seats.get(ch.seatId)
+      if (seat) {
+        const idx = seat.seatRow * this.layout.cols + seat.seatCol
+        const zone = zones![idx]
+        if (zone && zoneTypes.includes(zone as ZoneType)) return // already in right zone
       }
     }
 
-    let newSeatId: string | null
-    if (hasZones) {
-      newSeatId = this.findFreeSeatInZones(zoneTypes, ch.tileCol, ch.tileRow)
-    } else {
-      // No zones — pick any free seat that's different from current
-      newSeatId = this.findFreeSeatExcluding(ch.seatId)
-    }
-    if (!newSeatId) return
-    // Check we're not re-assigning to the same seat
-    if (newSeatId === ch.seatId) return
+    const newSeatId = this.findZoneSeatOrAny(ch.seatId, zoneTypes)
+    if (!newSeatId || newSeatId === ch.seatId) return
 
     // Free old seat
     if (ch.seatId) {
@@ -1268,12 +1289,55 @@ export class OfficeState {
     ch.seatId = newSeatId
   }
 
+  /** Reassign an idle character using weighted zone preferences (rest > kitchen > other).
+   *  If already in rest or kitchen zone, stays put. Frees old seat. */
+  private reassignToWeightedIdleZoneSeat(ch: Character): void {
+    const zones = this.layout.zones
+    if (zones && ch.seatId) {
+      const seat = this.seats.get(ch.seatId)
+      if (seat) {
+        const idx = seat.seatRow * this.layout.cols + seat.seatCol
+        const zone = zones[idx]
+        if (zone === ZoneTypeValues.REST_AREA || zone === ZoneTypeValues.KITCHEN) return
+      }
+    }
+
+    const newSeatId = this.findWeightedIdleZoneSeat(ch.seatId)
+    if (!newSeatId || newSeatId === ch.seatId) return
+
+    if (ch.seatId) {
+      const old = this.seats.get(ch.seatId)
+      if (old) old.assigned = false
+    }
+    const seat = this.seats.get(newSeatId)
+    if (!seat || seat.assigned) return
+    seat.assigned = true
+    ch.seatId = newSeatId
+  }
+
+  /** Find a free seat in the given zone types (closest to character), falling back to any free seat */
+  private findZoneSeatOrAny(excludeSeatId: string | null, zoneTypes: ZoneType[]): string | null {
+    const zones = this.layout.zones
+    if (!zones || this.zoneTiles.size === 0) return this.findFreeSeat()
+
+    const zoneSet = new Set<string>(zoneTypes)
+    for (const [uid, seat] of this.seats) {
+      if (uid === excludeSeatId) continue
+      if (seat.assigned) continue
+      if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
+      const idx = seat.seatRow * this.layout.cols + seat.seatCol
+      const zone = zones[idx]
+      if (zone && zoneSet.has(zone)) return uid
+    }
+    return this.findFreeSeat()
+  }
+
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */
   rebuildFurnitureInstances(): void {
-    // Collect tiles where active agents face desks
+    // Collect tiles where active agents face desks (only when seated, not while walking to seat)
     const autoOnTiles = new Set<string>()
     for (const ch of this.characters.values()) {
-      if (!ch.isActive || !ch.seatId) continue
+      if (!ch.isActive || !ch.seatId || !isSittingState(ch.state)) continue
       const seat = this.seats.get(ch.seatId)
       if (!seat) continue
       // Find the desk tile(s) the agent faces from their seat
@@ -1385,7 +1449,7 @@ export class OfficeState {
     if (ch.bubbleType === 'permission') {
       ch.bubbleType = null
       ch.bubbleTimer = 0
-    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
+    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
       // Trigger immediate fade (0.3s remaining)
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC)
     }
@@ -1393,6 +1457,7 @@ export class OfficeState {
 
   update(dt: number): void {
     const toDelete: number[] = []
+    let needFurnitureRebuild = false
     for (const ch of this.characters.values()) {
       // Handle matrix effect animation
       if (ch.matrixEffect) {
@@ -1493,7 +1558,7 @@ export class OfficeState {
           }
         }
         // Tick bubble timers
-        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
+        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
           ch.bubbleTimer -= dt
           if (ch.bubbleTimer <= 0) { ch.bubbleType = null; ch.bubbleTimer = 0 }
         }
@@ -1502,14 +1567,14 @@ export class OfficeState {
 
       // Idle zone transition: after IDLE_ZONE_DELAY_SEC of being idle,
       // reassign to a rest/kitchen zone seat and walk there
-      // Skip characters in a meeting — they stay at their meeting seat
-      if (!ch.isActive && !ch.isSubagent && ch.idleAction !== IdleActionType.MEETING && ch.idleZoneTimer > 0) {
+      // Skip characters in a meeting, conversation, or other non-wander idle action
+      if (!ch.isActive && !ch.isSubagent && (!ch.idleAction || ch.idleAction === IdleActionType.WANDER) && ch.idleZoneTimer > 0) {
         ch.idleZoneTimer -= dt
         if (ch.idleZoneTimer <= 0) {
           ch.idleZoneTimer = 0
-          // Still idle — reassign to a rest/kitchen zone and pathfind there
+          // Still idle — reassign using weighted zone preferences
           const oldSeatId = ch.seatId
-          this.reassignToZoneSeat(ch, [ZoneTypeValues.KITCHEN, ZoneTypeValues.REST_AREA])
+          this.reassignToWeightedIdleZoneSeat(ch)
           // If seat changed, pathfind to the new seat
           if (ch.seatId && ch.seatId !== oldSeatId) {
             const seat = this.seats.get(ch.seatId)
@@ -1587,12 +1652,18 @@ export class OfficeState {
       }
 
       // Temporarily unblock own seat so character can pathfind to it
+      const pickNewSeat = (excludeSeatId: string | null) => this.findWeightedIdleZoneSeat(excludeSeatId)
+      const wasWalking = ch.state === CharacterState.WALK
       this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles)
+        updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles, pickNewSeat)
       )
+      // Active agent just sat down — rebuild furniture to turn on electronics
+      if (wasWalking && ch.isActive && isSittingState(ch.state)) {
+        needFurnitureRebuild = true
+      }
 
       // Tick bubble timer for waiting/talking/idle bubbles
-      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think') {
+      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
         ch.bubbleTimer -= dt
         if (ch.bubbleTimer <= 0) {
           ch.bubbleType = null
@@ -1603,6 +1674,11 @@ export class OfficeState {
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id)
+    }
+
+    // Rebuild furniture sprites when an active agent just sat down (turns electronics ON)
+    if (needFurnitureRebuild) {
+      this.rebuildFurnitureInstances()
     }
 
     // ── Meeting cycle furniture animation ────────────────────────
@@ -1681,10 +1757,10 @@ export class OfficeState {
 
   /** Advance work cycle sprite animations for furniture being looked at by active agents. */
   private updateWorkCycleSprites(dt: number): void {
-    // Build set of tiles currently being faced by active agents (same logic as autoOnTiles)
+    // Build set of tiles currently being faced by active seated agents (same logic as autoOnTiles)
     const facingTiles = new Set<string>()
     for (const ch of this.characters.values()) {
-      if (!ch.isActive || !ch.seatId) continue
+      if (!ch.isActive || !ch.seatId || !isSittingState(ch.state)) continue
       const seat = this.seats.get(ch.seatId)
       if (!seat) continue
       const dCol = seat.facingDir === Direction.RIGHT ? 1 : seat.facingDir === Direction.LEFT ? -1 : 0

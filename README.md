@@ -178,6 +178,44 @@ The tool names in `TOOL_BUBBLE_SPRITES` must match the tool names that Claude Co
 
 To add new Bash subcategories, edit `refineBashToolName()` in `src/transcriptParser.ts` and add a matching icon sprite + entry in `TOOL_BUBBLE_SPRITES`.
 
+## Standalone Viewer
+
+You can view the pixel office in a standalone browser window outside of VS Code:
+
+```bash
+bash standalone.sh
+```
+
+This starts a local server at `http://localhost:7600` that shows your office with all agents synced from VS Code via the `~/.pixel-agents/sync/` directory.
+
+## Remote Viewer (Relay Server)
+
+Want to watch your pixel office from a tablet, phone, or another machine? The relay server bridges VS Code agent state over WebSocket to any browser.
+
+```
+VS Code  --(WebSocket)-->  Relay Server  <--(Browser)--  Tablet/Phone
+```
+
+### Quick start
+
+```bash
+cd relay && npm install && cd ..
+RELAY_TOKEN=my-secret-key npm run relay
+```
+
+Open `http://localhost:7601` in a browser and enter the token.
+
+### VS Code configuration
+
+```json
+{
+  "pixel-agents.relayUrl": "wss://yourserver.com/pixelagents/ws",
+  "pixel-agents.relayToken": "your-secret-key-here"
+}
+```
+
+For full deployment instructions (systemd, Apache reverse proxy, authentication), see [relay/README.md](relay/README.md).
+
 ## How It Works
 
 Pixel Agents watches Claude Code's JSONL transcript files to track what each agent is doing. When an agent uses a tool (like writing a file or running a command), the extension detects it and updates the character's animation accordingly. No modifications to Claude Code are needed — it's purely observational.

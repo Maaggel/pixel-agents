@@ -146,17 +146,29 @@ export function computeSunBeams(
 
     if (maxDist === 0) continue
 
-    // Compute trapezoid corners — beam starts below wall rows
+    // Compute trapezoid corners — beam fans out based on window height.
+    // Light from the top of the window travels further than from the bottom,
+    // so the beam edge on the "drift side" comes from the top (more drift),
+    // and the opposite edge comes from the bottom (less drift).
+    const windowHeight = f.footprintH * TILE_SIZE
     const startDistPx = (startDist - 1) * TILE_SIZE
     const totalDistPx = (maxDist - startDist + 1) * TILE_SIZE
-    const startDrift = tan * startDistPx
-    const endDrift = tan * (startDistPx + totalDistPx)
+    // Extra horizontal drift for rays entering at the top of the window
+    const topExtra = tan * windowHeight  // positive when sun goes right, negative when left
+
+    // Left edge: use whichever origin (top or bottom of window) drifts further left
+    // Right edge: use whichever origin drifts further right
+    const leftExtra = Math.min(0, topExtra)   // negative or zero — extends left
+    const rightExtra = Math.max(0, topExtra)   // positive or zero — extends right
+
+    const startDriftBase = tan * startDistPx
+    const endDriftBase = tan * (startDistPx + totalDistPx)
 
     beams.push({
-      topLeftX: winLeftPx + startDrift,
-      topRightX: winRightPx + startDrift,
-      bottomLeftX: winLeftPx + endDrift,
-      bottomRightX: winRightPx + endDrift,
+      topLeftX: winLeftPx + startDriftBase + leftExtra,
+      topRightX: winRightPx + startDriftBase + rightExtra,
+      bottomLeftX: winLeftPx + endDriftBase + leftExtra,
+      bottomRightX: winRightPx + endDriftBase + rightExtra,
       topY: winBottomY + startDistPx,
       bottomY: winBottomY + startDistPx + totalDistPx,
       opacity: SUN_BEAM_OPACITY * sunIntensity,

@@ -38,6 +38,8 @@ import {
   IDLE_ZONE_WEIGHT_KITCHEN,
   IDLE_ZONE_WEIGHT_OTHER,
   WORK_SEAT_RANDOM_CHANCE,
+  VACUUM_TRAIL_FADE_SEC,
+  VACUUM_TRAIL_OPACITY,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -55,6 +57,9 @@ import { IdleActionType } from '../types.js'
 import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation, disengageMeeting, trySeatedConversation } from './idleActions.js'
 import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
+import type { RobotVacuumInstance } from './robotVacuum.js'
+import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady } from './robotVacuum.js'
+import { VACUUM_MAX_TILES_PER_CHARGE } from '../../constants.js'
 
 export class OfficeState {
   layout: OfficeLayout
@@ -88,6 +93,12 @@ export class OfficeState {
   private idleCycleTimers: Map<string, number> = new Map()
   /** Cached flood-filled meeting rooms (invalidated on layout change) */
   private cachedMeetingRooms: Array<Set<string>> | null = null
+  /** Active robot vacuum instances, keyed by furniture uid */
+  vacuums: Map<string, RobotVacuumInstance> = new Map()
+  /** Shared cleaned room fingerprints across all vacuums */
+  private sharedCleanedRoomKeys: Set<string> = new Set()
+  /** Shared detected rooms (computed once, used by all vacuums) */
+  private sharedRooms: Array<Set<string>> = []
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
@@ -97,6 +108,7 @@ export class OfficeState {
     this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
+    this.rebuildVacuumInstances()
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -110,6 +122,7 @@ export class OfficeState {
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
+    this.rebuildVacuumInstances()
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -1526,6 +1539,19 @@ export class OfficeState {
   update(dt: number): void {
     const toDelete: number[] = []
     let needFurnitureRebuild = false
+
+    // Temporarily block tiles occupied by active (moving) vacuums so characters avoid them
+    const vacuumBlockKeys: string[] = []
+    for (const vacuum of this.vacuums.values()) {
+      if (vacuum.state !== 'docked') {
+        const key = `${vacuum.tileCol},${vacuum.tileRow}`
+        if (!this.blockedTiles.has(key)) {
+          this.blockedTiles.add(key)
+          vacuumBlockKeys.push(key)
+        }
+      }
+    }
+
     for (const ch of this.characters.values()) {
       // Handle matrix effect animation
       if (ch.matrixEffect) {
@@ -1765,6 +1791,29 @@ export class OfficeState {
 
     // ── Idle cycle furniture animation ──────────────────────
     this.updateIdleCycleSprites(dt)
+
+    // Remove temporary vacuum blocks before vacuum update
+    for (const key of vacuumBlockKeys) {
+      this.blockedTiles.delete(key)
+    }
+
+    // ── Robot Vacuum Updates ──────────────────────────────────
+    for (const vacuum of this.vacuums.values()) {
+      updateVacuum(vacuum, dt, this.tileMap, this.blockedTiles, this.characters)
+      // Sync newly cleaned rooms to shared state
+      for (const idx of vacuum.cleanedRoomIndices) {
+        this.markRoomCleaned(idx)
+      }
+      // Charging: slowly restore battery when docked
+      if (vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned > 0) {
+        // Charge at ~2.8 tiles/sec (full 250-tile charge in ~90 seconds)
+        vacuum.tilesCleaned = Math.max(0, vacuum.tilesCleaned - 2.8 * dt)
+      }
+      // Auto-cycle: start cleaning at random intervals when fully charged
+      if (checkAutoCycleReady(vacuum)) {
+        this.triggerVacuumCycle(vacuum.furnitureUid)
+      }
+    }
   }
 
   /** Advance meeting cycle sprite animations for furniture near active meeting zones. */
@@ -2126,6 +2175,246 @@ export class OfficeState {
   }
 
   /** Get character at pixel position (for hit testing). Returns id or null. */
+  // ── Robot Vacuum Methods ─────────────────────────────────────
+
+  /** Rebuild vacuum instances from layout furniture. Resets all active cycles. */
+  private rebuildVacuumInstances(): void {
+    this.resetSharedRooms()
+    const existingUids = new Set<string>()
+    for (const item of this.layout.furniture) {
+      if (!isRobotVacuumType(item.type)) continue
+      existingUids.add(item.uid)
+      const existing = this.vacuums.get(item.uid)
+      if (existing) {
+        // Preserve custom name across rebuilds
+        const savedName = existing.customName
+        existing.baseCol = item.col
+        existing.baseRow = item.row
+        resetVacuumCycle(existing)
+        existing.customName = savedName
+      } else {
+        this.vacuums.set(item.uid, createVacuumInstance(item.uid, item.col, item.row, item.type))
+      }
+    }
+    // Remove vacuums whose furniture was deleted
+    for (const uid of this.vacuums.keys()) {
+      if (!existingUids.has(uid)) this.vacuums.delete(uid)
+    }
+  }
+
+  /** Get chair tiles (seats) as a Set for vacuum room detection. */
+  private getChairTiles(): Set<string> {
+    const tiles = new Set<string>()
+    for (const seat of this.seats.values()) {
+      tiles.add(`${seat.seatCol},${seat.seatRow}`)
+    }
+    return tiles
+  }
+
+  /** Compute a fingerprint for a room (smallest tile key — unique per connected region). */
+  private roomFingerprint(room: Set<string>): string {
+    let min = ''
+    for (const k of room) {
+      if (!min || k < min) min = k
+    }
+    return min
+  }
+
+  /** Ensure shared rooms are detected (once per layout). */
+  private ensureSharedRooms(): void {
+    if (this.sharedRooms.length > 0) return
+    const chairTiles = this.getChairTiles()
+    this.sharedRooms = detectRooms(this.tileMap, this.blockedTiles, chairTiles, this.layout.tileColors)
+    console.log(`[Vacuum] Shared rooms detected: ${this.sharedRooms.length} rooms (sizes: ${this.sharedRooms.map(r => r.size).join(', ')})`)
+  }
+
+  /** Check if a room has been cleaned by any vacuum this cycle. */
+  isRoomCleaned(roomIndex: number): boolean {
+    const room = this.sharedRooms[roomIndex]
+    if (!room) return false
+    return this.sharedCleanedRoomKeys.has(this.roomFingerprint(room))
+  }
+
+  /** Mark a room as cleaned (shared across all vacuums). */
+  markRoomCleaned(roomIndex: number): void {
+    const room = this.sharedRooms[roomIndex]
+    if (!room) return
+    this.sharedCleanedRoomKeys.add(this.roomFingerprint(room))
+  }
+
+  /** Reset shared cleaned rooms and shared room detection. */
+  resetSharedRooms(): void {
+    this.sharedCleanedRoomKeys = new Set()
+    this.sharedRooms = []
+  }
+
+  /** Start a cleaning cycle for one or all vacuums. */
+  triggerVacuumCycle(vacuumUid?: string): void {
+    this.ensureSharedRooms()
+    const startOne = (vacuum: RobotVacuumInstance) => {
+      if (vacuum.cycleActive && vacuum.paused) {
+        // Unpause
+        vacuum.paused = false
+        return
+      }
+      if (vacuum.cycleActive) return
+      // Give the vacuum the shared rooms
+      vacuum.rooms = this.sharedRooms
+      // Check if all rooms are done — reset the shared list
+      const allDone = this.sharedRooms.length > 0 &&
+        this.sharedCleanedRoomKeys.size >= this.sharedRooms.length
+      if (allDone) {
+        console.log(`[Vacuum] All rooms cleaned, resetting shared list`)
+        this.sharedCleanedRoomKeys = new Set()
+      }
+      // Sync the vacuum's cleanedRoomIndices from shared state
+      vacuum.cleanedRoomIndices = new Set()
+      for (let i = 0; i < this.sharedRooms.length; i++) {
+        if (this.isRoomCleaned(i)) vacuum.cleanedRoomIndices.add(i)
+      }
+      const chairTiles = this.getChairTiles()
+      startCleaningCycle(vacuum, this.tileMap, this.blockedTiles, chairTiles, this.layout.tileColors)
+      const name = vacuum.customName || 'Vacuum'
+      addBehaviourEntry({ agentId: 0, agentName: name, message: `started cleaning (${vacuum.rooms.length} rooms, ${vacuum.rooms.length - vacuum.cleanedRoomIndices.size} uncleaned)`, type: 'info' })
+    }
+    if (vacuumUid && vacuumUid !== 'all') {
+      const vacuum = this.vacuums.get(vacuumUid)
+      if (vacuum) startOne(vacuum)
+    } else {
+      for (const vacuum of this.vacuums.values()) startOne(vacuum)
+    }
+  }
+
+  /** Pause/unpause a vacuum. */
+  pauseVacuumById(uid: string): void {
+    const vacuum = this.vacuums.get(uid)
+    if (vacuum) pauseVacuum(vacuum)
+  }
+
+  /** Send a vacuum back to its dock. */
+  sendVacuumHomeById(uid: string): void {
+    const vacuum = this.vacuums.get(uid)
+    if (vacuum) sendVacuumHome(vacuum, this.tileMap, this.blockedTiles)
+  }
+
+  /** Rename a vacuum. */
+  renameVacuum(uid: string, name: string): void {
+    const vacuum = this.vacuums.get(uid)
+    if (vacuum) vacuum.customName = name
+  }
+
+  /** Detailed vacuum info for the control panel. */
+  getVacuumDetailList(): Array<{
+    uid: string
+    name: string
+    state: string
+    paused: boolean
+    batteryPercent: number
+    currentRoomIndex: number
+    totalRooms: number
+    cleanedRoomCount: number
+    charging: boolean
+    roomProgressPercent: number
+  }> {
+    const result: Array<{
+      uid: string; name: string; state: string; paused: boolean
+      batteryPercent: number; currentRoomIndex: number; totalRooms: number
+      cleanedRoomCount: number; charging: boolean; roomProgressPercent: number
+    }> = []
+    let idx = 1
+    for (const [uid, vacuum] of this.vacuums) {
+      const batteryUsed = vacuum.tilesCleaned / VACUUM_MAX_TILES_PER_CHARGE
+      const batteryPercent = Math.max(0, Math.min(1, 1 - batteryUsed))
+      // Room progress: how far through the current coverage plan
+      let roomProgressPercent = 0
+      if (vacuum.coveragePlan.length > 0) {
+        roomProgressPercent = Math.min(1, vacuum.coveragePlanIndex / vacuum.coveragePlan.length)
+      }
+      result.push({
+        uid,
+        name: vacuum.customName || `Vacuum ${idx}`,
+        state: vacuum.state,
+        paused: vacuum.paused,
+        batteryPercent,
+        currentRoomIndex: vacuum.currentRoomIndex,
+        totalRooms: vacuum.rooms.length,
+        cleanedRoomCount: this.sharedCleanedRoomKeys.size,
+        charging: vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned > 0,
+        roomProgressPercent,
+      })
+      idx++
+    }
+    return result
+  }
+
+  /** Get list of all placed vacuums with their status (backward compat). */
+  getVacuumList(): Array<{ uid: string; label: string; isCleaning: boolean }> {
+    return this.getVacuumDetailList().map(v => ({
+      uid: v.uid,
+      label: v.name,
+      isCleaning: v.state !== VacuumState.DOCKED,
+    }))
+  }
+
+  /** Get render data for active (non-docked) vacuums. */
+  getVacuumRenderData(): Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }> {
+    const result: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }> = []
+    const Direction = { DOWN: 0, LEFT: 1, RIGHT: 2, UP: 3 } as const
+    for (const vacuum of this.vacuums.values()) {
+      const facingUp = vacuum.baseDir === Direction.UP
+      const baseBottomY = (vacuum.baseRow + 1) * TILE_SIZE
+
+      // Always render the dock at the base position
+      const dockSprite = getVacuumDockSprite(vacuum)
+      if (dockSprite) {
+        const dockX = vacuum.baseCol * TILE_SIZE
+        // Dock sprite is 16x32 — bottom-aligned to the base tile
+        const dockY = baseBottomY - dockSprite.length
+        result.push({
+          sprite: dockSprite,
+          x: dockX,
+          y: dockY,
+          // UP: dock renders in front of vacuum (+1); others: behind (-1)
+          zY: facingUp ? baseBottomY + 1 : baseBottomY - 1,
+        })
+      }
+      // Render moving vacuum (skip if docked — the dock sprite already shows it)
+      if (vacuum.state === VacuumState.DOCKED) continue
+      const sprite = getVacuumSprite(vacuum)
+      if (!sprite) continue
+      result.push({
+        sprite,
+        x: vacuum.x - TILE_SIZE / 2,
+        y: vacuum.y - TILE_SIZE / 2,
+        zY: vacuum.y + TILE_SIZE / 2,
+      })
+    }
+    return result
+  }
+
+  /** Get all active vacuum trail marks for rendering. */
+  getVacuumTrails(): Array<{ px: number; py: number; opacity: number }> {
+    const result: Array<{ px: number; py: number; opacity: number }> = []
+    for (const vacuum of this.vacuums.values()) {
+      for (const t of vacuum.trail) {
+        const fade = 1 - t.age / VACUUM_TRAIL_FADE_SEC
+        if (fade > 0) {
+          result.push({ px: t.px, py: t.py, opacity: VACUUM_TRAIL_OPACITY * fade })
+        }
+      }
+    }
+    return result
+  }
+
+  /** Get UIDs of active (non-docked) vacuums whose furniture should be hidden. */
+  getActiveVacuumUids(): Set<string> {
+    const uids = new Set<string>()
+    for (const [uid, vacuum] of this.vacuums) {
+      if (vacuum.state !== VacuumState.DOCKED) uids.add(uid)
+    }
+    return uids
+  }
+
   getCharacterAt(worldX: number, worldY: number): number | null {
     const chars = this.getCharacters().sort((a, b) => b.y - a.y)
     for (const ch of chars) {

@@ -18,6 +18,7 @@ import { DevConsole } from './components/DevConsole.js'
 import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
 import type { ViewOptions } from './components/ViewOptionsPanel.js'
 import { BehaviourLog } from './components/BehaviourLog.js'
+import { VacuumControlPanel } from './components/VacuumControlPanel.js'
 import { addBehaviourEntry } from './behaviourLog.js'
 
 // Game state lives outside React — updated imperatively by message handlers
@@ -169,7 +170,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -202,6 +203,26 @@ function App() {
       console.log(`[App] Meeting failed: ${reason}`)
       addBehaviourEntry({ agentId: 0, agentName: 'System', message: `Meeting: ${reason}`, type: 'info' })
     }
+  }, [])
+
+  const handleStartVacuum = useCallback((uid: string) => {
+    officeStateRef.current?.triggerVacuumCycle(uid)
+  }, [])
+
+  const handlePauseVacuum = useCallback((uid: string) => {
+    officeStateRef.current?.pauseVacuumById(uid)
+  }, [])
+
+  const handleSendVacuumHome = useCallback((uid: string) => {
+    officeStateRef.current?.sendVacuumHomeById(uid)
+  }, [])
+
+  const handleRenameVacuum = useCallback((uid: string, name: string) => {
+    officeStateRef.current?.renameVacuum(uid, name)
+  }, [])
+
+  const getVacuumDetails = useCallback(() => {
+    return officeStateRef.current?.getVacuumDetailList() ?? []
   }, [])
 
   const handleSelectAgent = useCallback((id: number) => {
@@ -427,6 +448,16 @@ function App() {
       />
 
       <BehaviourLog onTriggerMeeting={handleTriggerMeeting} />
+
+      {viewOptions.showVacuumPanel && (
+        <VacuumControlPanel
+          getVacuumDetails={getVacuumDetails}
+          onStart={handleStartVacuum}
+          onPause={handlePauseVacuum}
+          onHome={handleSendVacuumHome}
+          onRename={handleRenameVacuum}
+        />
+      )}
 
       {isDebugMode && (
         <DebugView

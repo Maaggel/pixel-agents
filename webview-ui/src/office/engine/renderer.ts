@@ -49,6 +49,8 @@ import {
   ZONE_BORDER_COLORS,
   ZONE_LABEL_COLORS,
   ZONE_LABELS,
+  VACUUM_TRAIL_PATCH_SIZE_PX,
+  VACUUM_TRAIL_COLOR,
 } from '../../constants.js'
 
 /** Track unknown tool names to log each only once (for future sprite creation) */
@@ -117,6 +119,7 @@ export function renderScene(
   zoom: number,
   selectedAgentId: number | null,
   hoveredAgentId: number | null,
+  vacuumDrawables?: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }>,
 ): void {
   const drawables: ZDrawable[] = []
 
@@ -190,6 +193,19 @@ export function renderScene(
         c.drawImage(cached, drawX, drawY)
       },
     })
+  }
+
+  // Robot Vacuums (active, non-docked)
+  if (vacuumDrawables) {
+    for (const v of vacuumDrawables) {
+      const cached = getCachedSprite(v.sprite, zoom)
+      const vx = Math.round(offsetX + v.x * zoom)
+      const vy = Math.round(offsetY + v.y * zoom)
+      drawables.push({
+        zY: v.zY,
+        draw: (c) => c.drawImage(cached, vx, vy),
+      })
+    }
   }
 
   // Sort by Y (lower = in front = drawn later)
@@ -685,6 +701,9 @@ export function renderFrame(
   layoutCols?: number,
   layoutRows?: number,
   sunBeams?: SunBeam[],
+  sunBeamColor?: [number, number, number],
+  vacuumDrawables?: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }>,
+  vacuumTrails?: Array<{ px: number; py: number; opacity: number }>,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -702,6 +721,21 @@ export function renderFrame(
   // Draw tiles (floor + wall base color)
   renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols)
 
+  // Vacuum cleaning trail (small patches centered on vacuum's actual path)
+  if (vacuumTrails && vacuumTrails.length > 0) {
+    const patchSize = VACUUM_TRAIL_PATCH_SIZE_PX * zoom
+    const halfPatch = patchSize / 2
+    for (const t of vacuumTrails) {
+      ctx.fillStyle = `rgba(${VACUUM_TRAIL_COLOR}, ${t.opacity})`
+      ctx.fillRect(
+        Math.round(offsetX + t.px * zoom - halfPatch),
+        Math.round(offsetY + t.py * zoom - halfPatch),
+        patchSize,
+        patchSize,
+      )
+    }
+  }
+
   // Zone overlay (below furniture, on top of floor)
   if (editor?.zones && editor.zoneCols) {
     renderZoneOverlay(ctx, editor.zones, editor.zoneCols, offsetX, offsetY, zoom)
@@ -718,11 +752,11 @@ export function renderFrame(
   // Draw walls + furniture + characters (z-sorted)
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
-  renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
+  renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables)
 
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)
   if (sunBeams && sunBeams.length > 0) {
-    renderSunBeams(ctx, sunBeams, offsetX, offsetY, zoom, tileMap)
+    renderSunBeams(ctx, sunBeams, offsetX, offsetY, zoom, tileMap, sunBeamColor)
   }
 
   // Nametags (above characters, below bubbles)

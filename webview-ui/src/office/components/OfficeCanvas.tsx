@@ -211,19 +211,29 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
 
         // Compute sunlight beams
         let sunBeams = undefined
+        let sunBeamColor: [number, number, number] | undefined = undefined
         if (showSunlight) {
-          const { angle, intensity } = getSunState()
+          const { angle, intensity, reach, color } = getSunState()
           if (intensity > 0) {
-            sunBeams = computeSunBeams(officeState.furniture, officeState.tileMap, angle, intensity)
+            sunBeams = computeSunBeams(officeState.furniture, officeState.tileMap, angle, intensity, reach)
+            sunBeamColor = color
           }
         }
+
+        // Filter out active vacuum furniture (rendered separately as moving entities)
+        const activeVacuumUids = officeState.getActiveVacuumUids()
+        const visibleFurniture = activeVacuumUids.size > 0
+          ? officeState.furniture.filter(f => !f.uid || !activeVacuumUids.has(f.uid))
+          : officeState.furniture
+        const vacuumDrawables = officeState.getVacuumRenderData()
+        const vacuumTrails = officeState.getVacuumTrails()
 
         const { offsetX, offsetY } = renderFrame(
           ctx,
           w,
           h,
           officeState.tileMap,
-          officeState.furniture,
+          visibleFurniture,
           officeState.getCharacters(),
           zoom,
           panRef.current.x,
@@ -234,6 +244,9 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           officeState.getLayout().cols,
           officeState.getLayout().rows,
           sunBeams,
+          sunBeamColor,
+          vacuumDrawables.length > 0 ? vacuumDrawables : undefined,
+          vacuumTrails.length > 0 ? vacuumTrails : undefined,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 

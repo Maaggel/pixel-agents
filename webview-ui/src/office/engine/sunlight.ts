@@ -5,10 +5,12 @@ import {
   SUN_NIGHT_FRACTION,
   SUN_BEAM_MAX_LENGTH,
   SUN_BEAM_OPACITY,
-  SUN_BEAM_COLOR,
+  SUN_BEAM_COLOR_MIDDAY,
+  SUN_BEAM_COLOR_EDGE,
   SUN_ANGLE_MIN_RAD,
   SUN_ANGLE_MAX_RAD,
   SUN_BEAM_DEFAULT_INSET,
+  SUN_BEAM_MIN_LENGTH,
 } from '../../constants.js'
 
 // ── Sun cycle state ─────────────────────────────────────────────
@@ -26,11 +28,11 @@ export function resetSunCycle(): void {
 }
 
 /**
- * Compute current sun angle and intensity from cycle time.
- * Returns { angle: radians, intensity: 0-1 }.
- * During the "night" phase intensity fades to 0.
+ * Compute current sun angle, intensity and beam reach from cycle time.
+ * `reach` is the beam length in tiles — longer at sunrise/sunset (low sun),
+ * shorter at midday (high sun). Uses a cosine curve peaking at midday.
  */
-export function getSunState(): { angle: number; intensity: number } {
+export function getSunState(): { angle: number; intensity: number; reach: number; color: [number, number, number] } {
   const dayDuration = SUN_CYCLE_DURATION_SEC * (1 - SUN_NIGHT_FRACTION)
   const nightDuration = SUN_CYCLE_DURATION_SEC * SUN_NIGHT_FRACTION
 
@@ -47,14 +49,28 @@ export function getSunState(): { angle: number; intensity: number } {
       intensity = (1.0 - t) / 0.1
     }
 
-    return { angle, intensity }
+    // Beam reach: cosine curve — max at sunrise/sunset (t=0,1), min at midday (t=0.5)
+    // cos(t * PI) goes from 1 → -1 → 1, so abs gives 1 → 0 → 1
+    const middayFactor = Math.abs(Math.cos(t * Math.PI))  // 1 at edges, 0 at center
+    const reach = SUN_BEAM_MIN_LENGTH + middayFactor * (SUN_BEAM_MAX_LENGTH - SUN_BEAM_MIN_LENGTH)
+
+    // Color: sharp transition — mostly midday yellow, warm orange only near sunrise/sunset
+    // Cube the factor so tinting is concentrated at the edges of the day
+    const colorFactor = middayFactor * middayFactor * middayFactor
+    const color: [number, number, number] = [
+      Math.round(SUN_BEAM_COLOR_MIDDAY[0] + colorFactor * (SUN_BEAM_COLOR_EDGE[0] - SUN_BEAM_COLOR_MIDDAY[0])),
+      Math.round(SUN_BEAM_COLOR_MIDDAY[1] + colorFactor * (SUN_BEAM_COLOR_EDGE[1] - SUN_BEAM_COLOR_MIDDAY[1])),
+      Math.round(SUN_BEAM_COLOR_MIDDAY[2] + colorFactor * (SUN_BEAM_COLOR_EDGE[2] - SUN_BEAM_COLOR_MIDDAY[2])),
+    ]
+
+    return { angle, intensity, reach, color }
   } else {
     // Night phase: intensity = 0
     const nightT = (sunCycleTime - dayDuration) / nightDuration
     // Brief dawn glow at end of night
     const intensity = nightT > 0.8 ? (nightT - 0.8) / 0.2 * 0.3 : 0
     const angle = intensity > 0 ? SUN_ANGLE_MIN_RAD : 0
-    return { angle, intensity }
+    return { angle, intensity, reach: SUN_BEAM_MAX_LENGTH, color: SUN_BEAM_COLOR_EDGE }
   }
 }
 
@@ -88,6 +104,7 @@ export function computeSunBeams(
   tileMap: TileTypeVal[][],
   sunAngle: number,
   sunIntensity: number,
+  sunReach?: number,
 ): SunBeam[] {
   if (sunIntensity <= 0) return []
 
@@ -105,10 +122,11 @@ export function computeSunBeams(
     const winBottomY = (f.row + f.footprintH) * TILE_SIZE
 
     const tan = Math.tan(sunAngle)
+    const maxReach = Math.ceil(sunReach ?? SUN_BEAM_MAX_LENGTH)
 
     // Skip wall rows directly below the window so beams don't overlap walls
     let startDist = 1
-    for (let dist = 1; dist <= SUN_BEAM_MAX_LENGTH; dist++) {
+    for (let dist = 1; dist <= maxReach; dist++) {
       const checkRow = f.row + f.footprintH + dist - 1
       if (checkRow < 0 || checkRow >= rows) break
       if (tileMap[checkRow][Math.floor((winLeftPx + winRightPx) / 2 / TILE_SIZE)] === TileType.WALL) {
@@ -120,7 +138,7 @@ export function computeSunBeams(
 
     // Walk rows downward to find how far the beam can reach
     let maxDist = 0
-    for (let dist = startDist; dist <= SUN_BEAM_MAX_LENGTH; dist++) {
+    for (let dist = startDist; dist <= maxReach; dist++) {
       const beamRow = f.row + f.footprintH + dist - 1
       if (beamRow < 0 || beamRow >= rows) break
 
@@ -178,22 +196,6 @@ export function computeSunBeams(
   return beams
 }
 
-// ── Sunlight beam color parsing (cached) ────────────────────────
-
-let parsedBeamRGB: { r: number; g: number; b: number } | null = null
-
-function getBeamRGB(): { r: number; g: number; b: number } {
-  if (parsedBeamRGB) return parsedBeamRGB
-  // Parse SUN_BEAM_COLOR "rgba(r, g, b, a)"
-  const m = SUN_BEAM_COLOR.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-  if (m) {
-    parsedBeamRGB = { r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) }
-  } else {
-    parsedBeamRGB = { r: 255, g: 220, b: 120 }
-  }
-  return parsedBeamRGB
-}
-
 /** Debug: throttle logging */
 let _sunLastLog = 0
 
@@ -209,6 +211,7 @@ export function renderSunBeams(
   offsetY: number,
   zoom: number,
   tileMap?: TileTypeVal[][],
+  beamColor?: [number, number, number],
 ): void {
   if (beams.length === 0) return
 
@@ -238,7 +241,7 @@ export function renderSunBeams(
     }
   }
 
-  const { r, g, b } = getBeamRGB()
+  const [r, g, b] = beamColor ?? SUN_BEAM_COLOR_MIDDAY
 
   ctx.save()
 

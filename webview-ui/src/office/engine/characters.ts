@@ -406,6 +406,24 @@ export function updateCharacter(
         ch.y = toCenter.y
         ch.path.shift()
         ch.moveProgress = 0
+
+        // Check if the next step is now blocked (e.g. by a moving vacuum) — reroute
+        if (ch.path.length > 0) {
+          const upcoming = ch.path[0]
+          const upKey = `${upcoming.col},${upcoming.row}`
+          if (blockedTiles.has(upKey)) {
+            // Reroute to the same final destination
+            const dest = ch.path[ch.path.length - 1]
+            const reroute = findPath(ch.tileCol, ch.tileRow, dest.col, dest.row, tileMap, blockedTiles)
+            if (reroute.length > 0) {
+              ch.path = reroute
+            } else {
+              // Can't reroute — wait in place
+              ch.path = []
+            }
+            ch.moveProgress = 0
+          }
+        }
       }
 
       // If became active while wandering, repath to seat

@@ -51,6 +51,8 @@ export interface LoadedAssetData {
     randomIdleCycle?: boolean
     idleCycleIntervalMin?: number
     idleCycleIntervalMax?: number
+    /** Sprite file paths for docked cycle animation (e.g. charging) */
+    dockedCycle?: string[]
   }>
   sprites: Record<string, SpriteData>
 }
@@ -152,6 +154,14 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       if (resolved.length > 0) idleCycleSprites = resolved
       //console.log(`[IdleCycle] Asset ${asset.id}: ${resolved.length} sprites resolved`)
     }
+    // Resolve dockedCycle sprite IDs to SpriteData arrays
+    let dockedCycleSprites: SpriteData[] | undefined
+    if (asset.dockedCycle && asset.dockedCycle.length > 0) {
+      const resolved = asset.dockedCycle
+        .map((id: string) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) dockedCycleSprites = resolved
+    }
     return {
       type: asset.id,
       label: asset.label,
@@ -184,6 +194,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.randomIdleCycle ? { randomIdleCycle: true } : {}),
       ...(asset.idleCycleIntervalMin !== undefined ? { idleCycleIntervalMin: asset.idleCycleIntervalMin } : {}),
       ...(asset.idleCycleIntervalMax !== undefined ? { idleCycleIntervalMax: asset.idleCycleIntervalMax } : {}),
+      ...(dockedCycleSprites ? { dockedCycleSprites } : {}),
     }
   }).filter((e): e is CatalogEntryWithCategory => e !== null)
 

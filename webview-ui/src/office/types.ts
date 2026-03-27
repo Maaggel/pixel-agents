@@ -224,6 +224,8 @@ export interface FurnitureCatalogEntry {
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
+  /** Resolved cycle frame sprites for docked animation (e.g. charging). */
+  dockedCycleSprites?: SpriteData[]
 }
 
 export interface PlacedFurniture {

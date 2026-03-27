@@ -165,18 +165,50 @@ export const IDLE_ZONE_DELAY_SEC = 10.0
 export const SUN_CYCLE_DURATION_SEC = 300
 /** Fraction of the cycle spent in the "off" (night) phase before restarting */
 export const SUN_NIGHT_FRACTION = 0.15
-/** Maximum sunlight beam length in tiles */
+/** Maximum sunlight beam length in tiles (at sunrise/sunset when sun is low) */
 export const SUN_BEAM_MAX_LENGTH = 3
+/** Minimum sunlight beam length in tiles (at midday when sun is high) */
+export const SUN_BEAM_MIN_LENGTH = 1
 /** Default inset in pixels from each side of window sprite for sunlight beam (narrows beam to glass area) */
 export const SUN_BEAM_DEFAULT_INSET = 2
 /** Peak sunlight beam opacity (at the window edge) */
 export const SUN_BEAM_OPACITY = 0.15
-/** Sunlight beam color (warm yellow) */
-export const SUN_BEAM_COLOR = 'rgba(255, 220, 120, 1)'
+/** Sunlight beam color at midday (warm yellow) */
+export const SUN_BEAM_COLOR_MIDDAY: [number, number, number] = [255, 220, 120]
+/** Sunlight beam color at sunrise/sunset (warm orange-red) */
+export const SUN_BEAM_COLOR_EDGE: [number, number, number] = [255, 170, 80]
 /** Minimum sun angle in radians (leftmost sweep, negative = left) */
 export const SUN_ANGLE_MIN_RAD = -0.4
 /** Maximum sun angle in radians (rightmost sweep, positive = right) */
 export const SUN_ANGLE_MAX_RAD = 0.4
+
+// ── Robot Vacuum ────────────────────────────────────────────
+/** Vacuum movement speed in pixels per second (slower than characters) */
+export const VACUUM_SPEED_PX_PER_SEC = 10
+/** Min seconds to wait when blocked by an avatar before rerouting */
+export const VACUUM_WAIT_DURATION_MIN_SEC = 1.0
+/** Max seconds to wait when blocked by an avatar before rerouting */
+export const VACUUM_WAIT_DURATION_MAX_SEC = 2.0
+/** Max tiles a vacuum can clean before needing to return to base for recharge */
+export const VACUUM_MAX_TILES_PER_CHARGE = 250
+/** Furniture type prefix used to identify robot vacuum items */
+export const ROBOT_VACUUM_TYPE_PREFIX = 'ROBOT_VACUUM'
+/** Interval in seconds between dock charging animation frame changes */
+export const VACUUM_DOCK_CYCLE_INTERVAL_SEC = 0.5
+/** Minimum seconds between automatic vacuum cleaning cycles */
+export const VACUUM_AUTO_CYCLE_MIN_SEC = 180
+/** Maximum seconds between automatic vacuum cleaning cycles */
+export const VACUUM_AUTO_CYCLE_MAX_SEC = 600
+/** Duration in seconds for vacuum cleaning trail to fade out */
+export const VACUUM_TRAIL_FADE_SEC = 8.0
+/** Opacity of the vacuum cleaning trail at full strength */
+export const VACUUM_TRAIL_OPACITY = 0.08
+/** Vacuum trail tint color (slight blue for wet/water look) */
+export const VACUUM_TRAIL_COLOR = '40, 80, 140'
+/** Sprite-pixel distance between trail patch spawns (smaller = denser trail) */
+export const VACUUM_TRAIL_SPAWN_INTERVAL_PX = 4
+/** Trail patch size in sprite pixels (slightly smaller than vacuum for a streak effect) */
+export const VACUUM_TRAIL_PATCH_SIZE_PX = 10
 
 // ── Cross-Window Sync ───────────────────────────────────────
 /** Interval (ms) for reporting local character visual states to the extension */

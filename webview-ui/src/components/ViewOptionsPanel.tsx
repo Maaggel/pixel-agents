@@ -6,6 +6,7 @@ export interface ViewOptions {
   showNametags: boolean
   alwaysShowActivities: boolean
   showSunlight: boolean
+  showVacuumPanel: boolean
 }
 
 interface ViewOptionsPanelProps {
@@ -106,6 +107,10 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
           <label style={labelStyle}>
             <input type="checkbox" checked={options.showSunlight} onChange={() => toggle('showSunlight')} style={checkboxStyle} />
             Sunlight
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={options.showVacuumPanel} onChange={() => toggle('showVacuumPanel')} style={checkboxStyle} />
+            Vacuum panel
           </label>
         </div>
       )}

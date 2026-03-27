@@ -1,9 +1,11 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_TALKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
+import type { SunBeam } from './sunlight.js'
+import { renderSunBeams } from './sunlight.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
 import {
@@ -48,6 +50,9 @@ import {
   ZONE_LABEL_COLORS,
   ZONE_LABELS,
 } from '../../constants.js'
+
+/** Track unknown tool names to log each only once (for future sprite creation) */
+const loggedUnknownTools = new Set<string>()
 
 // ── Render functions ────────────────────────────────────────────
 
@@ -441,8 +446,18 @@ export function renderBubbles(
     // Select sprite based on bubble type
     let sprite: SpriteData
     if (ch.bubbleType === 'talking' && ch.currentTool) {
-      // Tool-specific icon bubble (falls back to generic talking sprite)
-      sprite = TOOL_BUBBLE_SPRITES[ch.currentTool] ?? BUBBLE_TALKING_SPRITE
+      // Tool-specific icon bubble (falls back to working gear sprite for unknown tools)
+      const toolSprite = TOOL_BUBBLE_SPRITES[ch.currentTool]
+      if (toolSprite) {
+        sprite = toolSprite
+      } else {
+        // Log unknown tool for future sprite creation
+        if (!loggedUnknownTools.has(ch.currentTool)) {
+          loggedUnknownTools.add(ch.currentTool)
+          console.log(`[Pixel Agents] Unknown tool bubble: "${ch.currentTool}" — using default working sprite`)
+        }
+        sprite = BUBBLE_WORKING_SPRITE
+      }
     } else if (ch.bubbleType === 'permission') {
       sprite = BUBBLE_PERMISSION_SPRITE
     } else if (ch.bubbleType === 'thinking') {
@@ -454,7 +469,8 @@ export function renderBubbles(
     } else if (ch.bubbleType === 'idle_eat') {
       sprite = BUBBLE_IDLE_EAT_SPRITE
     } else if (ch.bubbleType === 'talking') {
-      sprite = BUBBLE_TALKING_SPRITE
+      // Active with no specific tool — show working bubble (not thinking cloud)
+      sprite = BUBBLE_WORKING_SPRITE
     } else {
       sprite = BUBBLE_WAITING_SPRITE
     }
@@ -668,6 +684,7 @@ export function renderFrame(
   tileColors?: Array<FloorColor | null>,
   layoutCols?: number,
   layoutRows?: number,
+  sunBeams?: SunBeam[],
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -690,7 +707,6 @@ export function renderFrame(
     renderZoneOverlay(ctx, editor.zones, editor.zoneCols, offsetX, offsetY, zoom)
   }
 
-
   // Build wall instances for z-sorting with furniture and characters
   const wallInstances = hasWallSprites()
     ? getWallInstances(tileMap, tileColors, layoutCols)
@@ -703,6 +719,11 @@ export function renderFrame(
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
+
+  // Sunlight overlay (on top of furniture + floor, masked to exclude walls)
+  if (sunBeams && sunBeams.length > 0) {
+    renderSunBeams(ctx, sunBeams, offsetX, offsetY, zoom, tileMap)
+  }
 
   // Nametags (above characters, below bubbles)
   if (selection?.showNametags) {

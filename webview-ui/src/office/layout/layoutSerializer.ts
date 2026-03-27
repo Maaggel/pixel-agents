@@ -99,6 +99,8 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       sprite, x, y, zY, uid: item.uid,
       col: item.col, row: item.row,
       footprintW: entry.footprintW, footprintH: entry.footprintH,
+      ...(entry.sunlight ? { sunlight: true } : {}),
+      ...(entry.sunlightInset !== undefined ? { sunlightInset: entry.sunlightInset } : {}),
     }
 
     // Attach meeting cycle data from catalog entry
@@ -137,7 +139,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
 
     // Attach idle cycle data from catalog entry
     if (entry.idleCycleSprites && entry.idleCycleSprites.length > 0) {
-      console.log(`[IdleCycle] Instance ${item.uid} (${item.type}): attaching ${entry.idleCycleSprites.length} idle cycle sprites`)
+      //console.log(`[IdleCycle] Instance ${item.uid} (${item.type}): attaching ${entry.idleCycleSprites.length} idle cycle sprites`)
       instance.idleCycleSprites = entry.idleCycleSprites
       if (entry.randomIdleCycle) instance.randomIdleCycle = true
       if (entry.idleCycleIntervalMin !== undefined) instance.idleCycleIntervalMin = entry.idleCycleIntervalMin
@@ -259,6 +261,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           seatRow: tileRow,
           facingDir,
           assigned: false,
+          lastUsedAt: 0,
         })
         seatCount++
       }

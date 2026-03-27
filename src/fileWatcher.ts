@@ -245,15 +245,16 @@ export function autoAdoptActiveConversations(
 			adopted++;
 		}
 
-		// ── Fallback: bind unbound definition agents to latest non-ended JSONL ──
+		// ── Fallback: bind unbound definition agents to latest JSONL ──
 		// If a definition agent (e.g. "Lead") still has no jsonlFile after the
 		// active-window pass (because the JSONL was older than 2 min at startup),
-		// bind it to the most recent non-ended JSONL regardless of age.
-		// This ensures the character reacts when the user resumes the session.
+		// bind it to the most recent JSONL regardless of age or ended state.
+		// Even ended sessions get a watcher so that if the user resumes the
+		// session (e.g. via the Claude Code extension), new data is detected.
 		for (const agent of agents.values()) {
 			if (!agent.agentDefinitionId || agent.jsonlFile || agent.terminalRef) continue;
 			if (agent.projectDir !== projectDir) continue;
-			// Find the most recent non-ended JSONL not already tracked
+			// Find the most recent JSONL not already tracked
 			let bestFile: string | null = null;
 			let bestMtime = 0;
 			for (const f of files) {
@@ -266,7 +267,7 @@ export function autoAdoptActiveConversations(
 				if (alreadyAdopted) continue;
 				try {
 					const stat = fs.statSync(f);
-					if (stat.mtimeMs > bestMtime && !isSessionEnded(f)) {
+					if (stat.mtimeMs > bestMtime) {
 						bestMtime = stat.mtimeMs;
 						bestFile = f;
 					}
@@ -293,7 +294,7 @@ export function autoAdoptActiveConversations(
 export function ensureProjectScan(
 	projectDir: string,
 	knownJsonlFiles: Set<string>,
-	projectScanTimerRef: { current: ReturnType<typeof setInterval> | null },
+	projectScanTimers: Map<string, ReturnType<typeof setInterval>>,
 	activeAgentIdRef: { current: number | null },
 	nextAgentIdRef: { current: number },
 	agents: Map<number, AgentState>,
@@ -303,8 +304,8 @@ export function ensureProjectScan(
 	webview: vscode.Webview | undefined,
 	persistAgents: () => void,
 ): void {
-	if (projectScanTimerRef.current) {
-		console.log(`[Pixel Agents] ensureProjectScan: already running, skipping`);
+	if (projectScanTimers.has(projectDir)) {
+		console.log(`[Pixel Agents] ensureProjectScan: already running for ${projectDir}, skipping`);
 		return;
 	}
 
@@ -326,13 +327,14 @@ export function ensureProjectScan(
 		console.log(`[Pixel Agents] ensureProjectScan: error reading dir: ${e}`);
 	}
 
-	projectScanTimerRef.current = setInterval(() => {
+	const timer = setInterval(() => {
 		scanForNewJsonlFiles(
 			projectDir, knownJsonlFiles, activeAgentIdRef, nextAgentIdRef,
 			agents, fileWatchers, pollingTimers, permissionTimers,
 			webview, persistAgents,
 		);
 	}, PROJECT_SCAN_INTERVAL_MS);
+	projectScanTimers.set(projectDir, timer);
 }
 
 function scanForNewJsonlFiles(
@@ -357,11 +359,14 @@ function scanForNewJsonlFiles(
 	for (const file of files) {
 		if (!knownJsonlFiles.has(file)) {
 			knownJsonlFiles.add(file);
-			if (activeAgentIdRef.current !== null) {
-				// Active agent focused → /clear reassignment
+			// Only treat as /clear reassignment if the active agent belongs to THIS project dir.
+			// Otherwise a new JSONL in project A would incorrectly hijack an agent from project B.
+			const activeAgent = activeAgentIdRef.current !== null ? agents.get(activeAgentIdRef.current) : null;
+			if (activeAgent && activeAgent.projectDir === projectDir) {
+				// Active agent focused in same project → /clear reassignment
 				console.log(`[Pixel Agents] New JSONL detected: ${path.basename(file)}, reassigning to agent ${activeAgentIdRef.current}`);
 				reassignAgentToFile(
-					activeAgentIdRef.current, file,
+					activeAgentIdRef.current!, file,
 					agents, fileWatchers, pollingTimers, permissionTimers,
 					webview, persistAgents,
 				);
@@ -400,6 +405,52 @@ function scanForNewJsonlFiles(
 		}
 	}
 
+	// ── Re-adopt: bind unbound definition agents to resumed sessions ──
+	// If a definition agent in this project has no jsonlFile (e.g. all sessions were
+	// ended at startup and one was later resumed by the Claude Code extension),
+	// scan for the most recently modified non-ended file and bind to it.
+	for (const [agentId, agent] of agents) {
+		if (!agent.agentDefinitionId || agent.jsonlFile || agent.terminalRef) continue;
+		if (agent.projectDir !== projectDir) continue;
+
+		// Find the most recently modified non-ended JSONL not tracked by another agent
+		const trackedFiles = new Set<string>();
+		for (const a of agents.values()) {
+			if (a.jsonlFile) trackedFiles.add(a.jsonlFile);
+		}
+
+		let bestFile: string | null = null;
+		let bestMtime = 0;
+		for (const f of files) {
+			if (trackedFiles.has(f)) continue;
+			try {
+				const stat = fs.statSync(f);
+				// Only consider recently active files (modified in last 2 minutes)
+				if (Date.now() - stat.mtimeMs > ACTIVE_FILE_MAX_AGE_MS) continue;
+				if (stat.mtimeMs > bestMtime && !isSessionEnded(f)) {
+					bestMtime = stat.mtimeMs;
+					bestFile = f;
+				}
+			} catch { /* skip */ }
+		}
+
+		if (bestFile) {
+			console.log(`[Pixel Agents] Agent ${agentId}: re-adopt resumed session ${path.basename(bestFile)}`);
+			agent.jsonlFile = bestFile;
+			agent.fileOffset = 0;
+			agent.lineBuffer = '';
+			// Skip to near-end so we don't replay old history, but read last few KB
+			// to pick up the current turn's state
+			try {
+				const size = fs.statSync(bestFile).size;
+				agent.fileOffset = Math.max(0, size - 4096);
+			} catch { /* start from 0 */ }
+			persistAgents();
+			startFileWatching(agentId, bestFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
+			readNewLines(agentId, agents, permissionTimers, webview);
+			webview?.postMessage({ type: 'agentBound', id: agentId, definitionId: agent.agentDefinitionId });
+		}
+	}
 }
 
 function adoptTerminalForFile(
@@ -548,21 +599,26 @@ function adoptFileWithoutTerminal(
 		}
 	}
 	if (!bindTarget) {
-		// No marker match — prefer the lead ('main') definition if it's unbound.
-		// If the lead has no live terminal, its old session is already orphaned — new session takes over.
+		// No marker match — prefer the lead ('main') definition if it's unbound or has a stale JSONL.
+		// A restored Lead may have a terminal but an old JSONL from a previous session;
+		// a new JSONL file should take over rather than creating a duplicate agent.
 		for (const [existingId, existingAgent] of agents) {
-			if (existingAgent.agentDefinitionId === 'main' && !existingAgent.terminalRef
+			if (existingAgent.agentDefinitionId === 'main'
 				&& existingAgent.projectDir === projectDir) {
-				if (!existingAgent.jsonlFile) {
-					// Lead is unbound — bind normally
+				if (!existingAgent.terminalRef && !existingAgent.jsonlFile) {
+					// Lead is fully unbound — bind normally
 					bindTarget = [existingId, existingAgent];
 					break;
-				} else {
-					// Lead has no terminal → its old session is orphaned; new session takes over
+				} else if (existingAgent.jsonlFile && existingAgent.jsonlFile !== jsonlFile) {
+					// Lead has an old/different JSONL → reassign to the new file
 					console.log(`[Pixel Agents] Agent ${existingId}: lead reassigned to new JSONL (old session orphaned)`);
 					reassignAgentToFile(existingId, jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview, persistAgents);
 					webview?.postMessage({ type: 'agentBound', id: existingId, definitionId: 'main' });
 					return;
+				} else if (!existingAgent.terminalRef) {
+					// Lead has no terminal and no JSONL mismatch — bind normally
+					bindTarget = [existingId, existingAgent];
+					break;
 				}
 			}
 		}

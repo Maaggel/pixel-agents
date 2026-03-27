@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import * as crypto from 'crypto';
 import type { DetectedAgentDefinition, PixelAgentsConfigFile, PixelAgentConfig } from './types.js';
-import { PIXEL_AGENTS_CONFIG_FILE, AGENTS_DIR, AGENT_DIR_POLL_INTERVAL_MS } from './constants.js';
+import { PIXEL_AGENTS_CONFIG_DIR, PIXEL_AGENTS_LEGACY_CONFIG_FILE, LAYOUT_FILE_DIR, AGENTS_DIR, AGENT_DIR_POLL_INTERVAL_MS } from './constants.js';
 
 // ── Detection ──────────────────────────────────────────────────
 
@@ -61,13 +63,63 @@ function titleCase(s: string): string {
 	return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-// ── .pixel_agents Config I/O ────────────────────────────────────
+// ── Agent Config I/O (centralized at ~/.pixel-agents/projects/) ──
+
+/** Hash workspace path to a short filename-safe string. */
+function hashWorkspacePath(workspaceFolder: string): string {
+	return crypto.createHash('sha256').update(workspaceFolder).digest('hex').slice(0, 16);
+}
+
+function getConfigDir(): string {
+	return path.join(os.homedir(), LAYOUT_FILE_DIR, PIXEL_AGENTS_CONFIG_DIR);
+}
 
 function getConfigPath(workspaceFolder: string): string {
-	return path.join(workspaceFolder, PIXEL_AGENTS_CONFIG_FILE);
+	return path.join(getConfigDir(), `${hashWorkspacePath(workspaceFolder)}.json`);
+}
+
+function getLegacyConfigPath(workspaceFolder: string): string {
+	return path.join(workspaceFolder, PIXEL_AGENTS_LEGACY_CONFIG_FILE);
+}
+
+/**
+ * Migrate legacy .pixel_agents from project root to ~/.pixel-agents/projects/.
+ * Moves the data and deletes the old file.
+ */
+function migrateLegacyConfig(workspaceFolder: string): void {
+	const legacyPath = getLegacyConfigPath(workspaceFolder);
+	try {
+		if (!fs.existsSync(legacyPath)) return;
+		const raw = fs.readFileSync(legacyPath, 'utf-8');
+		const parsed = JSON.parse(raw) as PixelAgentsConfigFile;
+		if (parsed.version !== 1 || typeof parsed.agents !== 'object') {
+			// Invalid legacy file — just remove it
+			fs.unlinkSync(legacyPath);
+			return;
+		}
+		// Write to new centralized location
+		const newPath = getConfigPath(workspaceFolder);
+		const dir = getConfigDir();
+		if (!fs.existsSync(dir)) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
+		// Only migrate if new file doesn't already exist
+		if (!fs.existsSync(newPath)) {
+			fs.writeFileSync(newPath, raw, 'utf-8');
+			console.log(`[Pixel Agents] Migrated .pixel_agents to ${newPath}`);
+		}
+		// Remove legacy file from project root
+		fs.unlinkSync(legacyPath);
+		console.log('[Pixel Agents] Removed legacy .pixel_agents from project root');
+	} catch (err) {
+		console.error('[Pixel Agents] Failed to migrate legacy .pixel_agents:', err);
+	}
 }
 
 export function readPixelAgentsConfig(workspaceFolder: string): PixelAgentsConfigFile | null {
+	// Migrate legacy file if it exists
+	migrateLegacyConfig(workspaceFolder);
+
 	const filePath = getConfigPath(workspaceFolder);
 	try {
 		if (!fs.existsSync(filePath)) return null;
@@ -76,7 +128,7 @@ export function readPixelAgentsConfig(workspaceFolder: string): PixelAgentsConfi
 		if (parsed.version !== 1 || typeof parsed.agents !== 'object') return null;
 		return parsed;
 	} catch (err) {
-		console.error('[Pixel Agents] Failed to read .pixel_agents:', err);
+		console.error('[Pixel Agents] Failed to read agent config:', err);
 		return null;
 	}
 }
@@ -84,18 +136,23 @@ export function readPixelAgentsConfig(workspaceFolder: string): PixelAgentsConfi
 export function writePixelAgentsConfig(workspaceFolder: string, config: PixelAgentsConfigFile): void {
 	const filePath = getConfigPath(workspaceFolder);
 	try {
+		const dir = getConfigDir();
+		if (!fs.existsSync(dir)) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
 		const json = JSON.stringify(config, null, 2);
 		const tmpPath = filePath + '.tmp';
 		fs.writeFileSync(tmpPath, json, 'utf-8');
 		fs.renameSync(tmpPath, filePath);
 	} catch (err) {
-		console.error('[Pixel Agents] Failed to write .pixel_agents:', err);
+		console.error('[Pixel Agents] Failed to write agent config:', err);
 	}
 }
 
 /**
- * Ensure .pixel_agents file exists and is in sync with detected agents.
- * - Creates file with defaults if missing
+ * Ensure agent config exists and is in sync with detected agents.
+ * - Migrates legacy .pixel_agents from project root if present
+ * - Creates config with defaults if missing
  * - Adds entries for new definitions (preserves existing customizations)
  * - Removes entries for definitions that no longer exist
  * Returns the merged config.
@@ -168,7 +225,7 @@ export function ensurePixelAgentsConfig(
 }
 
 /**
- * Update a single agent's appearance in the .pixel_agents config.
+ * Update a single agent's appearance in the agent config.
  */
 export function updateAgentConfig(
 	workspaceFolder: string,
@@ -269,7 +326,7 @@ function serializeDefinitions(defs: DetectedAgentDefinition[]): string {
 // ── Session Marker Files ────────────────────────────────────────
 
 function getSessionMarkerDir(): string {
-	return path.join(require('os').homedir(), '.pixel-agents', 'sessions');
+	return path.join(os.homedir(), LAYOUT_FILE_DIR, 'sessions');
 }
 
 /**

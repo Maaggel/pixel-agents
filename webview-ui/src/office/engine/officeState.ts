@@ -37,6 +37,7 @@ import {
   IDLE_ZONE_WEIGHT_REST,
   IDLE_ZONE_WEIGHT_KITCHEN,
   IDLE_ZONE_WEIGHT_OTHER,
+  WORK_SEAT_RANDOM_CHANCE,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -134,7 +135,7 @@ export class OfficeState {
       if (ch.seatId && this.seats.has(ch.seatId)) {
         const seat = this.seats.get(ch.seatId)!
         if (!seat.assigned) {
-          seat.assigned = true
+          this.assignSeat(seat)
           // Don't snap position — source window controls remote positions
         }
       }
@@ -146,7 +147,7 @@ export class OfficeState {
       if (ch.seatId && this.seats.has(ch.seatId)) {
         const seat = this.seats.get(ch.seatId)!
         if (!seat.assigned) {
-          seat.assigned = true
+          this.assignSeat(seat)
           // Snap character to seat position
           ch.tileCol = seat.seatCol
           ch.tileRow = seat.seatRow
@@ -167,7 +168,7 @@ export class OfficeState {
       if (ch.seatId) continue
       const seatId = this.findFreeSeat()
       if (seatId) {
-        this.seats.get(seatId)!.assigned = true
+        this.assignSeat(this.seats.get(seatId)!)
         ch.seatId = seatId
         const seat = this.seats.get(seatId)!
         ch.tileCol = seat.seatCol
@@ -515,7 +516,7 @@ export class OfficeState {
         const oldSeat = this.seats.get(ch.seatId)
         if (oldSeat) oldSeat.assigned = false
       }
-      seat.assigned = true
+      this.assignSeat(seat)
       ch.seatId = seatId
 
       // Set up meeting state
@@ -572,7 +573,7 @@ export class OfficeState {
     if (originalSeatId && this.seats.has(originalSeatId)) {
       const origSeat = this.seats.get(originalSeatId)!
       if (!origSeat.assigned) {
-        origSeat.assigned = true
+        this.assignSeat(origSeat)
         ch.seatId = originalSeatId
         return
       }
@@ -581,7 +582,7 @@ export class OfficeState {
     // Original seat taken — find any free seat
     const newSeatId = this.findFreeSeat()
     if (newSeatId) {
-      this.seats.get(newSeatId)!.assigned = true
+      this.assignSeat(this.seats.get(newSeatId)!)
       ch.seatId = newSeatId
     } else {
       ch.seatId = null
@@ -648,6 +649,12 @@ export class OfficeState {
     return result
   }
 
+  /** Mark a seat as assigned and stamp its lastUsedAt timestamp */
+  private assignSeat(seat: Seat): void {
+    seat.assigned = true
+    seat.lastUsedAt = Date.now()
+  }
+
   /** Check if a seat tile is inside a MEETING_ROOM zone */
   private isMeetingZoneSeat(seat: Seat): boolean {
     const zones = this.layout.zones
@@ -656,18 +663,68 @@ export class OfficeState {
     return zones[idx] === ZoneTypeValues.MEETING_ROOM
   }
 
-  private findFreeSeat(): string | null {
-    // Prefer non-meeting-zone seats
+  /** Pick a random seat from candidates, weighted by proximity to (fromCol, fromRow)
+   *  and how long since the seat was last used (older = higher weight).
+   *  With WORK_SEAT_RANDOM_CHANCE probability, picks uniformly at random instead. */
+  private pickProximityWeighted(candidates: string[], fromCol: number, fromRow: number): string {
+    if (candidates.length === 1) return candidates[0]
+    // Occasionally pick a completely random seat so distant rooms get used
+    if (Math.random() < WORK_SEAT_RANDOM_CHANCE) {
+      return candidates[Math.floor(Math.random() * candidates.length)]
+    }
+    // Combined weighting: proximity × recency
+    // proximity = 1 / (dist + 1)
+    // recency   = 1 + (minutesSinceLastUsed / 10), capped at 5×
+    //   never-used seats get max recency boost
+    const now = Date.now()
+    const weights: number[] = []
+    for (const uid of candidates) {
+      const seat = this.seats.get(uid)!
+      const dist = Math.abs(seat.seatCol - fromCol) + Math.abs(seat.seatRow - fromRow)
+      const proximityW = 1 / (dist + 1)
+      const elapsed = seat.lastUsedAt > 0 ? (now - seat.lastUsedAt) / 60000 : 60 // never-used → treat as 60 min ago
+      const recencyW = Math.min(1 + elapsed / 10, 5)
+      weights.push(proximityW * recencyW)
+    }
+    const total = weights.reduce((a, b) => a + b, 0)
+    let roll = Math.random() * total
+    for (let i = 0; i < candidates.length; i++) {
+      roll -= weights[i]
+      if (roll <= 0) return candidates[i]
+    }
+    return candidates[candidates.length - 1]
+  }
+
+  private findFreeSeat(fromCol?: number, fromRow?: number): string | null {
+    // Prefer non-meeting-zone seats, unoccupied
+    const candidates: string[] = []
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow) && !this.isMeetingZoneSeat(seat)) return uid
+      if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow) && !this.isMeetingZoneSeat(seat)) candidates.push(uid)
+    }
+    if (candidates.length > 0) {
+      return fromCol !== undefined && fromRow !== undefined
+        ? this.pickProximityWeighted(candidates, fromCol, fromRow)
+        : candidates[Math.floor(Math.random() * candidates.length)]
     }
     // Fallback: any seat not flagged as assigned (even if someone is walking through), still skip meeting
+    const fallback1: string[] = []
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !this.isMeetingZoneSeat(seat)) return uid
+      if (!seat.assigned && !this.isMeetingZoneSeat(seat)) fallback1.push(uid)
+    }
+    if (fallback1.length > 0) {
+      return fromCol !== undefined && fromRow !== undefined
+        ? this.pickProximityWeighted(fallback1, fromCol, fromRow)
+        : fallback1[Math.floor(Math.random() * fallback1.length)]
     }
     // Last resort: meeting zone seats
+    const fallback2: string[] = []
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) return uid
+      if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) fallback2.push(uid)
+    }
+    if (fallback2.length > 0) {
+      return fromCol !== undefined && fromRow !== undefined
+        ? this.pickProximityWeighted(fallback2, fromCol, fromRow)
+        : fallback2[Math.floor(Math.random() * fallback2.length)]
     }
     return null
   }
@@ -795,7 +852,7 @@ export class OfficeState {
       if (preferredSeatId && this.seats.has(preferredSeatId)) {
         const seat = this.seats.get(preferredSeatId)!
         if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) {
-          seat.assigned = true
+          this.assignSeat(seat)
           assignedSeatId = preferredSeatId
         }
       }
@@ -803,7 +860,7 @@ export class OfficeState {
       if (!assignedSeatId) {
         assignedSeatId = this.findFreeSeat()
         if (assignedSeatId) {
-          this.seats.get(assignedSeatId)!.assigned = true
+          this.assignSeat(this.seats.get(assignedSeatId)!)
         }
       }
       ch.seatId = assignedSeatId
@@ -847,7 +904,7 @@ export class OfficeState {
     let ch: Character
     if (seatId) {
       const seat = this.seats.get(seatId)!
-      seat.assigned = true
+      this.assignSeat(seat)
       ch = createCharacter(id, palette, seatId, seat, hueShift)
     } else {
       // No seats — spawn at random walkable tile
@@ -929,7 +986,7 @@ export class OfficeState {
     // Assign new seat
     const seat = this.seats.get(seatId)
     if (!seat || seat.assigned) return
-    seat.assigned = true
+    this.assignSeat(seat)
     ch.seatId = seatId
     // Pathfind to new seat (unblock own seat tile for this query)
     const path = this.withOwnSeatUnblocked(ch, () =>
@@ -1042,7 +1099,7 @@ export class OfficeState {
     let ch: Character
     if (bestSeatId) {
       const seat = this.seats.get(bestSeatId)!
-      seat.assigned = true
+      this.assignSeat(seat)
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
       // No seats — spawn at closest walkable tile to parent
@@ -1278,7 +1335,7 @@ export class OfficeState {
       }
     }
 
-    const newSeatId = this.findZoneSeatOrAny(ch.seatId, zoneTypes)
+    const newSeatId = this.findZoneSeatOrAny(ch.seatId, zoneTypes, ch.tileCol, ch.tileRow)
     if (!newSeatId || newSeatId === ch.seatId) return
 
     // Free old seat
@@ -1289,7 +1346,7 @@ export class OfficeState {
     // Assign new seat
     const seat = this.seats.get(newSeatId)
     if (!seat || seat.assigned) return
-    seat.assigned = true
+    this.assignSeat(seat)
     ch.seatId = newSeatId
   }
 
@@ -1315,25 +1372,32 @@ export class OfficeState {
     }
     const seat = this.seats.get(newSeatId)
     if (!seat || seat.assigned) return
-    seat.assigned = true
+    this.assignSeat(seat)
     ch.seatId = newSeatId
   }
 
-  /** Find a free seat in the given zone types (closest to character), falling back to any free seat */
-  private findZoneSeatOrAny(excludeSeatId: string | null, zoneTypes: ZoneType[]): string | null {
+  /** Find a free seat in the given zone types, preferring seats close to (fromCol, fromRow)
+   *  with occasional random picks. Falls back to any free seat. */
+  private findZoneSeatOrAny(excludeSeatId: string | null, zoneTypes: ZoneType[], fromCol?: number, fromRow?: number): string | null {
     const zones = this.layout.zones
-    if (!zones || this.zoneTiles.size === 0) return this.findFreeSeat()
+    if (!zones || this.zoneTiles.size === 0) return this.findFreeSeat(fromCol, fromRow)
 
     const zoneSet = new Set<string>(zoneTypes)
+    const candidates: string[] = []
     for (const [uid, seat] of this.seats) {
       if (uid === excludeSeatId) continue
       if (seat.assigned) continue
       if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
       const idx = seat.seatRow * this.layout.cols + seat.seatCol
       const zone = zones[idx]
-      if (zone && zoneSet.has(zone)) return uid
+      if (zone && zoneSet.has(zone)) candidates.push(uid)
     }
-    return this.findFreeSeat()
+    if (candidates.length > 0) {
+      return fromCol !== undefined && fromRow !== undefined
+        ? this.pickProximityWeighted(candidates, fromCol, fromRow)
+        : candidates[Math.floor(Math.random() * candidates.length)]
+    }
+    return this.findFreeSeat(fromCol, fromRow)
   }
 
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */
@@ -1668,10 +1732,15 @@ export class OfficeState {
 
       // Tick bubble timer for waiting/talking/idle bubbles
       if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
-        ch.bubbleTimer -= dt
-        if (ch.bubbleTimer <= 0) {
-          ch.bubbleType = null
-          ch.bubbleTimer = 0
+        // Active sub-agents: keep talking bubble alive (no agentStateUpdate to refresh it)
+        if (ch.isSubagent && ch.isActive && ch.bubbleType === 'talking') {
+          ch.bubbleTimer = TALKING_BUBBLE_DURATION_SEC
+        } else {
+          ch.bubbleTimer -= dt
+          if (ch.bubbleTimer <= 0) {
+            ch.bubbleType = null
+            ch.bubbleTimer = 0
+          }
         }
       }
     }

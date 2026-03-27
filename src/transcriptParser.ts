@@ -1,4 +1,6 @@
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import type * as vscode from 'vscode';
 import type { AgentState } from './types.js';
 import {
@@ -9,6 +11,7 @@ import {
 	TOOL_DONE_DELAY_MS,
 	BASH_COMMAND_DISPLAY_MAX_LENGTH,
 	TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
+	MISSING_SPRITES_MAX_ENTRIES,
 } from './constants.js';
 import { sendAgentStateUpdate } from './agentDisplayState.js';
 
@@ -16,6 +19,84 @@ export const PERMISSION_EXEMPT_TOOLS = new Set([
 	'Task', 'Agent', 'AskUserQuestion', 'TaskOutput', 'TaskStop',
 	'TodoWrite', 'ToolSearch', 'EnterPlanMode', 'ExitPlanMode', 'Skill',
 ]);
+
+/** Tools that have dedicated bubble sprites in the webview */
+const KNOWN_BUBBLE_TOOLS = new Set([
+	'Read', 'Grep', 'Glob', 'Write', 'Edit', 'Bash',
+	'Bash:build', 'Bash:test', 'Bash:git', 'Bash:install',
+	'Task', 'Agent', 'WebFetch', 'WebSearch',
+]);
+
+// ── Persistent missing-sprites tracking ──────────────────────
+const MISSING_SPRITES_FILE = path.join(os.homedir(), '.pixel-agents', 'missing-sprites.json');
+
+/** In-memory cache loaded from disk on first access. Map<toolName, firstSeenISO>. */
+let missingBubbleSpriteTools: Map<string, string> | null = null;
+let savePending = false;
+
+function ensureLoaded(): Map<string, string> {
+	if (missingBubbleSpriteTools) return missingBubbleSpriteTools;
+	missingBubbleSpriteTools = new Map();
+	try {
+		const raw = fs.readFileSync(MISSING_SPRITES_FILE, 'utf-8');
+		const obj = JSON.parse(raw) as Record<string, string>;
+		for (const [tool, ts] of Object.entries(obj)) {
+			missingBubbleSpriteTools.set(tool, ts);
+		}
+	} catch { /* file doesn't exist yet — fine */ }
+	return missingBubbleSpriteTools;
+}
+
+function saveToDisk(): void {
+	if (savePending) return;
+	savePending = true;
+	// Debounce: write at most once per second
+	setTimeout(() => {
+		savePending = false;
+		const map = ensureLoaded();
+		const obj: Record<string, string> = {};
+		for (const [k, v] of map) obj[k] = v;
+		try {
+			const dir = path.dirname(MISSING_SPRITES_FILE);
+			if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+			fs.writeFileSync(MISSING_SPRITES_FILE, JSON.stringify(obj, null, 2));
+		} catch (err) {
+			console.log(`[Pixel Agents] Failed to save missing-sprites.json: ${err}`);
+		}
+	}, 1000);
+}
+
+function trackMissingSprite(toolName: string): void {
+	const map = ensureLoaded();
+	if (map.has(toolName)) return;
+	// Cap size: if at limit, drop the oldest entry
+	if (map.size >= MISSING_SPRITES_MAX_ENTRIES) {
+		let oldestKey: string | null = null;
+		let oldestTs = '';
+		for (const [k, v] of map) {
+			if (!oldestKey || v < oldestTs) { oldestKey = k; oldestTs = v; }
+		}
+		if (oldestKey) map.delete(oldestKey);
+	}
+	map.set(toolName, new Date().toISOString());
+	console.log(`[Pixel Agents] Missing bubble sprite for tool: "${toolName}"`);
+	saveToDisk();
+}
+
+/** Get the list of tools missing bubble sprites, sorted by first-seen time. */
+export function getMissingBubbleSpriteTools(): Array<{ tool: string; firstSeen: Date }> {
+	const map = ensureLoaded();
+	return [...map.entries()]
+		.sort((a, b) => a[1].localeCompare(b[1]))
+		.map(([tool, ts]) => ({ tool, firstSeen: new Date(ts) }));
+}
+
+/** Clear all tracked missing sprites (e.g. after adding new sprite support). */
+export function clearMissingBubbleSpriteTools(): void {
+	const map = ensureLoaded();
+	map.clear();
+	saveToDisk();
+}
 
 /** Refine Bash tool name based on the command being run */
 export function refineBashToolName(command: string): string {
@@ -94,6 +175,10 @@ export function processTranscriptLine(
 							? refineBashToolName((block.input?.command as string) || '')
 							: rawToolName;
 						console.log(`[Pixel Agents] Agent ${agentId} tool start: ${block.id} ${status}`);
+					// Track tools that don't have bubble sprites
+					if (!KNOWN_BUBBLE_TOOLS.has(toolName) && !PERMISSION_EXEMPT_TOOLS.has(rawToolName)) {
+						trackMissingSprite(toolName);
+					}
 						agent.activeToolIds.add(block.id);
 						agent.activeToolStatuses.set(block.id, status);
 						agent.activeToolNames.set(block.id, toolName);

@@ -43,10 +43,10 @@ interface IdleActionEntry {
 }
 
 const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
-  { type: IdleActionType.WANDER, weight: 40 },
-  { type: IdleActionType.CONVERSATION, weight: 25, needsPartner: true },
-  { type: IdleActionType.VISIT_FURNITURE, weight: 20, needsFurniture: true },
-  { type: IdleActionType.STAND_AND_THINK, weight: 15 },
+  { type: IdleActionType.WANDER, weight: 20 },
+  { type: IdleActionType.CONVERSATION, weight: 35, needsPartner: true },
+  { type: IdleActionType.VISIT_FURNITURE, weight: 35, needsFurniture: true },
+  { type: IdleActionType.STAND_AND_THINK, weight: 10 },
   { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
 ]
 

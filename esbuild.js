@@ -27,6 +27,33 @@ function copyAssets() {
 }
 
 /**
+ * Bundle the standalone server into dist/standalone-server.cjs
+ * so it can run from an installed VSIX without node_modules.
+ */
+async function bundleStandalone() {
+	// Read BUILD_NUMBER from src/constants.ts to inject at build time
+	const constSrc = fs.readFileSync(path.join(__dirname, 'src', 'constants.ts'), 'utf-8');
+	const buildMatch = constSrc.match(/BUILD_NUMBER\s*=\s*(\d+)/);
+	const buildNumber = buildMatch ? buildMatch[1] : '0';
+
+	await esbuild.build({
+		entryPoints: ['standalone/server.mjs'],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		platform: 'node',
+		outfile: 'dist/standalone-server.cjs',
+		logLevel: 'silent',
+		// Define import.meta.dirname for CJS output
+		define: {
+			'import.meta.dirname': '__dirname',
+			'__INJECTED_BUILD_NUMBER__': JSON.stringify(buildNumber),
+		},
+	});
+	console.log('✓ Bundled standalone/server.mjs → dist/standalone-server.cjs');
+}
+
+/**
  * @type {import('esbuild').Plugin}
  */
 const esbuildProblemMatcherPlugin = {
@@ -70,7 +97,8 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
-		// Copy assets after build
+		// Bundle standalone server + copy assets after extension build
+		await bundleStandalone();
 		copyAssets();
 	}
 }

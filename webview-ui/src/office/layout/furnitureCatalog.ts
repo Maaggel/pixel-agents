@@ -29,6 +29,8 @@ export interface LoadedAssetData {
     canPlaceOnWalls?: boolean
     interactable?: boolean
     isSeat?: boolean
+    sunlight?: boolean
+    sunlightInset?: number
     /** Resolved sprite IDs for meeting cycle animation frames */
     meetingCycle?: string[]
     randomMeetingCycle?: boolean
@@ -143,13 +145,12 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
     // Resolve idleCycle sprite IDs to SpriteData arrays
     let idleCycleSprites: SpriteData[] | undefined
     if (asset.idleCycle && asset.idleCycle.length > 0) {
-      console.log(`[IdleCycle] Asset ${asset.id} has idleCycle IDs:`, asset.idleCycle,
-        'resolved:', asset.idleCycle.map((id: string) => !!assets.sprites[id]))
+      //console.log(`[IdleCycle] Asset ${asset.id} has idleCycle IDs:`, asset.idleCycle, 'resolved:', asset.idleCycle.map((id: string) => !!assets.sprites[id]))
       const resolved = asset.idleCycle
         .map((id: string) => assets.sprites[id])
         .filter((s): s is SpriteData => s !== undefined)
       if (resolved.length > 0) idleCycleSprites = resolved
-      console.log(`[IdleCycle] Asset ${asset.id}: ${resolved.length} sprites resolved`)
+      //console.log(`[IdleCycle] Asset ${asset.id}: ${resolved.length} sprites resolved`)
     }
     return {
       type: asset.id,
@@ -165,6 +166,8 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
       ...(asset.interactable ? { interactable: true } : {}),
       ...(asset.isSeat ? { isSeat: true } : {}),
+      ...(asset.sunlight ? { sunlight: true } : {}),
+      ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),
       ...(meetingCycleSprites ? { meetingCycleSprites } : {}),
       ...(asset.randomMeetingCycle ? { randomMeetingCycle: true } : {}),
       ...(asset.meetingCycleIntervalMin !== undefined ? { meetingCycleIntervalMin: asset.meetingCycleIntervalMin } : {}),

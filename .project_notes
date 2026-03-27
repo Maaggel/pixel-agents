@@ -1,0 +1,19 @@
+Bugs:
+ - I experience that the "Pixel Agents Lead" avatar diappeared, for it to re-apper (with a different look).
+ - .pixel_agents shouldn't be created in each project folder - that would make them be added to github. And that's not good.
+
+
+ - "Arctic Main" keeps returning to the same work desk - when idle. It also says "returning to desk" in the Behaviour log? Why is this - it sometime wander arround, but tend to return to that one?
+ - Keeps wandering off when having conversations
+ - View settings should be remembered between sessions - localStorage?
+ - Idle actions for furniture (games on pc screen etc.)
+ - Remove feature to designate seating location manually
+ - Some times an extra agent (GRB #2 ex.) are still spawned.. and I do not know why. I'm not currently prompting with the GRB project
+ - Add toilet stuff, and toilet zone (if needed) - toilet could also just be a single seat.
+ - Fix the work issue - have it compare to the current main branch
+ - The avatars doesn't seem to go look at stuff anymore
+ - subagents doesn't work anymore
+ - canPlaceOnWalls and canPlaceOnSurfaces can't work at the same time
+ - Add "isChair", instead of looking at the name
+ - Avatars tend to wander off during conversations
+orkelinst

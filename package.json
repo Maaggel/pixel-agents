@@ -2,7 +2,7 @@
   "name": "pixel-agents",
   "displayName": "Pixel Agents",
   "description": "Pixel art office where your Claude Code agents come to life as animated characters",
-  "version": "1.5.0",
+  "version": "1.5.4",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
@@ -23,36 +23,26 @@
   "contributes": {
     "commands": [
       {
-        "command": "pixel-agents.showPanel",
-        "title": "Pixel Agents: Show Panel"
-      },
-      {
         "command": "pixel-agents.exportDefaultLayout",
         "title": "Pixel Agents: Export Layout as Default"
       },
       {
         "command": "pixel-agents.openInTab",
-        "title": "Pixel Agents: Open in Editor Tab"
+        "title": "Pixel Agents: Open Viewer"
+      },
+      {
+        "command": "pixel-agents.setProjectName",
+        "title": "Pixel Agents: Set Project Name"
+      },
+      {
+        "command": "pixel-agents.showMissingSprites",
+        "title": "Pixel Agents: Show Missing Bubble Sprites"
+      },
+      {
+        "command": "pixel-agents.restartStandalone",
+        "title": "Pixel Agents: Restart Standalone Server"
       }
     ],
-    "viewsContainers": {
-      "panel": [
-        {
-          "id": "pixel-agents-panel",
-          "title": "Pixel Agents",
-          "icon": "$(window)"
-        }
-      ]
-    },
-    "views": {
-      "pixel-agents-panel": [
-        {
-          "type": "webview",
-          "id": "pixel-agents.panelView",
-          "name": "Pixel Agents"
-        }
-      ]
-    },
     "configuration": {
       "title": "Pixel Agents",
       "properties": {
@@ -61,10 +51,15 @@
           "default": "",
           "description": "Custom project name displayed on agent nametags. Leave empty to use the workspace folder name."
         },
+        "pixel-agents.standalonePort": {
+          "type": "number",
+          "default": 7600,
+          "description": "Port for the standalone Pixel Agents viewer server."
+        },
         "pixel-agents.relayUrl": {
           "type": "string",
           "default": "",
-          "description": "WebSocket URL for the remote relay server (e.g., wss://apps.blommemix.dk/pixelagents/ws). Leave empty to disable."
+          "description": "WebSocket URL for the remote relay server. Leave empty to disable."
         },
         "pixel-agents.relayToken": {
           "type": "string",

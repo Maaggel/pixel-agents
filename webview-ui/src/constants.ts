@@ -24,6 +24,8 @@ export const INITIAL_IDLE_SEAT_REST_MIN_SEC = 45.0
 export const INITIAL_IDLE_SEAT_REST_MAX_SEC = 120.0
 /** Chance (0-1) to return to the same seat after wandering. 0.4 = 40% same, 60% new seat. */
 export const SEAT_RETURN_SAME_CHANCE = 0.4
+/** Chance (0-1) to pick a completely random work seat instead of a nearby one. */
+export const WORK_SEAT_RANDOM_CHANCE = 0.3
 /** Weighted zone preferences for idle seat selection (rest > kitchen > work/any).
  *  Weights are relative — if a zone has no free seats, its weight is redistributed. */
 export const IDLE_ZONE_WEIGHT_REST = 50
@@ -157,6 +159,24 @@ export const ZONE_ICONS: Record<string, string> = {
 export const ZONE_WANDER_PREFERENCE = 0.7
 /** Seconds to wait at current position before transitioning to idle zone */
 export const IDLE_ZONE_DELAY_SEC = 10.0
+
+// ── Sunlight ────────────────────────────────────────────────
+/** Full sun cycle duration in seconds (left → right → fade out → pause → restart) */
+export const SUN_CYCLE_DURATION_SEC = 300
+/** Fraction of the cycle spent in the "off" (night) phase before restarting */
+export const SUN_NIGHT_FRACTION = 0.15
+/** Maximum sunlight beam length in tiles */
+export const SUN_BEAM_MAX_LENGTH = 3
+/** Default inset in pixels from each side of window sprite for sunlight beam (narrows beam to glass area) */
+export const SUN_BEAM_DEFAULT_INSET = 2
+/** Peak sunlight beam opacity (at the window edge) */
+export const SUN_BEAM_OPACITY = 0.15
+/** Sunlight beam color (warm yellow) */
+export const SUN_BEAM_COLOR = 'rgba(255, 220, 120, 1)'
+/** Minimum sun angle in radians (leftmost sweep, negative = left) */
+export const SUN_ANGLE_MIN_RAD = -0.4
+/** Maximum sun angle in radians (rightmost sweep, positive = right) */
+export const SUN_ANGLE_MAX_RAD = 0.4
 
 // ── Cross-Window Sync ───────────────────────────────────────
 /** Interval (ms) for reporting local character visual states to the extension */

@@ -544,6 +544,28 @@ export const BUBBLE_TOOL_INSTALL: SpriteData = (() => {
   ])
 })()
 
+/** Default working bubble: gear/cog icon — used for unknown tools and active-no-tool states (11x13) */
+export const BUBBLE_WORKING_SPRITE: SpriteData = (() => {
+  const B = '#555566' // border
+  const F = '#EEEEFF' // fill
+  const G = '#7799CC' // gear color (blue-gray)
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, F, F, B],
+    [B, F, F, F, G, G, G, F, F, F, B],
+    [B, F, F, G, F, F, F, G, F, F, B],
+    [B, F, G, G, F, G, F, G, G, F, B],
+    [B, F, F, G, F, F, F, G, F, F, B],
+    [B, F, G, G, F, G, F, G, G, F, B],
+    [B, F, F, G, F, F, F, G, F, F, B],
+    [B, F, F, F, G, G, G, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
 /** Map tool names to their bubble icon sprites */
 export const TOOL_BUBBLE_SPRITES: Record<string, SpriteData> = {
   Read: BUBBLE_TOOL_READ,

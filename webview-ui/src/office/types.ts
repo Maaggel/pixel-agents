@@ -75,6 +75,8 @@ export interface Seat {
   /** Direction character faces when sitting (toward adjacent desk) */
   facingDir: Direction
   assigned: boolean
+  /** Timestamp (Date.now()) when this seat was last assigned to an agent. 0 = never used. */
+  lastUsedAt: number
 }
 
 export interface FurnitureInstance {
@@ -95,6 +97,10 @@ export interface FurnitureInstance {
   zY: number
   /** Stable furniture uid from PlacedFurniture (for meeting cycle state tracking) */
   uid?: string
+  /** Whether this furniture casts sunlight beams */
+  sunlight?: boolean
+  /** Pixels to inset beam from each side of the sprite (narrows beam to visible glass area) */
+  sunlightInset?: number
   /** Cycle frame sprites for meeting animation. Present when catalog entry has meetingCycle. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -193,6 +199,10 @@ export interface FurnitureCatalogEntry {
   interactable?: boolean
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
+  /** Whether this furniture casts sunlight beams (e.g. windows) */
+  sunlight?: boolean
+  /** Pixels to inset beam from each side of the sprite (narrows beam to visible glass area) */
+  sunlightInset?: number
   /** Resolved cycle frame sprites for meeting animation. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -310,7 +320,7 @@ export interface Character {
   folderName?: string
   /** Display name shown as nametag above character */
   nametag?: string
-  /** Agent definition ID from .pixel_agents config (e.g., 'main', 'backend') */
+  /** Agent definition ID from agent config (e.g., 'main', 'backend') */
   definitionId?: string
   /** Color string for project indicator dot in nametag (derived from workspace folder) */
   projectColor?: string

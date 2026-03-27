@@ -9,6 +9,7 @@ import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, Z
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
 import { unlockAudio } from '../../notificationSound.js'
+import { updateSunCycle, getSunState, computeSunBeams } from '../engine/sunlight.js'
 
 interface OfficeCanvasProps {
   officeState: OfficeState
@@ -26,9 +27,10 @@ interface OfficeCanvasProps {
   onZoomChange: (zoom: number) => void
   panRef: React.MutableRefObject<{ x: number; y: number }>
   showNametags?: boolean
+  showSunlight?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -88,6 +90,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     const stop = startGameLoop(canvas, {
       update: (dt) => {
         officeState.update(dt)
+        if (showSunlight) updateSunCycle(dt)
       },
       render: (ctx) => {
         // Canvas dimensions are in device pixels
@@ -206,6 +209,15 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           showNametags,
         }
 
+        // Compute sunlight beams
+        let sunBeams = undefined
+        if (showSunlight) {
+          const { angle, intensity } = getSunState()
+          if (intensity > 0) {
+            sunBeams = computeSunBeams(officeState.furniture, officeState.tileMap, angle, intensity)
+          }
+        }
+
         const { offsetX, offsetY } = renderFrame(
           ctx,
           w,
@@ -221,6 +233,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           officeState.getLayout().tileColors,
           officeState.getLayout().cols,
           officeState.getLayout().rows,
+          sunBeams,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
@@ -234,7 +247,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       stop()
       observer.disconnect()
     }
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags])
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags, showSunlight])
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(

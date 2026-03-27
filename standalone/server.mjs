@@ -19,6 +19,16 @@ const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '
 const PROJECT_ROOT = resolve(import.meta.dirname, '..')
 const PKG = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf-8'))
 const VERSION = PKG.version || '?.?.?'
+// BUILD_NUMBER injected at build time by esbuild; falls back to reading source for dev mode
+let BUILD_NUMBER = typeof __INJECTED_BUILD_NUMBER__ !== 'undefined' ? __INJECTED_BUILD_NUMBER__ : '?'
+if (BUILD_NUMBER === '?') {
+  try {
+    const constSrc = readFileSync(join(PROJECT_ROOT, 'src', 'constants.ts'), 'utf-8')
+    const m = constSrc.match(/BUILD_NUMBER\s*=\s*(\d+)/)
+    if (m) BUILD_NUMBER = m[1]
+  } catch { /* ignore */ }
+}
+const VERSION_STAMP = `v${VERSION}-build${BUILD_NUMBER}`
 const WEBVIEW_DIST = join(PROJECT_ROOT, 'dist', 'webview')
 const ASSETS_DIR = join(PROJECT_ROOT, 'dist', 'assets')
 // Fallback to webview-ui/public/assets if dist/assets doesn't exist (dev mode)
@@ -220,6 +230,16 @@ const BRIDGE_SCRIPT = `
     --vscode-list-activeSelectionBackground: rgba(255,255,255,0.04);
     --vscode-widget-border: rgba(255,255,255,0.12);
   }
+  #pixel-agents-version-stamp {
+    position: fixed;
+    bottom: 8px;
+    left: 196px;
+    font-family: 'FS Pixel Sans', monospace;
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.25);
+    pointer-events: none;
+    z-index: 9999;
+  }
 </style>
 <script>
 // Mock VS Code API for standalone browser mode
@@ -241,7 +261,7 @@ window.acquireVsCodeApi = function() {
           const hh = String(now.getHours()).padStart(2, '0');
           const mm = String(now.getMinutes()).padStart(2, '0');
           const ss = String(now.getSeconds()).padStart(2, '0');
-          const conn = '[' + hh + ':' + mm + ':' + ss + '] CONN   v${VERSION} — standalone browser connected';
+          const conn = '[' + hh + ':' + mm + ':' + ss + '] CONN   ${VERSION_STAMP} — standalone browser connected';
           dispatch({ type: 'devConsoleHistory', entries: [conn] });
           // Start polling for sync updates
           startSyncPolling();
@@ -392,6 +412,14 @@ function startSyncPolling() {
     }).catch(() => {});
   }, 500);
 }
+
+// Version stamp
+(function() {
+  const el = document.createElement('div');
+  el.id = 'pixel-agents-version-stamp';
+  el.textContent = '${VERSION_STAMP}';
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(el));
+})();
 
 function hashCode(str) {
   let hash = 0;

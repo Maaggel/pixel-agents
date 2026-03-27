@@ -109,7 +109,13 @@ export function useExtensionMessages(
   const [loadedAssets, setLoadedAssets] = useState<{ catalog: FurnitureAsset[]; sprites: Record<string, string[][]> } | undefined>()
   const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([])
   const [claudeExtAvailable, setClaudeExtAvailable] = useState(false)
-  const [showNametags, setShowNametags] = useState(false)
+  const [showNametags, setShowNametags] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pixel-agents-show-nametags')
+      if (saved !== null) return saved === 'true'
+    } catch { /* ignore */ }
+    return true // default: show nametags
+  })
   const [detectedAgents, setDetectedAgents] = useState<DetectedAgentInfo[]>([])
   const [devLogs, setDevLogs] = useState<string[]>([])
 
@@ -341,12 +347,17 @@ export function useExtensionMessages(
           os.showTalkingBubble(id)
           toolBubbleTimestamps.set(id, Date.now())
         } else if (isActive) {
-          // Active but no tools → thinking bubble, unless a tool icon was shown recently
+          // Active but no tools → show working bubble (gear icon), unless a tool icon was shown recently.
+          // Thinking cloud is reserved for initial "waiting for first response" state only.
           const lastToolAt = toolBubbleTimestamps.get(id)
           if (lastToolAt && (Date.now() - lastToolAt) < TOOL_BUBBLE_MIN_DISPLAY_MS) {
-            // Keep the tool icon visible a bit longer — don't downgrade to thinking yet
-          } else {
+            // Keep the tool icon visible a bit longer — don't downgrade yet
+          } else if (idleHint === 'thinking' && !lastToolAt) {
+            // Fresh prompt, no tools seen yet → thinking cloud
             os.showThinkingBubble(id)
+          } else {
+            // Between tools or mid-turn → working gear bubble
+            os.showTalkingBubble(id)
             toolBubbleTimestamps.delete(id)
           }
         } else {
@@ -444,6 +455,10 @@ export function useExtensionMessages(
         const subToolName = extractToolName(status)
         os.setAgentTool(subId, subToolName)
         os.setAgentActive(subId, true)
+        // Show tool bubble on sub-agent (same as regular agents)
+        if (subToolName) {
+          os.showTalkingBubble(subId)
+        }
       } else if (msg.type === 'subagentToolDone') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string
@@ -458,6 +473,12 @@ export function useExtensionMessages(
             [id]: { ...agentSubs, [parentToolId]: list.map((t) => (t.toolId === toolId ? { ...t, done: true } : t)) },
           }
         })
+        // Transition sub-agent bubble from talking → working (between tools)
+        const subId = os.getSubagentId(id, parentToolId)
+        if (subId !== null) {
+          os.setAgentTool(subId, null)
+          os.showTalkingBubble(subId)
+        }
       } else if (msg.type === 'subagentClear') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string
@@ -496,10 +517,18 @@ export function useExtensionMessages(
         const folders = msg.folders as WorkspaceFolder[]
         setWorkspaceFolders(folders)
       } else if (msg.type === 'settingsLoaded') {
-        const soundOn = msg.soundEnabled as boolean
-        setSoundEnabled(soundOn)
+        // Only apply server values as defaults — localStorage is the source of truth
+        try {
+          if (localStorage.getItem('pixel-agents-sound') === null) {
+            setSoundEnabled(msg.soundEnabled as boolean)
+          }
+        } catch { setSoundEnabled(msg.soundEnabled as boolean) }
         if (msg.showNametags !== undefined) {
-          setShowNametags(msg.showNametags as boolean)
+          try {
+            if (localStorage.getItem('pixel-agents-show-nametags') === null) {
+              setShowNametags(msg.showNametags as boolean)
+            }
+          } catch { setShowNametags(msg.showNametags as boolean) }
         }
         if (msg.claudeExtAvailable) {
           setClaudeExtAvailable(true)

@@ -164,15 +164,17 @@ function App() {
   const handleToggleNametags = useCallback(() => {
     const newVal = !showNametags
     setShowNametags(newVal)
+    try { localStorage.setItem('pixel-agents-show-nametags', String(newVal)) } catch { /* ignore */ }
     vscode.postMessage({ type: 'setShowNametags', enabled: newVal })
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
-      if (saved) return JSON.parse(saved) as ViewOptions
+      if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
     } catch { /* ignore */ }
-    return { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false }
+    return defaults
   })
   const handleViewOptionsChange = useCallback((opts: ViewOptions) => {
     setViewOptions(opts)
@@ -180,6 +182,7 @@ function App() {
     // Sync nametags toggle with existing setting
     if (opts.showNametags !== showNametags) {
       setShowNametags(opts.showNametags)
+      try { localStorage.setItem('pixel-agents-show-nametags', String(opts.showNametags)) } catch { /* ignore */ }
       vscode.postMessage({ type: 'setShowNametags', enabled: opts.showNametags })
     }
   }, [showNametags, setShowNametags])
@@ -294,6 +297,7 @@ function App() {
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
         showNametags={showNametags}
+        showSunlight={viewOptions.showSunlight}
       />
 
       {viewOptions.showZoom && (

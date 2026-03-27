@@ -1,5 +1,5 @@
 // ── Build Identity ───────────────────────────────────────────
-export const BUILD_NUMBER = 13;   // increment each VSIX package
+export const BUILD_NUMBER = 1;   // increment each VSIX package
 
 // ── Timing (ms) ──────────────────────────────────────────────
 export const JSONL_POLL_INTERVAL_MS = 1000;
@@ -17,6 +17,7 @@ export const MID_TURN_THINKING_GRACE_MS = 30000;
 // ── Display Truncation ──────────────────────────────────────
 export const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 export const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
+export const MISSING_SPRITES_MAX_ENTRIES = 100;
 
 // ── PNG / Asset Parsing ─────────────────────────────────────
 export const PNG_ALPHA_THRESHOLD = 128;
@@ -33,7 +34,8 @@ export const CHAR_FRAMES_PER_ROW = 7;
 export const CHAR_COUNT = 6;
 
 // ── Agent Detection ────────────────────────────────────────────
-export const PIXEL_AGENTS_CONFIG_FILE = '.pixel_agents';
+export const PIXEL_AGENTS_CONFIG_DIR = 'projects';
+export const PIXEL_AGENTS_LEGACY_CONFIG_FILE = '.pixel_agents';
 export const AGENTS_DIR = '.claude/agents';
 export const AGENT_SCAN_DEBOUNCE_MS = 500;
 export const AGENT_DIR_POLL_INTERVAL_MS = 2000;
@@ -59,11 +61,17 @@ export const RELAY_RECONNECT_MAX_MS = 30000;
 export const GLOBAL_KEY_SOUND_ENABLED = 'pixel-agents.soundEnabled';
 export const GLOBAL_KEY_SHOW_NAMETAGS = 'pixel-agents.showNametags';
 
+// ── Standalone Server ──────────────────────────────────────
+export const STANDALONE_DEFAULT_PORT = 7600;
+export const STANDALONE_READY_TIMEOUT_MS = 15000;
+export const STANDALONE_READY_POLL_MS = 300;
+
 // ── VS Code Identifiers ─────────────────────────────────────
-export const VIEW_ID = 'pixel-agents.panelView';
-export const COMMAND_SHOW_PANEL = 'pixel-agents.showPanel';
 export const COMMAND_EXPORT_DEFAULT_LAYOUT = 'pixel-agents.exportDefaultLayout';
 export const COMMAND_OPEN_IN_TAB = 'pixel-agents.openInTab';
+export const COMMAND_SET_PROJECT_NAME = 'pixel-agents.setProjectName';
+export const COMMAND_SHOW_MISSING_SPRITES = 'pixel-agents.showMissingSprites';
+export const COMMAND_RESTART_STANDALONE = 'pixel-agents.restartStandalone';
 export const WORKSPACE_KEY_AGENTS = 'pixel-agents.agents';
 export const WORKSPACE_KEY_AGENT_SEATS = 'pixel-agents.agentSeats';
 export const WORKSPACE_KEY_LAYOUT = 'pixel-agents.layout';

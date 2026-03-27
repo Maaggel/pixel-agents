@@ -13,7 +13,20 @@
     "pixel-agents.projectName": "Pixel Agents",
 
     "workbench.colorCustomizations": {
-        "titleBar.activeBackground": "#1e1e2e",
-        "titleBar.activeForeground": "#ffffff"
+        "titleBar.activeBackground": "#14141f",
+        "titleBar.activeForeground": "#e7e7e7",
+        "titleBar.inactiveBackground": "#000000",
+        "titleBar.inactiveForeground": "#e7e7e799"
+    },
+    "workspaceColorPicker.color": "#1e1e2e",
+    "workspaceColorPicker.affectTitleBar": true,
+    "workspaceColorPicker.affectActivityBar": false,
+    "workspaceColorPicker.affectStatusBar": false,
+    "workspaceColorPicker.elementAdjustments": {
+        "titleBar": -0.2,
+        "activityBar": -0.4,
+        "statusBar": 0.2,
+        "iconContrast": 0.4,
+        "iconContrastEnabled": true
     }
 }

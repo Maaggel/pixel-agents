@@ -65,6 +65,8 @@ export interface FurnitureAsset {
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
+  /** Sprite file paths for docked cycle animation (e.g. charging) */
+  dockedCycle?: string[]
 }
 
 export interface LoadedAssets {
@@ -224,6 +226,33 @@ export async function loadFurnitureAssets(
             }
           }
           asset.idleCycle = resolvedIds
+        }
+
+        // Load dockedCycle frame sprites (file paths → sprite IDs)
+        if (Array.isArray(asset.dockedCycle)) {
+          const rawCycle = asset.dockedCycle
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Docked cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading docked cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.dockedCycle = resolvedIds
         }
       } catch (err) {
         console.warn(`  ⚠️  Error loading ${asset.id}: ${err instanceof Error ? err.message : err}`)

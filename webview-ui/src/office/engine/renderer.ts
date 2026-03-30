@@ -502,6 +502,130 @@ export function renderBubbles(
   }
 }
 
+// ── Vacuum overlays (outline + nametag) ─────────────────────
+
+interface VacuumOverlay {
+  uid: string; name: string; state: string; paused: boolean
+  x: number; y: number; sprite: SpriteData | null
+  selected: boolean; hovered: boolean
+  autoCycleTimerSec: number | null
+}
+
+const STATE_DISPLAY: Record<string, string> = {
+  docked: 'Docked',
+  cleaning: 'Cleaning',
+  traveling: 'Traveling',
+  waiting: 'Waiting',
+  returning: 'Returning',
+  paused: 'Paused',
+}
+
+function renderVacuumOverlays(
+  ctx: CanvasRenderingContext2D,
+  overlays: VacuumOverlay[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  for (const v of overlays) {
+    if (!v.selected && !v.hovered) continue
+    if (!v.sprite) continue
+
+    const spriteW = v.sprite[0]?.length ?? TILE_SIZE
+    const sx = Math.round(offsetX + (v.x - TILE_SIZE / 2) * zoom)
+    const sy = Math.round(offsetY + (v.y - TILE_SIZE / 2) * zoom)
+    const sw = spriteW * zoom
+
+    // Outline (offset by -1 zoom-pixel to center around the small vacuum sprite)
+    if (v.selected || v.hovered) {
+      const outlineData = getOutlineSprite(v.sprite)
+      const outlineCanvas = getCachedSprite(outlineData, zoom)
+      ctx.save()
+      ctx.globalAlpha = v.selected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA
+      ctx.drawImage(outlineCanvas, sx - zoom, sy - zoom)
+      ctx.restore()
+    }
+
+    // Nametag + state info (above sprite — matches agent nametag sizing)
+    const fontSize = Math.max(7, Math.round(zoom * 3.5))
+    ctx.font = `${fontSize}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+
+    const cx = sx + sw / 2
+    const tagY = sy - Math.round(2 * zoom)
+
+    // State line
+    const stateText = STATE_DISPLAY[v.state] || v.state
+    let infoText = stateText
+    if (v.autoCycleTimerSec !== null) {
+      const mins = Math.floor(v.autoCycleTimerSec / 60)
+      const secs = Math.floor(v.autoCycleTimerSec % 60)
+      infoText = `Next: ${mins}:${secs.toString().padStart(2, '0')}`
+    }
+
+    const nameMetrics = ctx.measureText(v.name)
+    const infoMetrics = ctx.measureText(infoText)
+    const maxW = Math.max(nameMetrics.width, infoMetrics.width)
+    const padH = Math.round(NAMETAG_PADDING_H * zoom / 2)
+    const padV = Math.round(NAMETAG_PADDING_V * zoom / 2)
+    const lineH = fontSize + 2
+    const bgW = maxW + padH * 2
+    const bgH = lineH * 2 + padV * 2
+
+    // Background
+    ctx.fillStyle = NAMETAG_BG_COLOR
+    ctx.fillRect(cx - bgW / 2, tagY - bgH, bgW, bgH)
+
+    // Name (top line)
+    ctx.fillStyle = NAMETAG_TEXT_COLOR
+    ctx.fillText(v.name, cx, tagY - lineH - padV)
+
+    // State / timer (bottom line)
+    ctx.fillStyle = NAMETAG_SUB_TEXT_COLOR
+    ctx.fillText(infoText, cx, tagY - padV)
+  }
+}
+
+// ── Vacuum speech bubbles ────────────────────────────────────
+
+function renderVacuumSpeechBubbles(
+  ctx: CanvasRenderingContext2D,
+  bubbles: Array<{ text: string; x: number; y: number; opacity: number }>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const fontSize = Math.max(10, Math.round(3.5 * zoom))
+  ctx.font = `${fontSize}px "FS Pixel Sans Unicode", monospace`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'bottom'
+
+  for (const b of bubbles) {
+    ctx.save()
+    ctx.globalAlpha = b.opacity
+
+    const sx = Math.round(offsetX + b.x * zoom)
+    const sy = Math.round(offsetY + b.y * zoom) - Math.round(2 * zoom)
+
+    const metrics = ctx.measureText(b.text)
+    const padH = Math.round(2 * zoom)
+    const padV = Math.round(1.5 * zoom)
+    const bgW = metrics.width + padH * 2
+    const bgH = fontSize + padV * 2
+
+    // Background
+    ctx.fillStyle = 'rgba(30, 30, 46, 0.85)'
+    ctx.fillRect(sx - bgW / 2, sy - bgH, bgW, bgH)
+
+    // Text
+    ctx.fillStyle = '#e0e0e0'
+    ctx.fillText(b.text, sx, sy - padV)
+
+    ctx.restore()
+  }
+}
+
 // ── Nametags ─────────────────────────────────────────────────
 
 export function renderNametags(
@@ -583,6 +707,10 @@ export interface EditorRenderState {
   ghostCol: number
   ghostRow: number
   ghostValid: boolean
+  /** Secondary ghost sprite (e.g. dock shown alongside vacuum during placement) */
+  ghostExtraSprite: SpriteData | null
+  ghostExtraCol: number
+  ghostExtraRow: number
   selectedCol: number
   selectedRow: number
   selectedW: number
@@ -704,6 +832,8 @@ export function renderFrame(
   sunBeamColor?: [number, number, number],
   vacuumDrawables?: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }>,
   vacuumTrails?: Array<{ px: number; py: number; opacity: number }>,
+  vacuumSpeechBubbles?: Array<{ text: string; x: number; y: number; opacity: number }>,
+  vacuumOverlays?: VacuumOverlay[],
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -767,6 +897,16 @@ export function renderFrame(
   // Speech bubbles (always on top of everything including nametags)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom)
 
+  // Vacuum overlays (outlines + nametags)
+  if (vacuumOverlays && vacuumOverlays.length > 0) {
+    renderVacuumOverlays(ctx, vacuumOverlays, offsetX, offsetY, zoom)
+  }
+
+  // Vacuum speech bubbles
+  if (vacuumSpeechBubbles && vacuumSpeechBubbles.length > 0) {
+    renderVacuumSpeechBubbles(ctx, vacuumSpeechBubbles, offsetX, offsetY, zoom)
+  }
+
   // Editor overlays
   if (editor) {
     if (editor.showGrid) {
@@ -776,6 +916,10 @@ export function renderFrame(
       renderGhostBorder(ctx, offsetX, offsetY, zoom, cols, rows, editor.ghostBorderHoverCol, editor.ghostBorderHoverRow)
     }
     if (editor.ghostSprite && editor.ghostCol >= 0) {
+      // Render extra ghost first (e.g. dock behind vacuum)
+      if (editor.ghostExtraSprite) {
+        renderGhostPreview(ctx, editor.ghostExtraSprite, editor.ghostExtraCol, editor.ghostExtraRow, editor.ghostValid, offsetX, offsetY, zoom)
+      }
       renderGhostPreview(ctx, editor.ghostSprite, editor.ghostCol, editor.ghostRow, editor.ghostValid, offsetX, offsetY, zoom)
     }
     if (editor.hasSelection) {

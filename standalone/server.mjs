@@ -174,6 +174,8 @@ function loadFurnitureAssets() {
       asset.interactionCycle = loadCycleFrames(asset.interactionCycle, asset.width, asset.height, sprites)
     if (Array.isArray(asset.idleCycle) && asset.idleCycle.length > 0)
       asset.idleCycle = loadCycleFrames(asset.idleCycle, asset.width, asset.height, sprites)
+    if (Array.isArray(asset.dockedCycle) && asset.dockedCycle.length > 0)
+      asset.dockedCycle = loadCycleFrames(asset.dockedCycle, asset.width, asset.height, sprites)
   }
   return { catalog, sprites }
 }

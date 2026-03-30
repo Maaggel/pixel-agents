@@ -28,9 +28,10 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>
   showNametags?: boolean
   showSunlight?: boolean
+  autoFollowOnFocus?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, autoFollowOnFocus = true }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -104,6 +105,9 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           editorRender = {
             showGrid: true,
             ghostSprite: null,
+            ghostExtraSprite: null,
+            ghostExtraCol: 0,
+            ghostExtraRow: 0,
             ghostCol: editorState.ghostCol,
             ghostRow: editorState.ghostRow,
             ghostValid: editorState.ghostValid,
@@ -135,6 +139,19 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
                 editorState.ghostCol,
                 placementRow,
               )
+              // Show dock ghost alongside vacuum during placement
+              const selType = editorState.selectedFurnitureType
+              if (selType.startsWith('ROBOT_VACUUM_') && !selType.includes('DOCK')) {
+                // Derive dock type: ROBOT_VACUUM_FRONT → ROBOT_VACUUM_DOCK_FRONT
+                const dockType = selType.replace('ROBOT_VACUUM_', 'ROBOT_VACUUM_DOCK_')
+                const dockEntry = getCatalogEntry(dockType)
+                if (dockEntry) {
+                  editorRender.ghostExtraSprite = dockEntry.sprite
+                  editorRender.ghostExtraCol = editorState.ghostCol
+                  // Dock is 16x32, bottom-aligned — offset row by -1 so bottom aligns with vacuum tile
+                  editorRender.ghostExtraRow = placementRow - 1
+                }
+              }
             }
           }
 
@@ -198,6 +215,27 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
             }
           }
         }
+        // Camera follow: vacuum
+        if (officeState.cameraFollowVacuumUid !== null) {
+          const followVac = officeState.vacuums.get(officeState.cameraFollowVacuumUid)
+          if (followVac) {
+            const layout = officeState.getLayout()
+            const mapW = layout.cols * TILE_SIZE * zoom
+            const mapH = layout.rows * TILE_SIZE * zoom
+            const targetX = mapW / 2 - followVac.x * zoom
+            const targetY = mapH / 2 - followVac.y * zoom
+            const dx = targetX - panRef.current.x
+            const dy = targetY - panRef.current.y
+            if (Math.abs(dx) < CAMERA_FOLLOW_SNAP_THRESHOLD && Math.abs(dy) < CAMERA_FOLLOW_SNAP_THRESHOLD) {
+              panRef.current = { x: targetX, y: targetY }
+            } else {
+              panRef.current = {
+                x: panRef.current.x + dx * CAMERA_FOLLOW_LERP,
+                y: panRef.current.y + dy * CAMERA_FOLLOW_LERP,
+              }
+            }
+          }
+        }
 
         // Build selection render state
         const selectionRender: SelectionRenderState = {
@@ -227,6 +265,8 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           : officeState.furniture
         const vacuumDrawables = officeState.getVacuumRenderData()
         const vacuumTrails = officeState.getVacuumTrails()
+        const vacuumSpeech = officeState.getVacuumSpeechBubbles()
+        const vacuumOverlays = officeState.getVacuumOverlayData()
 
         const { offsetX, offsetY } = renderFrame(
           ctx,
@@ -247,6 +287,8 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           sunBeamColor,
           vacuumDrawables.length > 0 ? vacuumDrawables : undefined,
           vacuumTrails.length > 0 ? vacuumTrails : undefined,
+          vacuumSpeech.length > 0 ? vacuumSpeech : undefined,
+          vacuumOverlays.length > 0 ? vacuumOverlays : undefined,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
@@ -400,17 +442,19 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       const pos = screenToWorld(e.clientX, e.clientY)
       if (!pos) return
       const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY)
+      const hitVacuum = hitId === null ? officeState.hitTestVacuum(pos.worldX, pos.worldY) : null
       const tile = screenToTile(e.clientX, e.clientY)
       officeState.hoveredTile = tile
       const canvas = canvasRef.current
       if (canvas) {
         let cursor = 'default'
-        if (hitId !== null) {
+        if (hitId !== null || hitVacuum !== null) {
           cursor = 'pointer'
         }
         canvas.style.cursor = cursor
       }
       officeState.hoveredAgentId = hitId
+      officeState.hoveredVacuumUid = hitVacuum
     },
     [officeState, screenToWorld, screenToTile, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, panRef, hitTestDeleteButton, hitTestRotateButton, clampPan],
   )
@@ -423,6 +467,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         e.preventDefault()
         // Break camera follow on manual pan
         officeState.cameraFollowId = null
+        officeState.cameraFollowVacuumUid = null
         isPanningRef.current = true
         panStartRef.current = {
           mouseX: e.clientX,
@@ -573,19 +618,34 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           officeState.cameraFollowId = null
         } else {
           officeState.selectedAgentId = hitId
-          officeState.cameraFollowId = hitId
+          officeState.cameraFollowId = autoFollowOnFocus ? hitId : null
         }
+        officeState.selectVacuum(null) // deselect vacuum when selecting agent
         onClick(hitId) // still focus terminal
         return
       }
 
-      // No agent hit — deselect
+      // Check for vacuum hit
+      const hitVacuum = officeState.hitTestVacuum(pos.worldX, pos.worldY)
+      if (hitVacuum !== null) {
+        if (officeState.selectedVacuumUid === hitVacuum) {
+          officeState.selectVacuum(null)
+        } else {
+          officeState.selectVacuum(hitVacuum)
+          // Camera follow only from canvas clicks, respecting the setting
+          if (autoFollowOnFocus) officeState.cameraFollowVacuumUid = hitVacuum
+        }
+        return
+      }
+
+      // No agent or vacuum hit — deselect all
       if (officeState.selectedAgentId !== null) {
         officeState.selectedAgentId = null
         officeState.cameraFollowId = null
       }
+      officeState.selectVacuum(null)
     },
-    [officeState, onClick, screenToWorld, screenToTile, isEditMode],
+    [officeState, onClick, screenToWorld, screenToTile, isEditMode, autoFollowOnFocus],
   )
 
   const handleMouseLeave = useCallback(() => {
@@ -597,6 +657,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     editorState.ghostCol = -1
     editorState.ghostRow = -1
     officeState.hoveredAgentId = null
+    officeState.hoveredVacuumUid = null
     officeState.hoveredTile = null
   }, [officeState, editorState])
 

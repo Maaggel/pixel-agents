@@ -1,10 +1,6 @@
  - Add toilet stuff, and toilet zone (if needed) - toilet could also just be a single seat.
  - Fix eating bouble sprite
 
-Vacuum:
- - Add dock to vacuum, and perhaps trail where it's been going (darken floor tiles for a short duration, fading?)
- - Add charging animation to dock
-
 Sunlight:
  - Fix inset
  - Darken windows when there isn't any sunlight

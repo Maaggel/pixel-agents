@@ -157,6 +157,8 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
     // Resolve dockedCycle sprite IDs to SpriteData arrays
     let dockedCycleSprites: SpriteData[] | undefined
     if (asset.dockedCycle && asset.dockedCycle.length > 0) {
+      console.log(`[DockedCycle] Asset ${asset.id} has dockedCycle IDs:`, asset.dockedCycle,
+        'resolved:', asset.dockedCycle.map((id: string) => !!assets.sprites[id]))
       const resolved = asset.dockedCycle
         .map((id: string) => assets.sprites[id])
         .filter((s): s is SpriteData => s !== undefined)

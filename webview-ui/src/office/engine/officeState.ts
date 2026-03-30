@@ -58,7 +58,7 @@ import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation
 import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
-import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady } from './robotVacuum.js'
+import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
 import { VACUUM_MAX_TILES_PER_CHARGE } from '../../constants.js'
 
 export class OfficeState {
@@ -75,6 +75,12 @@ export class OfficeState {
   cameraFollowId: number | null = null
   hoveredAgentId: number | null = null
   hoveredTile: { col: number; row: number } | null = null
+  /** Selected vacuum UID (for outline, camera follow, panel highlight) */
+  selectedVacuumUid: string | null = null
+  /** Hovered vacuum UID (for nametag/info overlay) */
+  hoveredVacuumUid: string | null = null
+  /** Camera follow target vacuum UID */
+  cameraFollowVacuumUid: string | null = null
   /** Maps agent ID → original seat ID before joining a meeting (to restore after) */
   meetingOriginalSeats: Map<number, string | null> = new Map()
   /** Maps "parentId:toolId" → sub-agent character ID (negative) */
@@ -1798,6 +1804,25 @@ export class OfficeState {
     }
 
     // ── Robot Vacuum Updates ──────────────────────────────────
+    // Build reserved room indices: rooms currently being cleaned/traveled-to by any vacuum
+    const allActiveRooms = new Map<string, Set<number>>() // vacuumUid → set of active room indices
+    for (const [uid, v] of this.vacuums) {
+      if (v.cycleActive && v.currentRoomIndex >= 0 &&
+          (v.state === VacuumState.CLEANING || v.state === VacuumState.TRAVELING || v.state === VacuumState.WAITING)) {
+        let set = allActiveRooms.get(uid)
+        if (!set) { set = new Set(); allActiveRooms.set(uid, set) }
+        set.add(v.currentRoomIndex)
+      }
+    }
+    // For each vacuum, set reserved = rooms active in OTHER vacuums
+    for (const [uid, vacuum] of this.vacuums) {
+      vacuum.reservedRoomIndices = new Set()
+      for (const [otherUid, indices] of allActiveRooms) {
+        if (otherUid === uid) continue
+        for (const idx of indices) vacuum.reservedRoomIndices.add(idx)
+      }
+    }
+
     for (const vacuum of this.vacuums.values()) {
       updateVacuum(vacuum, dt, this.tileMap, this.blockedTiles, this.characters)
       // Sync newly cleaned rooms to shared state
@@ -2190,6 +2215,9 @@ export class OfficeState {
         const savedName = existing.customName
         existing.baseCol = item.col
         existing.baseRow = item.row
+        // Update direction from (possibly rotated) furniture type
+        const entry = getCatalogEntry(item.type)
+        if (entry?.orientation) existing.baseDir = orientationToDir(entry.orientation)
         resetVacuumCycle(existing)
         existing.customName = savedName
       } else {
@@ -2200,6 +2228,7 @@ export class OfficeState {
     for (const uid of this.vacuums.keys()) {
       if (!existingUids.has(uid)) this.vacuums.delete(uid)
     }
+    this.loadVacuumNames()
   }
 
   /** Get chair tiles (seats) as a Set for vacuum room detection. */
@@ -2255,6 +2284,7 @@ export class OfficeState {
       if (vacuum.cycleActive && vacuum.paused) {
         // Unpause
         vacuum.paused = false
+        setVacuumSpeech(vacuum, 'Resuming...')
         return
       }
       if (vacuum.cycleActive) return
@@ -2297,10 +2327,66 @@ export class OfficeState {
     if (vacuum) sendVacuumHome(vacuum, this.tileMap, this.blockedTiles)
   }
 
-  /** Rename a vacuum. */
+  /** Select a vacuum (outline, panel highlight). Deselects any selected agent.
+   *  Camera follow is handled separately by OfficeCanvas based on autoFollowOnFocus. */
+  selectVacuum(uid: string | null): void {
+    if (uid && !this.vacuums.has(uid)) uid = null
+    const changed = this.selectedVacuumUid !== uid
+    this.selectedVacuumUid = uid
+    // Deselect any agent when selecting a vacuum
+    if (uid && changed) {
+      this.selectedAgentId = null
+      this.cameraFollowId = null
+    }
+    // Clear vacuum camera follow on deselect
+    if (!uid) {
+      this.cameraFollowVacuumUid = null
+    }
+  }
+
+  /** Hit-test vacuum at pixel position. Returns vacuum UID or null. */
+  hitTestVacuum(px: number, py: number): string | null {
+    for (const [uid, vacuum] of this.vacuums) {
+      const left = vacuum.x - TILE_SIZE / 2
+      const right = vacuum.x + TILE_SIZE / 2
+      const top = vacuum.y - TILE_SIZE / 2
+      const bottom = vacuum.y + TILE_SIZE / 2
+      if (px >= left && px <= right && py >= top && py <= bottom) return uid
+    }
+    return null
+  }
+
+  /** Rename a vacuum (persists to localStorage). */
   renameVacuum(uid: string, name: string): void {
     const vacuum = this.vacuums.get(uid)
-    if (vacuum) vacuum.customName = name
+    if (vacuum) {
+      vacuum.customName = name
+      this.saveVacuumNames()
+    }
+  }
+
+  /** Save vacuum names to localStorage. */
+  private saveVacuumNames(): void {
+    try {
+      const names: Record<string, string> = {}
+      for (const [uid, v] of this.vacuums) {
+        if (v.customName) names[uid] = v.customName
+      }
+      localStorage.setItem('pixel-agents-vacuum-names', JSON.stringify(names))
+    } catch { /* */ }
+  }
+
+  /** Load vacuum names from localStorage. */
+  private loadVacuumNames(): void {
+    try {
+      const raw = localStorage.getItem('pixel-agents-vacuum-names')
+      if (!raw) return
+      const names = JSON.parse(raw) as Record<string, string>
+      for (const [uid, name] of Object.entries(names)) {
+        const vacuum = this.vacuums.get(uid)
+        if (vacuum && !vacuum.customName) vacuum.customName = name
+      }
+    } catch { /* */ }
   }
 
   /** Detailed vacuum info for the control panel. */
@@ -2315,11 +2401,14 @@ export class OfficeState {
     cleanedRoomCount: number
     charging: boolean
     roomProgressPercent: number
+    selected: boolean
+    autoCycleTimerSec: number | null
   }> {
     const result: Array<{
       uid: string; name: string; state: string; paused: boolean
       batteryPercent: number; currentRoomIndex: number; totalRooms: number
       cleanedRoomCount: number; charging: boolean; roomProgressPercent: number
+      selected: boolean; autoCycleTimerSec: number | null
     }> = []
     let idx = 1
     for (const [uid, vacuum] of this.vacuums) {
@@ -2330,6 +2419,8 @@ export class OfficeState {
       if (vacuum.coveragePlan.length > 0) {
         roomProgressPercent = Math.min(1, vacuum.coveragePlanIndex / vacuum.coveragePlan.length)
       }
+      // Auto-cycle timer: show when docked, fully charged, not active
+      const showAutoTimer = vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned <= 0 && !vacuum.cycleActive
       result.push({
         uid,
         name: vacuum.customName || `Vacuum ${idx}`,
@@ -2341,6 +2432,8 @@ export class OfficeState {
         cleanedRoomCount: this.sharedCleanedRoomKeys.size,
         charging: vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned > 0,
         roomProgressPercent,
+        selected: this.selectedVacuumUid === uid,
+        autoCycleTimerSec: showAutoTimer ? Math.max(0, vacuum.autoCycleTimer) : null,
       })
       idx++
     }
@@ -2388,6 +2481,59 @@ export class OfficeState {
         y: vacuum.y - TILE_SIZE / 2,
         zY: vacuum.y + TILE_SIZE / 2,
       })
+    }
+    return result
+  }
+
+  /** Get vacuum overlay data for rendering outlines, nametags, and info. */
+  getVacuumOverlayData(): Array<{
+    uid: string; name: string; state: string; paused: boolean
+    x: number; y: number; sprite: import('../types.js').SpriteData | null
+    selected: boolean; hovered: boolean
+    autoCycleTimerSec: number | null
+  }> {
+    const result: Array<{
+      uid: string; name: string; state: string; paused: boolean
+      x: number; y: number; sprite: import('../types.js').SpriteData | null
+      selected: boolean; hovered: boolean
+      autoCycleTimerSec: number | null
+    }> = []
+    let idx = 1
+    for (const [uid, vacuum] of this.vacuums) {
+      // Always use the vacuum sprite (16x16) for outline — not the dock sprite (16x32)
+      const sprite = getVacuumSprite(vacuum)
+      const showAutoTimer = vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned <= 0 && !vacuum.cycleActive
+      result.push({
+        uid,
+        name: vacuum.customName || `Vacuum ${idx}`,
+        state: vacuum.paused ? 'paused' : vacuum.state,
+        paused: vacuum.paused,
+        x: vacuum.x,
+        y: vacuum.y,
+        sprite,
+        selected: this.selectedVacuumUid === uid,
+        hovered: this.hoveredVacuumUid === uid,
+        autoCycleTimerSec: showAutoTimer ? Math.max(0, vacuum.autoCycleTimer) : null,
+      })
+      idx++
+    }
+    return result
+  }
+
+  /** Get vacuum speech bubbles for rendering. */
+  getVacuumSpeechBubbles(): Array<{ text: string; x: number; y: number; opacity: number }> {
+    const result: Array<{ text: string; x: number; y: number; opacity: number }> = []
+    for (const vacuum of this.vacuums.values()) {
+      if (vacuum.speechText && vacuum.speechTimer > 0) {
+        // Fade out during the last 1 second
+        const opacity = Math.min(1, vacuum.speechTimer / 1.0)
+        result.push({
+          text: vacuum.speechText,
+          x: vacuum.x,
+          y: vacuum.y - 4, // slightly above vacuum sprite
+          opacity,
+        })
+      }
     }
     return result
   }

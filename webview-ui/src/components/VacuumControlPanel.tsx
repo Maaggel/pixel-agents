@@ -11,6 +11,8 @@ export interface VacuumDetail {
   cleanedRoomCount: number
   charging: boolean
   roomProgressPercent: number
+  selected: boolean
+  autoCycleTimerSec: number | null
 }
 
 interface VacuumControlPanelProps {
@@ -18,6 +20,7 @@ interface VacuumControlPanelProps {
   onStart: (uid: string) => void
   onPause: (uid: string) => void
   onHome: (uid: string) => void
+  onSelect: (uid: string) => void
   onRename: (uid: string, name: string) => void
 }
 
@@ -59,21 +62,22 @@ function BatteryBar({ percent, charging }: { percent: number; charging: boolean 
       {charging && (
         <span style={{ fontSize: '16px', color: '#e5c07b', lineHeight: 1 }} title="Charging">&#9889;</span>
       )}
-      <span style={{ fontSize: '16px', color: 'var(--pixel-text-dim)', minWidth: 32, textAlign: 'right' }}>
-        {Math.round(percent * 100)}%
+      <span style={{ fontSize: '16px', color: 'var(--pixel-text-dim)', minWidth: 36, textAlign: 'right' }}>
+        {percent > 0 && percent < 0.01 ? '< 1%' : `${Math.round(percent * 100)}%`}
       </span>
     </div>
   )
 }
 
 function VacuumCard({
-  vacuum, onStart, onPause, onHome, onRename,
+  vacuum, onStart, onPause, onHome, onRename, onSelect,
 }: {
   vacuum: VacuumDetail
   onStart: (uid: string) => void
   onPause: (uid: string) => void
   onHome: (uid: string) => void
   onRename: (uid: string, name: string) => void
+  onSelect: (uid: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(vacuum.name)
@@ -97,8 +101,23 @@ function VacuumCard({
   const stateLabel = vacuum.paused ? 'Paused' : STATE_LABELS[vacuum.state] || vacuum.state
   const stateColor = vacuum.paused ? '#e5c07b' : STATE_COLORS[vacuum.state] || 'var(--pixel-text)'
 
+  // Format auto-cycle timer
+  let timerText: string | null = null
+  if (vacuum.autoCycleTimerSec !== null) {
+    const mins = Math.floor(vacuum.autoCycleTimerSec / 60)
+    const secs = Math.floor(vacuum.autoCycleTimerSec % 60)
+    timerText = `Auto-start in ${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div
+      onClick={() => onSelect(vacuum.uid)}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 2, cursor: 'pointer',
+        borderLeft: vacuum.selected ? '2px solid var(--pixel-accent)' : '2px solid transparent',
+        paddingLeft: 4,
+      }}
+    >
       {/* Row 1: Name + state */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {editing ? (
@@ -142,21 +161,21 @@ function VacuumCard({
           <BatteryBar percent={vacuum.batteryPercent} charging={vacuum.charging} />
         </div>
         {(isDocked || vacuum.paused) && (
-          <span onClick={() => onStart(vacuum.uid)} style={iconBtn} title={vacuum.paused ? 'Resume' : 'Start'}>&#9654;</span>
+          <span onClick={(e) => { e.stopPropagation(); onStart(vacuum.uid) }} style={iconBtn} title={vacuum.paused ? 'Resume' : 'Start'}>&#9654;</span>
         )}
         {isActive && !vacuum.paused && (
-          <span onClick={() => onPause(vacuum.uid)} style={iconBtn} title="Pause">&#8214;</span>
+          <span onClick={(e) => { e.stopPropagation(); onPause(vacuum.uid) }} style={iconBtn} title="Pause">&#8214;</span>
         )}
         {isActive && (
-          <span onClick={() => onHome(vacuum.uid)} style={iconBtn} title="Send home">&#8962;</span>
+          <span onClick={(e) => { e.stopPropagation(); onHome(vacuum.uid) }} style={iconBtn} title="Send home">&#8962;</span>
         )}
       </div>
 
-      {/* Row 3: Room info (always reserve space to prevent resize) */}
+      {/* Row 3: Room info or timer */}
       <div style={{ fontSize: '14px', color: 'var(--pixel-text-dim)', height: 17, overflow: 'hidden' }}>
         {isActive && vacuum.totalRooms > 0
           ? `Room ${vacuum.currentRoomIndex + 1} \u2022 ${Math.round(vacuum.roomProgressPercent * 100)}%`
-          : '\u00A0'}
+          : timerText ?? '\u00A0'}
       </div>
     </div>
   )
@@ -171,7 +190,7 @@ const iconBtn: React.CSSProperties = {
   userSelect: 'none',
 }
 
-export function VacuumControlPanel({ getVacuumDetails, onStart, onPause, onHome, onRename }: VacuumControlPanelProps) {
+export function VacuumControlPanel({ getVacuumDetails, onStart, onPause, onHome, onRename, onSelect }: VacuumControlPanelProps) {
   const [vacuums, setVacuums] = useState<VacuumDetail[]>([])
 
   useEffect(() => {
@@ -214,6 +233,7 @@ export function VacuumControlPanel({ getVacuumDetails, onStart, onPause, onHome,
           onPause={onPause}
           onHome={onHome}
           onRename={onRename}
+          onSelect={onSelect}
         />
       ))}
     </div>

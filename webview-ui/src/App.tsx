@@ -170,7 +170,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -225,6 +225,10 @@ function App() {
     return officeStateRef.current?.getVacuumDetailList() ?? []
   }, [])
 
+  const handleSelectVacuum = useCallback((uid: string) => {
+    officeStateRef.current?.selectVacuum(uid)
+  }, [])
+
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id })
   }, [])
@@ -243,6 +247,33 @@ function App() {
     useCallback(() => setEditorTickForKeyboard((n) => n + 1), []),
     editor.handleToggleEditMode,
   )
+
+  // "F" key: toggle camera follow for currently selected agent/vacuum
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'f' || e.key === 'F') {
+        // Don't trigger in text inputs
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+        const os = officeStateRef.current
+        if (!os) return
+        if (os.selectedAgentId !== null) {
+          if (os.cameraFollowId === os.selectedAgentId) {
+            os.cameraFollowId = null
+          } else {
+            os.cameraFollowId = os.selectedAgentId
+          }
+        } else if (os.selectedVacuumUid) {
+          if (os.cameraFollowVacuumUid === os.selectedVacuumUid) {
+            os.cameraFollowVacuumUid = null
+          } else {
+            os.cameraFollowVacuumUid = os.selectedVacuumUid
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const handleShuffleAgent = useCallback((id: number) => {
     const os = getOfficeState()
@@ -319,6 +350,7 @@ function App() {
         panRef={editor.panRef}
         showNametags={showNametags}
         showSunlight={viewOptions.showSunlight}
+        autoFollowOnFocus={viewOptions.autoFollowOnFocus}
       />
 
       {viewOptions.showZoom && (
@@ -456,6 +488,7 @@ function App() {
           onPause={handlePauseVacuum}
           onHome={handleSendVacuumHome}
           onRename={handleRenameVacuum}
+          onSelect={handleSelectVacuum}
         />
       )}
 

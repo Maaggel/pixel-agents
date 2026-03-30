@@ -195,6 +195,8 @@ export const VACUUM_MAX_TILES_PER_CHARGE = 250
 export const ROBOT_VACUUM_TYPE_PREFIX = 'ROBOT_VACUUM'
 /** Interval in seconds between dock charging animation frame changes */
 export const VACUUM_DOCK_CYCLE_INTERVAL_SEC = 0.5
+/** Duration in seconds for vacuum speech bubble display */
+export const VACUUM_SPEECH_DURATION_SEC = 4.0
 /** Minimum seconds between automatic vacuum cleaning cycles */
 export const VACUUM_AUTO_CYCLE_MIN_SEC = 180
 /** Maximum seconds between automatic vacuum cleaning cycles */

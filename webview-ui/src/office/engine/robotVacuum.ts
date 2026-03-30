@@ -14,6 +14,7 @@ import {
   VACUUM_DOCK_CYCLE_INTERVAL_SEC,
   VACUUM_AUTO_CYCLE_MIN_SEC,
   VACUUM_AUTO_CYCLE_MAX_SEC,
+  VACUUM_SPEECH_DURATION_SEC,
 } from '../../constants.js'
 
 // ── Types ────────────────────────────────────────────────────
@@ -65,6 +66,12 @@ export interface RobotVacuumInstance {
   tilesCleaned: number
   /** Countdown timer for automatic cleaning cycle trigger */
   autoCycleTimer: number
+  /** Room indices currently being cleaned by OTHER vacuums (set externally each tick) */
+  reservedRoomIndices: Set<number>
+  /** Speech bubble text (null = no bubble) */
+  speechText: string | null
+  /** Speech bubble remaining display time in seconds */
+  speechTimer: number
 }
 
 // ── Direction ↔ orientation mapping ──────────────────────────
@@ -76,7 +83,7 @@ const DIR_TO_ORIENTATION: Record<number, string> = {
   [Direction.RIGHT]: 'right',
 }
 
-function orientationToDir(orientation: string): DirectionType {
+export function orientationToDir(orientation: string): DirectionType {
   switch (orientation) {
     case 'front': return Direction.DOWN
     case 'back': return Direction.UP
@@ -129,6 +136,7 @@ function resolveVacuumDockChargingSprites(): Record<string, SpriteData[]> {
       : orientation === 'left' ? 'ROBOT_VACUUM_DOCK_LEFT'
       : 'ROBOT_VACUUM_DOCK_RIGHT'
     const entry = getCatalogEntry(id)
+    console.log(`[Vacuum] Dock charging sprites for ${id}: entry=${!!entry}, dockedCycleSprites=${entry?.dockedCycleSprites?.length ?? 0}`)
     if (entry?.dockedCycleSprites && entry.dockedCycleSprites.length > 0) {
       result[dir] = entry.dockedCycleSprites
     }
@@ -179,6 +187,9 @@ export function createVacuumInstance(
     trailDistAccum: 0,
     tilesCleaned: 0,
     autoCycleTimer: randomAutoCycleDelay(),
+    speechText: null,
+    speechTimer: 0,
+    reservedRoomIndices: new Set(),
   }
 }
 
@@ -342,7 +353,7 @@ export function startCleaningCycle(
   console.log(`[Vacuum] Starting cycle: ${vacuum.rooms.length} rooms (sizes: ${roomSizes.join(', ')}, total: ${totalTiles} tiles, ${uncleanedCount} uncleaned)`)
 
   // Pick the next uncleaned room: nearest to current position
-  const nextRoom = pickNextRoom(vacuum)
+  const nextRoom = pickNextRoom(vacuum, vacuum.reservedRoomIndices)
   if (nextRoom === -1) {
     // No rooms to clean
     vacuum.cycleActive = false
@@ -350,14 +361,16 @@ export function startCleaningCycle(
   }
 
   vacuum.currentRoomIndex = nextRoom
+  setVacuumSpeech(vacuum, 'Starting room cleaning...')
   beginCleaningRoom(vacuum, tileMap, blockedTiles)
 }
 
-function pickNextRoom(vacuum: RobotVacuumInstance): number {
+function pickNextRoom(vacuum: RobotVacuumInstance, reservedRoomIndices?: Set<number>): number {
   let bestIdx = -1
   let bestDist = Infinity
   for (let i = 0; i < vacuum.rooms.length; i++) {
     if (vacuum.cleanedRoomIndices.has(i)) continue
+    if (reservedRoomIndices && reservedRoomIndices.has(i)) continue
     // Find nearest tile in this room
     for (const key of vacuum.rooms[i]) {
       const [c, r] = key.split(',').map(Number)
@@ -443,11 +456,12 @@ function advanceToNextRoom(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
 ): void {
-  const nextRoom = pickNextRoom(vacuum)
+  const nextRoom = pickNextRoom(vacuum, vacuum.reservedRoomIndices)
   if (nextRoom === -1) {
     // All rooms cleaned — return to base
     vacuum.state = VacuumState.RETURNING
     vacuum.path = pathfindToBase(vacuum, tileMap, blockedTiles)
+    setVacuumSpeech(vacuum, 'Job complete. Returning to dock!')
     return
   }
 
@@ -459,6 +473,7 @@ function advanceToNextRoom(
     console.log(`[Vacuum] Battery too low for room ${nextRoom + 1} (${batteryLeft} left, room needs ${nextRoomSize}), returning to base`)
     vacuum.state = VacuumState.RETURNING
     vacuum.path = pathfindToBase(vacuum, tileMap, blockedTiles)
+    setVacuumSpeech(vacuum, 'Low battery: Returning to dock!')
     return
   }
 
@@ -538,6 +553,15 @@ export function updateVacuum(
   blockedTiles: Set<string>,
   characters: Map<number, { tileCol: number; tileRow: number }>,
 ): void {
+  // Tick speech bubble timer
+  if (vacuum.speechTimer > 0) {
+    vacuum.speechTimer -= dt
+    if (vacuum.speechTimer <= 0) {
+      vacuum.speechText = null
+      vacuum.speechTimer = 0
+    }
+  }
+
   // Age and prune trail entries
   for (let i = vacuum.trail.length - 1; i >= 0; i--) {
     vacuum.trail[i].age += dt
@@ -747,6 +771,9 @@ function updateReturning(
   }
   vacuum.state = VacuumState.DOCKED
   vacuum.cycleActive = false
+  if (vacuum.tilesCleaned > 0) {
+    setVacuumSpeech(vacuum, 'Charging...')
+  }
 }
 
 // ── Sprite access ────────────────────────────────────────────
@@ -790,6 +817,13 @@ export function resetVacuumCycle(vacuum: RobotVacuumInstance): void {
   vacuum.autoCycleTimer = randomAutoCycleDelay()
 }
 
+// ── Speech bubbles ──────────────────────────────────────────
+
+export function setVacuumSpeech(vacuum: RobotVacuumInstance, text: string): void {
+  vacuum.speechText = text
+  vacuum.speechTimer = VACUUM_SPEECH_DURATION_SEC
+}
+
 // ── Auto-cycle ──────────────────────────────────────────────
 
 /** Check if the vacuum's auto-cycle timer has expired. If so, reset it and return true. */
@@ -806,6 +840,11 @@ export function checkAutoCycleReady(vacuum: RobotVacuumInstance): boolean {
 export function pauseVacuum(vacuum: RobotVacuumInstance): void {
   if (vacuum.state === VacuumState.DOCKED) return
   vacuum.paused = !vacuum.paused
+  if (vacuum.paused) {
+    setVacuumSpeech(vacuum, 'Pausing...')
+  } else {
+    setVacuumSpeech(vacuum, 'Resuming room cleaning...')
+  }
 }
 
 export function sendVacuumHome(
@@ -819,4 +858,5 @@ export function sendVacuumHome(
   vacuum.coveragePlan = []
   vacuum.coveragePlanIndex = 0
   vacuum.path = pathfindToBase(vacuum, tileMap, blockedTiles)
+  setVacuumSpeech(vacuum, 'Returning to dock!')
 }

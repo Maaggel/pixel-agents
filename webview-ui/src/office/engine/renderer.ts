@@ -6,6 +6,8 @@ import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
+import { renderWindowEffects } from './windowEffects.js'
+import { renderExteriorWalls } from '../exteriorWall.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
 import {
@@ -830,10 +832,12 @@ export function renderFrame(
   layoutRows?: number,
   sunBeams?: SunBeam[],
   sunBeamColor?: [number, number, number],
+  sunIntensity?: number,
   vacuumDrawables?: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }>,
   vacuumTrails?: Array<{ px: number; py: number; opacity: number }>,
   vacuumSpeechBubbles?: Array<{ text: string; x: number; y: number; opacity: number }>,
   vacuumOverlays?: VacuumOverlay[],
+  exteriorWall?: { style: import('../types.js').ExteriorWallStyle; color: FloorColor; height: number },
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -879,10 +883,21 @@ export function renderFrame(
     ? [...wallInstances, ...furniture]
     : furniture
 
+  // Window glass effects (tint + weather) — before z-sorted scene so characters render on top
+  if (sunBeamColor) {
+    renderWindowEffects(ctx, allFurniture, offsetX, offsetY, zoom, sunIntensity ?? 0, sunBeamColor)
+  }
+
   // Draw walls + furniture + characters (z-sorted)
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables)
+
+  // Exterior wall faces — after scene so bricks render on top of wall sprites
+  // (exterior walls have void below, so no characters can overlap them)
+  if (exteriorWall && exteriorWall.style !== 'none') {
+    renderExteriorWalls(ctx, tileMap, offsetX, offsetY, zoom, exteriorWall.style, exteriorWall.color, exteriorWall.height)
+  }
 
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)
   if (sunBeams && sunBeams.length > 0) {

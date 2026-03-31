@@ -101,6 +101,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       footprintW: entry.footprintW, footprintH: entry.footprintH,
       ...(entry.sunlight ? { sunlight: true } : {}),
       ...(entry.sunlightInset !== undefined ? { sunlightInset: entry.sunlightInset } : {}),
+      ...(entry.glassSections ? { glassSections: entry.glassSections } : {}),
     }
 
     // Attach meeting cycle data from catalog entry

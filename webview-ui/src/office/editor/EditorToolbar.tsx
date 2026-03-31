@@ -5,7 +5,7 @@ import { getCatalogByCategory, buildDynamicCatalog, getActiveCategories } from '
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
-import { ZONE_COLORS, ZONE_LABELS } from '../../constants.js'
+import { ZONE_COLORS, ZONE_LABELS, DEFAULT_EXTERIOR_WALL_COLOR } from '../../constants.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -41,6 +41,12 @@ const activeTabStyle: React.CSSProperties = {
   border: '2px solid #5a8cff',
 }
 
+interface ExteriorWallSettings {
+  style: string
+  color: FloorColor
+  height: number
+}
+
 interface EditorToolbarProps {
   activeTool: EditTool
   selectedTileType: TileTypeVal
@@ -58,6 +64,8 @@ interface EditorToolbarProps {
   onFurnitureTypeChange: (type: string) => void
   onZoneTypeChange: (type: ZoneTypeVal) => void
   loadedAssets?: LoadedAssetData
+  exteriorWall?: ExteriorWallSettings | null
+  onExteriorWallChange?: (settings: ExteriorWallSettings | null) => void
 }
 
 /** Render a floor pattern preview at 2x (32x32 canvas showing the 16x16 tile) */
@@ -159,10 +167,13 @@ export function EditorToolbar({
   onFurnitureTypeChange,
   onZoneTypeChange,
   loadedAssets,
+  exteriorWall,
+  onExteriorWallChange,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurnitureCategory>('desks')
   const [showColor, setShowColor] = useState(false)
   const [showWallColor, setShowWallColor] = useState(false)
+  const [showExteriorWall, setShowExteriorWall] = useState(false)
   const [showFurnitureColor, setShowFurnitureColor] = useState(false)
 
   // Build dynamic catalog from loaded assets
@@ -195,6 +206,26 @@ export function EditorToolbar({
   const handleWallColorChange = useCallback((key: keyof FloorColor, value: number) => {
     onWallColorChange({ ...wallColor, [key]: value })
   }, [wallColor, onWallColorChange])
+
+  const handleExteriorWallColorChange = useCallback((key: keyof FloorColor, value: number) => {
+    if (!exteriorWall || !onExteriorWallChange) return
+    onExteriorWallChange({ ...exteriorWall, color: { ...exteriorWall.color, [key]: value } })
+  }, [exteriorWall, onExteriorWallChange])
+
+  const handleExteriorWallStyleChange = useCallback((style: string) => {
+    if (!onExteriorWallChange) return
+    if (style === 'none') {
+      onExteriorWallChange(null)
+    } else {
+      const current = exteriorWall ?? { style: 'brick', color: { ...DEFAULT_EXTERIOR_WALL_COLOR }, height: 2 }
+      onExteriorWallChange({ ...current, style })
+    }
+  }, [exteriorWall, onExteriorWallChange])
+
+  const handleExteriorWallHeightChange = useCallback((height: number) => {
+    if (!exteriorWall || !onExteriorWallChange) return
+    onExteriorWallChange({ ...exteriorWall, height })
+  }, [exteriorWall, onExteriorWallChange])
 
   // For selected furniture: use existing color or default
   const effectiveColor = selectedFurnitureColor ?? DEFAULT_FURNITURE_COLOR
@@ -250,7 +281,7 @@ export function EditorToolbar({
           onClick={() => onToolChange(EditTool.WALL_PAINT)}
           title="Paint walls (click to toggle)"
         >
-          Wall
+          Walls
         </button>
         <button
           style={isEraseActive ? activeBtnStyle : btnStyle}
@@ -332,18 +363,27 @@ export function EditorToolbar({
       {/* Sub-panel: Wall — stacked bottom-to-top via column-reverse */}
       {isWallActive && (
         <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 6 }}>
-          {/* Color toggle — just above tool row */}
+          {/* Interior + Exterior toggle buttons — side by side above tool row */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <button
               style={showWallColor ? activeBtnStyle : btnStyle}
-              onClick={() => setShowWallColor((v) => !v)}
-              title="Adjust wall color"
+              onClick={() => { setShowWallColor((v) => !v); if (!showWallColor) setShowExteriorWall(false) }}
+              title="Adjust interior wall color"
             >
-              Color
+              Interior
             </button>
+            {onExteriorWallChange && (
+              <button
+                style={showExteriorWall ? activeBtnStyle : btnStyle}
+                onClick={() => { setShowExteriorWall((v) => !v); if (!showExteriorWall) setShowWallColor(false) }}
+                title="Configure exterior wall appearance"
+              >
+                Exterior
+              </button>
+            )}
           </div>
 
-          {/* Color controls (collapsible) */}
+          {/* Interior color controls (collapsible) */}
           {showWallColor && (
             <div style={{
               display: 'flex',
@@ -358,6 +398,63 @@ export function EditorToolbar({
               <ColorSlider label="S" value={wallColor.s} min={0} max={100} onChange={(v) => handleWallColorChange('s', v)} />
               <ColorSlider label="B" value={wallColor.b} min={-100} max={100} onChange={(v) => handleWallColorChange('b', v)} />
               <ColorSlider label="C" value={wallColor.c} min={-100} max={100} onChange={(v) => handleWallColorChange('c', v)} />
+            </div>
+          )}
+
+          {/* Exterior wall controls (collapsible) */}
+          {showExteriorWall && onExteriorWallChange && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              padding: '4px 6px',
+              background: '#181828',
+              border: '2px solid #4a4a6a',
+              borderRadius: 0,
+            }}>
+              <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'none', label: 'None' },
+                  { key: 'brick', label: 'Large Bricks' },
+                  { key: 'brick_small', label: 'Small Bricks' },
+                  { key: 'stone', label: 'Stone' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    style={(exteriorWall?.style ?? 'none') === opt.key ? activeTabStyle : tabStyle}
+                    onClick={() => handleExteriorWallStyleChange(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {exteriorWall && (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', minWidth: 36 }}>Extra</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={10}
+                      value={exteriorWall.height}
+                      onChange={(e) => handleExteriorWallHeightChange(Number(e.target.value))}
+                      style={{ flex: 1, height: 12 }}
+                    />
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', minWidth: 10 }}>{exteriorWall.height}</span>
+                  </div>
+                  <ColorSlider label="H" value={exteriorWall.color.h} min={0} max={360} onChange={(v) => handleExteriorWallColorChange('h', v)} />
+                  <ColorSlider label="S" value={exteriorWall.color.s} min={0} max={100} onChange={(v) => handleExteriorWallColorChange('s', v)} />
+                  <ColorSlider label="B" value={exteriorWall.color.b} min={-100} max={100} onChange={(v) => handleExteriorWallColorChange('b', v)} />
+                  <ColorSlider label="C" value={exteriorWall.color.c} min={-100} max={100} onChange={(v) => handleExteriorWallColorChange('c', v)} />
+                  <button
+                    style={{ ...btnStyle, fontSize: 10, padding: '2px 6px' }}
+                    onClick={() => onExteriorWallChange({ ...exteriorWall, color: { ...DEFAULT_EXTERIOR_WALL_COLOR } })}
+                    title="Reset exterior wall color to default"
+                  >
+                    Reset Color
+                  </button>
+                </>
+              )}
             </div>
           )}
 

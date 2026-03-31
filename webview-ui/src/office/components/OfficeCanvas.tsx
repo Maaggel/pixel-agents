@@ -10,6 +10,7 @@ import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
 import { unlockAudio } from '../../notificationSound.js'
 import { updateSunCycle, getSunState, computeSunBeams } from '../engine/sunlight.js'
+import { updateWeather, getWeatherSeverity } from '../engine/windowEffects.js'
 
 interface OfficeCanvasProps {
   officeState: OfficeState
@@ -91,7 +92,10 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     const stop = startGameLoop(canvas, {
       update: (dt) => {
         officeState.update(dt)
-        if (showSunlight) updateSunCycle(dt)
+        if (showSunlight) {
+          updateSunCycle(dt)
+          updateWeather(dt)
+        }
       },
       render: (ctx) => {
         // Canvas dimensions are in device pixels
@@ -247,14 +251,19 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           showNametags,
         }
 
-        // Compute sunlight beams
+        // Compute sunlight beams + window glass state
         let sunBeams = undefined
         let sunBeamColor: [number, number, number] | undefined = undefined
+        let sunIntensity: number | undefined = undefined
         if (showSunlight) {
           const { angle, intensity, reach, color } = getSunState()
+          sunBeamColor = color
+          sunIntensity = intensity
           if (intensity > 0) {
-            sunBeams = computeSunBeams(officeState.furniture, officeState.tileMap, angle, intensity, reach)
-            sunBeamColor = color
+            // Attenuate sunbeams during weather (overcast sky blocks direct sunlight)
+            const weatherSev = getWeatherSeverity()
+            const beamIntensity = intensity * (1 - weatherSev * 0.85)
+            sunBeams = computeSunBeams(officeState.furniture, officeState.tileMap, angle, beamIntensity, reach)
           }
         }
 
@@ -285,10 +294,12 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           officeState.getLayout().rows,
           sunBeams,
           sunBeamColor,
+          sunIntensity,
           vacuumDrawables.length > 0 ? vacuumDrawables : undefined,
           vacuumTrails.length > 0 ? vacuumTrails : undefined,
           vacuumSpeech.length > 0 ? vacuumSpeech : undefined,
           vacuumOverlays.length > 0 ? vacuumOverlays : undefined,
+          officeState.getLayout().exteriorWall,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 

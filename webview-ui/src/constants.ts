@@ -114,6 +114,7 @@ export const LAYOUT_SAVE_DEBOUNCE_MS = 500
 export const DEFAULT_FLOOR_COLOR: FloorColor = { h: 35, s: 30, b: 15, c: 0 }
 export const DEFAULT_WALL_COLOR: FloorColor = { h: 240, s: 25, b: 0, c: 0 }
 export const DEFAULT_NEUTRAL_COLOR: FloorColor = { h: 0, s: 0, b: 0, c: 0 }
+export const DEFAULT_EXTERIOR_WALL_COLOR: FloorColor = { h: 10, s: 50, b: -15, c: 10 }
 
 // ── Notification Sound ──────────────────────────────────────
 export const NOTIFICATION_NOTE_1_HZ = 659.25   // E5
@@ -181,6 +182,59 @@ export const SUN_BEAM_COLOR_EDGE: [number, number, number] = [255, 170, 80]
 export const SUN_ANGLE_MIN_RAD = -0.4
 /** Maximum sun angle in radians (rightmost sweep, positive = right) */
 export const SUN_ANGLE_MAX_RAD = 0.4
+
+// ── Window Glass Effects ────────────────────────────────────
+/** Glass tint opacity at full sun during clear weather */
+export const GLASS_DAY_TINT_OPACITY = 0.22
+/** Glass tint opacity at full sun during rain/snow (subdued — overcast sky) */
+export const GLASS_DAY_WEATHER_TINT_OPACITY = 0.06
+/** Glass overlay opacity at full night (dark sky through window) */
+export const GLASS_NIGHT_OVERLAY_OPACITY = 0.55
+/** Night sky color visible through window glass */
+export const GLASS_NIGHT_COLOR: [number, number, number] = [15, 20, 45]
+/** Daytime sky color visible through window glass (light blue) */
+export const GLASS_DAY_SKY_COLOR: [number, number, number] = [140, 180, 230]
+/** Sunrise/sunset sky color through window glass */
+export const GLASS_EDGE_SKY_COLOR: [number, number, number] = [220, 140, 80]
+
+/** Extra dark overlay opacity behind weather particles (cloud cover) */
+export const GLASS_WEATHER_DARKEN_OPACITY = 0.18
+
+// ── Weather ────────────────────────────────────────────────
+/** Minimum duration of a weather state in seconds before transition */
+export const WEATHER_MIN_DURATION_SEC = 60
+/** Maximum duration of a weather state in seconds before transition */
+export const WEATHER_MAX_DURATION_SEC = 180
+/** Duration of weather transition fade in seconds */
+export const WEATHER_TRANSITION_DURATION_SEC = 8
+/** Maximum rain particles active across all windows */
+export const WEATHER_RAIN_PARTICLE_COUNT = 40
+/** Maximum snow particles active across all windows */
+export const WEATHER_SNOW_PARTICLE_COUNT = 25
+/** Rain particle fall speed in sprite pixels per second */
+export const WEATHER_RAIN_SPEED_PX_SEC = 60
+/** Snow particle fall speed in sprite pixels per second */
+export const WEATHER_SNOW_SPEED_PX_SEC = 12
+/** Snow horizontal drift amplitude in sprite pixels */
+export const WEATHER_SNOW_DRIFT_AMPLITUDE_PX = 1.2
+/** Snow horizontal drift frequency (oscillations per second) */
+export const WEATHER_SNOW_DRIFT_FREQ = 0.3
+/** Rain streak length in sprite pixels */
+export const WEATHER_RAIN_LENGTH_PX = 3
+/** Rain color */
+export const WEATHER_RAIN_COLOR = 'rgba(180, 200, 230, 0.9)'
+/** Snow color */
+export const WEATHER_SNOW_COLOR = 'rgba(240, 245, 255, 0.85)'
+/** Snow particle size in sprite pixels */
+export const WEATHER_SNOW_SIZE_PX = 1
+/** Blizzard particle count (more than regular snow) */
+export const WEATHER_BLIZZARD_PARTICLE_COUNT = 50
+/** Blizzard horizontal wind speed in sprite pixels per second */
+export const WEATHER_BLIZZARD_WIND_SPEED_PX_SEC = 25
+/** Blizzard fall speed in sprite pixels per second */
+export const WEATHER_BLIZZARD_FALL_SPEED_PX_SEC = 20
+/** Probability weights for weather states: [clear, rain, snow] */
+export const WEATHER_STATE_WEIGHTS = [0.5, 0.3, 0.2] as const
 
 // ── Robot Vacuum ────────────────────────────────────────────
 /** Vacuum movement speed in pixels per second (slower than characters) */

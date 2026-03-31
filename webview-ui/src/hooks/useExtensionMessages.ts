@@ -81,12 +81,74 @@ export interface ExtensionMessageState {
   devLogs: string[]
 }
 
+const REMEMBERED_LOOKS_KEY = 'pixel-agents-remembered-looks'
+
+interface RememberedLook {
+  palette: number
+  hueShift: number
+}
+
+function loadRememberedLooks(): RememberedLook[] {
+  try {
+    const stored = localStorage.getItem(REMEMBERED_LOOKS_KEY)
+    if (stored) return JSON.parse(stored) as RememberedLook[]
+  } catch { /* ignore */ }
+  return []
+}
+
+function saveRememberedLooks(looks: RememberedLook[]): void {
+  try { localStorage.setItem(REMEMBERED_LOOKS_KEY, JSON.stringify(looks)) } catch { /* ignore */ }
+}
+
+/**
+ * Get a remembered look that isn't currently in use by any active non-sub-agent character.
+ * Returns the look or null if all remembered looks are already in use.
+ */
+function getAvailableRememberedLook(os: OfficeState): RememberedLook | null {
+  const remembered = loadRememberedLooks()
+  if (remembered.length === 0) return null
+
+  // Collect currently active looks
+  const activeLooks = new Set<string>()
+  for (const ch of os.characters.values()) {
+    if (ch.isSubagent) continue
+    activeLooks.add(`${ch.palette}:${ch.hueShift}`)
+  }
+
+  // Find a remembered look not currently in use
+  for (const look of remembered) {
+    if (!activeLooks.has(`${look.palette}:${look.hueShift}`)) {
+      return look
+    }
+  }
+  return null
+}
+
 function saveAgentSeats(os: OfficeState): void {
   const seats: Record<number, { palette: number; hueShift: number; seatId: string | null }> = {}
+  // Also remember all unique looks for future respawns
+  const seenLooks = new Set<string>()
+  const looks: RememberedLook[] = []
   for (const ch of os.characters.values()) {
     if (ch.isSubagent) continue
     seats[ch.id] = { palette: ch.palette, hueShift: ch.hueShift, seatId: ch.seatId }
+    const key = `${ch.palette}:${ch.hueShift}`
+    if (!seenLooks.has(key)) {
+      seenLooks.add(key)
+      looks.push({ palette: ch.palette, hueShift: ch.hueShift })
+    }
   }
+  // Merge with existing remembered looks (keep old ones too, up to a limit)
+  const existing = loadRememberedLooks()
+  for (const look of existing) {
+    const key = `${look.palette}:${look.hueShift}`
+    if (!seenLooks.has(key)) {
+      seenLooks.add(key)
+      looks.push(look)
+    }
+  }
+  // Cap at 12 remembered looks
+  saveRememberedLooks(looks.slice(0, 12))
   vscode.postMessage({ type: 'saveAgentSeats', seats })
 }
 
@@ -197,7 +259,9 @@ export function useExtensionMessages(
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         setSelectedAgent(id)
         if (!os.characters.has(id)) {
-          os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
+          // Try to reuse a remembered look that isn't currently active
+          const remembered = getAvailableRememberedLook(os)
+          os.addAgent(id, remembered?.palette, remembered?.hueShift, undefined, undefined, folderName, false, projectName)
         }
         saveAgentSeats(os)
       } else if (msg.type === 'agentClosed') {

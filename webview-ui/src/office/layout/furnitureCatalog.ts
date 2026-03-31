@@ -31,6 +31,7 @@ export interface LoadedAssetData {
     isSeat?: boolean
     sunlight?: boolean
     sunlightInset?: number
+    glassSections?: Array<{ x: number; y: number; w: number; h: number }>
     /** Resolved sprite IDs for meeting cycle animation frames */
     meetingCycle?: string[]
     randomMeetingCycle?: boolean
@@ -180,6 +181,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.isSeat ? { isSeat: true } : {}),
       ...(asset.sunlight ? { sunlight: true } : {}),
       ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),
+      ...(asset.glassSections ? { glassSections: asset.glassSections } : {}),
       ...(meetingCycleSprites ? { meetingCycleSprites } : {}),
       ...(asset.randomMeetingCycle ? { randomMeetingCycle: true } : {}),
       ...(asset.meetingCycleIntervalMin !== undefined ? { meetingCycleIntervalMin: asset.meetingCycleIntervalMin } : {}),

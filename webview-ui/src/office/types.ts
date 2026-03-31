@@ -79,6 +79,18 @@ export interface Seat {
   lastUsedAt: number
 }
 
+/** A rectangular glass region within a window sprite (sprite-pixel coordinates) */
+export interface GlassSection {
+  /** X offset from sprite top-left */
+  x: number
+  /** Y offset from sprite top-left */
+  y: number
+  /** Width in sprite pixels */
+  w: number
+  /** Height in sprite pixels */
+  h: number
+}
+
 export interface FurnitureInstance {
   sprite: SpriteData
   /** Grid column of top-left footprint tile (for work cycle proximity check) */
@@ -101,6 +113,8 @@ export interface FurnitureInstance {
   sunlight?: boolean
   /** Pixels to inset beam from each side of the sprite (narrows beam to visible glass area) */
   sunlightInset?: number
+  /** Rectangular glass regions within the sprite for day/night tinting and weather effects */
+  glassSections?: GlassSection[]
   /** Cycle frame sprites for meeting animation. Present when catalog entry has meetingCycle. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -203,6 +217,8 @@ export interface FurnitureCatalogEntry {
   sunlight?: boolean
   /** Pixels to inset beam from each side of the sprite (narrows beam to visible glass area) */
   sunlightInset?: number
+  /** Rectangular glass regions within the sprite for day/night tinting and weather effects */
+  glassSections?: GlassSection[]
   /** Resolved cycle frame sprites for meeting animation. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -237,6 +253,15 @@ export interface PlacedFurniture {
   color?: FloorColor
 }
 
+/** Exterior wall style options */
+export const ExteriorWallStyle = {
+  NONE: 'none',
+  BRICK: 'brick',
+  BRICK_SMALL: 'brick_small',
+  STONE: 'stone',
+} as const
+export type ExteriorWallStyle = (typeof ExteriorWallStyle)[keyof typeof ExteriorWallStyle]
+
 export interface OfficeLayout {
   version: 1
   cols: number
@@ -247,6 +272,13 @@ export interface OfficeLayout {
   tileColors?: Array<FloorColor | null>
   /** Per-tile zone designation, parallel to tiles array. null = unzoned */
   zones?: Array<ZoneType | null>
+  /** Exterior wall appearance for outer walls (bottom-most walls with no floor below) */
+  exteriorWall?: {
+    style: ExteriorWallStyle
+    color: FloorColor
+    /** Height in tiles of the exterior wall face below the building */
+    height: number
+  }
 }
 
 export interface Character {

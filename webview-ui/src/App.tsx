@@ -4,7 +4,8 @@ import { OfficeCanvas } from './office/components/OfficeCanvas.js'
 import { ToolOverlay } from './office/components/ToolOverlay.js'
 import { EditorToolbar } from './office/editor/EditorToolbar.js'
 import { EditorState } from './office/editor/editorState.js'
-import { EditTool } from './office/types.js'
+import { EditTool, ExteriorWallStyle } from './office/types.js'
+import type { FloorColor } from './office/types.js'
 import { isRotatable } from './office/layout/furnitureCatalog.js'
 import { vscode } from './vscodeApi.js'
 import { useExtensionMessages } from './hooks/useExtensionMessages.js'
@@ -18,6 +19,7 @@ import { DevConsole } from './components/DevConsole.js'
 import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
 import type { ViewOptions } from './components/ViewOptionsPanel.js'
 import { BehaviourLog } from './components/BehaviourLog.js'
+import { setWeather, getWeatherMode } from './office/engine/windowEffects.js'
 import { VacuumControlPanel } from './components/VacuumControlPanel.js'
 import { addBehaviourEntry } from './behaviourLog.js'
 
@@ -203,6 +205,46 @@ function App() {
       console.log(`[App] Meeting failed: ${reason}`)
       addBehaviourEntry({ agentId: 0, agentName: 'System', message: `Meeting: ${reason}`, type: 'info' })
     }
+  }, [])
+
+  const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(
+    () => officeStateRef.current?.getLayout().exteriorWall ?? null,
+  )
+
+  const handleExteriorWallChange = useCallback((settings: { style: string; color: FloorColor; height: number } | null) => {
+    const os = officeStateRef.current
+    if (!os) return
+    const layout = os.getLayout()
+    if (settings) {
+      layout.exteriorWall = {
+        style: settings.style as typeof ExteriorWallStyle[keyof typeof ExteriorWallStyle],
+        color: settings.color,
+        height: settings.height,
+      }
+    } else {
+      layout.exteriorWall = undefined
+    }
+    setExteriorWallState(settings)
+    editorState.isDirty = true
+    // Trigger save via debounced save mechanism
+    vscode.postMessage({ type: 'saveLayout', layout: JSON.parse(JSON.stringify(layout)) })
+  }, [])
+
+  const [weatherMode, setWeatherMode] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('pixel-agents-weather')
+      if (stored) {
+        setWeather(stored as Parameters<typeof setWeather>[0])
+        return stored
+      }
+    } catch { /* ignore */ }
+    return getWeatherMode()
+  })
+
+  const handleSetWeather = useCallback((mode: string) => {
+    setWeather(mode as Parameters<typeof setWeather>[0])
+    setWeatherMode(mode)
+    try { localStorage.setItem('pixel-agents-weather', mode) } catch { /* ignore */ }
   }, [])
 
   const handleStartVacuum = useCallback((uid: string) => {
@@ -461,6 +503,8 @@ function App() {
             onFurnitureTypeChange={editor.handleFurnitureTypeChange}
             onZoneTypeChange={editor.handleZoneTypeChange}
             loadedAssets={loadedAssets}
+            exteriorWall={exteriorWall}
+            onExteriorWallChange={handleExteriorWallChange}
           />
         )
       })()}
@@ -479,7 +523,12 @@ function App() {
         alwaysShowActivities={viewOptions.alwaysShowActivities}
       />
 
-      <BehaviourLog onTriggerMeeting={handleTriggerMeeting} />
+      <BehaviourLog
+        onTriggerMeeting={handleTriggerMeeting}
+        onSetWeather={handleSetWeather}
+        currentWeatherMode={weatherMode}
+        showWeather={viewOptions.showSunlight}
+      />
 
       {viewOptions.showVacuumPanel && (
         <VacuumControlPanel

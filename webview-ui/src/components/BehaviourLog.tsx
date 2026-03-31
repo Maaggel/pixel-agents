@@ -46,13 +46,17 @@ function formatTime(ts: number): string {
 
 interface BehaviourLogProps {
   onTriggerMeeting?: () => void
+  onSetWeather?: (weather: string) => void
+  currentWeatherMode?: string
+  showWeather?: boolean
 }
 
-export function BehaviourLog({ onTriggerMeeting }: BehaviourLogProps) {
+export function BehaviourLog({ onTriggerMeeting, onSetWeather, currentWeatherMode, showWeather }: BehaviourLogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [entries, setEntries] = useState<readonly BehaviourEntry[]>(getBehaviourEntries)
   const [isHovered, setIsHovered] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Set<EntryType>>(loadFilters)
+  const [weatherOpen, setWeatherOpen] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -218,6 +222,76 @@ export function BehaviourLog({ onTriggerMeeting }: BehaviourLogProps) {
       )}
 
       <div style={{ display: 'flex', gap: 4 }}>
+        {showWeather && onSetWeather && (
+          <div style={{ position: 'relative' }}>
+            {weatherOpen && (
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                marginBottom: 4,
+                background: 'var(--pixel-bg)',
+                border: '2px solid var(--pixel-border)',
+                borderRadius: 0,
+                boxShadow: 'var(--pixel-shadow)',
+                padding: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                minWidth: 130,
+                zIndex: 60,
+              }}>
+                {[
+                  { key: 'random', label: 'Random', icon: '\u{1F3B2}' },
+                  { key: 'clear', label: 'Clear', icon: '\u{2600}' },
+                  { key: 'rain_light', label: 'Light Rain', icon: '\u{1F326}' },
+                  { key: 'rain_heavy', label: 'Heavy Rain', icon: '\u{1F327}' },
+                  { key: 'snow', label: 'Snow', icon: '\u{2744}' },
+                  { key: 'blizzard', label: 'Blizzard', icon: '\u{1F32C}' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { onSetWeather(opt.key); setWeatherOpen(false) }}
+                    style={{
+                      background: currentWeatherMode === opt.key ? 'var(--pixel-active-bg)' : 'none',
+                      border: currentWeatherMode === opt.key ? '2px solid var(--pixel-accent)' : '2px solid transparent',
+                      borderRadius: 0,
+                      padding: '3px 8px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: currentWeatherMode === opt.key ? 'var(--pixel-accent)' : 'var(--pixel-text)',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setWeatherOpen(v => !v)}
+              style={{
+                background: weatherOpen ? 'var(--pixel-active-bg)' : 'var(--pixel-bg)',
+                border: weatherOpen ? '2px solid var(--pixel-accent)' : '2px solid var(--pixel-border)',
+                borderRadius: 0,
+                padding: '4px 10px',
+                cursor: 'pointer',
+                fontSize: '22px',
+                color: 'var(--pixel-text)',
+                boxShadow: 'var(--pixel-shadow)',
+                opacity: weatherOpen || isHovered ? 1 : 0.5,
+                transition: 'opacity 0.3s',
+              }}
+              title="Change weather"
+            >
+              Weather
+            </button>
+          </div>
+        )}
         {onTriggerMeeting && (
           <button
             onClick={onTriggerMeeting}

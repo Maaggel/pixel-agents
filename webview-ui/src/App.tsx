@@ -9,7 +9,7 @@ import type { FloorColor } from './office/types.js'
 import { isRotatable } from './office/layout/furnitureCatalog.js'
 import { vscode } from './vscodeApi.js'
 import { useExtensionMessages } from './hooks/useExtensionMessages.js'
-import { PULSE_ANIMATION_DURATION_SEC, CHAR_VISUAL_REPORT_INTERVAL_MS } from './constants.js'
+import { PULSE_ANIMATION_DURATION_SEC, CHAR_VISUAL_REPORT_INTERVAL_MS, DEFAULT_EXTERIOR_WALL_COLOR } from './constants.js'
 import { useEditorActions } from './hooks/useEditorActions.js'
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
 import { ZoomControls } from './components/ZoomControls.js'
@@ -209,12 +209,14 @@ function App() {
 
   const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(null)
 
-  // Sync exterior wall state when layout is loaded
+  // Sync exterior wall state when layout is loaded — default to Small Bricks if not set
+  const defaultExteriorWall = { style: 'brick_small' as const, color: { ...DEFAULT_EXTERIOR_WALL_COLOR }, height: 0 }
   useEffect(() => {
     if (layoutReady) {
-      setExteriorWallState(officeStateRef.current?.getLayout().exteriorWall ?? null)
+      const saved = officeStateRef.current?.getLayout().exteriorWall
+      setExteriorWallState(saved ?? defaultExteriorWall)
     }
-  }, [layoutReady])
+  }, [layoutReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExteriorWallChange = useCallback((settings: { style: string; color: FloorColor; height: number } | null) => {
     const os = officeStateRef.current

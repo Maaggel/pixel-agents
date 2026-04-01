@@ -217,7 +217,7 @@ export function EditorToolbar({
     if (style === 'none') {
       onExteriorWallChange(null)
     } else {
-      const current = exteriorWall ?? { style: 'brick', color: { ...DEFAULT_EXTERIOR_WALL_COLOR }, height: 2 }
+      const current = exteriorWall ?? { style: 'brick_small', color: { ...DEFAULT_EXTERIOR_WALL_COLOR }, height: 0 }
       onExteriorWallChange({ ...current, style })
     }
   }, [exteriorWall, onExteriorWallChange])

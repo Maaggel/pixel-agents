@@ -299,7 +299,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           vacuumTrails.length > 0 ? vacuumTrails : undefined,
           vacuumSpeech.length > 0 ? vacuumSpeech : undefined,
           vacuumOverlays.length > 0 ? vacuumOverlays : undefined,
-          officeState.getLayout().exteriorWall,
+          officeState.getLayout().exteriorWall ?? { style: 'brick_small' as const, color: { h: 10, s: 50, b: -15, c: 10 }, height: 0 },
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 

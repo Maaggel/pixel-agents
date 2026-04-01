@@ -232,11 +232,32 @@ export function renderExteriorWalls(
     const baseX = offsetX + col * s
 
     if (isWall) {
-      // Brick the full wall: 3D face (1 tile above) + tile itself + extra height below
-      const faceStartY = offsetY + (row - 1) * s
-      const totalTiles = 2 + height
-      for (let h = 0; h < totalTiles; h++) {
-        ctx.drawImage(cachedTile, baseX, faceStartY + h * s)
+      const aboveIsEmpty = row <= 0 || tileMap[row - 1][col] === TileType.VOID
+      if (aboveIsEmpty) {
+        // Nothing above — brick the full face (1 tile above) + tile + extra
+        const faceStartY = offsetY + (row - 1) * s
+        const totalTiles = 2 + height
+        for (let h = 0; h < totalTiles; h++) {
+          ctx.drawImage(cachedTile, baseX, faceStartY + h * s)
+        }
+      } else {
+        // Floor/wall above — start bricks half a tile up from the tile boundary
+        // to cover the wall sprite's light base without hiding the dark face.
+        // Clip to prevent bricks extending below the wall tile bottom.
+        const halfTile = Math.round(s / 2)
+        const topY = offsetY + row * s - halfTile
+        const bottomY = offsetY + (row + 1) * s
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(baseX, topY, s, bottomY - topY)
+        ctx.clip()
+        ctx.drawImage(cachedTile, baseX, topY)
+        ctx.drawImage(cachedTile, baseX, topY + s)
+        ctx.restore()
+        // Draw extra height tiles below the wall tile
+        for (let h = 0; h < height; h++) {
+          ctx.drawImage(cachedTile, baseX, bottomY + h * s)
+        }
       }
     } else {
       // Floor tiles: bricks only for extra height below

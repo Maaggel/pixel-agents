@@ -7,7 +7,7 @@ import { renderMatrixEffect } from './matrixEffect.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
 import { renderWindowEffects } from './windowEffects.js'
-import { renderExteriorWalls } from '../exteriorWall.js'
+import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
 import {
@@ -883,20 +883,42 @@ export function renderFrame(
     ? [...wallInstances, ...furniture]
     : furniture
 
-  // Window glass effects (tint + weather) — before z-sorted scene so characters render on top
-  if (sunBeamColor) {
-    renderWindowEffects(ctx, allFurniture, offsetX, offsetY, zoom, sunIntensity ?? 0, sunBeamColor)
-  }
-
   // Draw walls + furniture + characters (z-sorted)
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables)
 
   // Exterior wall faces — after scene so bricks render on top of wall sprites
-  // (exterior walls have void below, so no characters can overlap them)
   if (exteriorWall && exteriorWall.style !== 'none') {
     renderExteriorWalls(ctx, tileMap, offsetX, offsetY, zoom, exteriorWall.style, exteriorWall.color, exteriorWall.height)
+
+    // Re-draw placed furniture (not wall sprites) on exterior walls
+    // so windows, paintings etc. appear on top of bricks
+    const exteriorTiles = findExteriorWalls(tileMap)
+    const exteriorSet = new Set(exteriorTiles.map(t => `${t.col},${t.row}`))
+    for (const t of exteriorTiles) {
+      if (t.isWall && t.row > 0) exteriorSet.add(`${t.col},${t.row - 1}`)
+    }
+    for (const f of furniture) {
+      if (!f.uid) continue
+      let overlaps = false
+      for (let fr = 0; fr < f.footprintH && !overlaps; fr++) {
+        for (let fc = 0; fc < f.footprintW && !overlaps; fc++) {
+          if (exteriorSet.has(`${f.col + fc},${f.row + fr}`)) overlaps = true
+        }
+      }
+      if (overlaps) {
+        const sprite = f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
+        const cached = getCachedSprite(sprite, zoom)
+        ctx.drawImage(cached, offsetX + f.x * zoom, offsetY + f.y * zoom)
+      }
+    }
+  }
+
+  // Window glass effects (tint + weather) — after scene and exterior bricks
+  // so effects are visible on top of wall sprites and brick textures
+  if (sunBeamColor) {
+    renderWindowEffects(ctx, allFurniture, offsetX, offsetY, zoom, sunIntensity ?? 0, sunBeamColor)
   }
 
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)

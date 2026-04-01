@@ -207,9 +207,14 @@ function App() {
     }
   }, [])
 
-  const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(
-    () => officeStateRef.current?.getLayout().exteriorWall ?? null,
-  )
+  const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(null)
+
+  // Sync exterior wall state when layout is loaded
+  useEffect(() => {
+    if (layoutReady) {
+      setExteriorWallState(officeStateRef.current?.getLayout().exteriorWall ?? null)
+    }
+  }, [layoutReady])
 
   const handleExteriorWallChange = useCallback((settings: { style: string; color: FloorColor; height: number } | null) => {
     const os = officeStateRef.current

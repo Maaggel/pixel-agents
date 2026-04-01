@@ -232,11 +232,9 @@ export function renderExteriorWalls(
     const baseX = offsetX + col * s
 
     if (isWall) {
-      // Wall tiles: cover the 3D face (1 tile above) + tile itself + extra height below
-      // The wall sprite extends 1 tile above the tile position — cover that with bricks too
-      const faceStartY = offsetY + (row - 1) * s  // 1 tile above = wall 3D face
-      const totalTiles = 2 + height  // face + tile + extra
-
+      // Brick the full wall: 3D face (1 tile above) + tile itself + extra height below
+      const faceStartY = offsetY + (row - 1) * s
+      const totalTiles = 2 + height
       for (let h = 0; h < totalTiles; h++) {
         ctx.drawImage(cachedTile, baseX, faceStartY + h * s)
       }

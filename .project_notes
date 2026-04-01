@@ -1,5 +1,6 @@
  - Remember and restore avatar palette/hueShift on respawn - some fchanges were made, but it doesn't work.
  - The exterior settings doesn't reflect the chosen look when loading the scene
+ - The small top darkened part of the exterior walls are textured as well - they shouldn't be.
 
 
  - Add toilet stuff, and toilet zone (if needed) - toilet could also just be a single seat.

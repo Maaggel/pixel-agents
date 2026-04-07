@@ -200,6 +200,10 @@ export const GLASS_EDGE_SKY_COLOR: [number, number, number] = [220, 140, 80]
 /** Extra dark overlay opacity behind weather particles (cloud cover) */
 export const GLASS_WEATHER_DARKEN_OPACITY = 0.18
 
+/** Semi-transparent glass tint for exterior windows (looking into the office) */
+export const EXTERIOR_GLASS_TINT_COLOR: [number, number, number] = [180, 210, 240]
+export const EXTERIOR_GLASS_TINT_OPACITY = 0.2
+
 // ── Weather ────────────────────────────────────────────────
 /** Minimum duration of a weather state in seconds before transition */
 export const WEATHER_MIN_DURATION_SEC = 60

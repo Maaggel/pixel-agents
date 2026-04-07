@@ -172,17 +172,36 @@ export function canPlaceFurniture(
   // Build occupied set excluding the item being moved, skipping background tile rows
   const occupied = getPlacementBlockedTiles(layout.furniture, excludeUid)
 
-  // If this item can be placed on surfaces, build set of desk tiles to exclude from collision
-  let deskTiles: Set<string> | null = null
+  // Build exception sets: tiles that don't actually block the new item
+  let exemptTiles: Set<string> | null = null
+
+  // Surface items can overlap desk tiles
   if (entry.canPlaceOnSurfaces) {
-    deskTiles = new Set<string>()
+    exemptTiles = exemptTiles ?? new Set<string>()
     for (const item of layout.furniture) {
       if (item.uid === excludeUid) continue
       const itemEntry = getCatalogEntry(item.type)
       if (!itemEntry || !itemEntry.isDesk) continue
       for (let dr = 0; dr < itemEntry.footprintH; dr++) {
         for (let dc = 0; dc < itemEntry.footprintW; dc++) {
-          deskTiles.add(`${item.col + dc},${item.row + dr}`)
+          exemptTiles.add(`${item.col + dc},${item.row + dr}`)
+        }
+      }
+    }
+  }
+
+  // Floor items can overlap wall-placed items (windows, paintings, etc.)
+  if (!placingOnWall) {
+    for (const item of layout.furniture) {
+      if (item.uid === excludeUid) continue
+      const itemEntry = getCatalogEntry(item.type)
+      if (!itemEntry || !itemEntry.canPlaceOnWalls) continue
+      exemptTiles = exemptTiles ?? new Set<string>()
+      const itemBg = itemEntry.backgroundTiles || 0
+      for (let dr = 0; dr < itemEntry.footprintH; dr++) {
+        if (dr < itemBg) continue
+        for (let dc = 0; dc < itemEntry.footprintW; dc++) {
+          exemptTiles.add(`${item.col + dc},${item.row + dr}`)
         }
       }
     }
@@ -195,7 +214,7 @@ export function canPlaceFurniture(
     if (row + dr < 0) continue // row above map (wall items extending upward)
     for (let dc = 0; dc < entry.footprintW; dc++) {
       const key = `${col + dc},${row + dr}`
-      if (occupied.has(key) && !(deskTiles?.has(key))) return false
+      if (occupied.has(key) && !(exemptTiles?.has(key))) return false
     }
   }
 

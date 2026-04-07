@@ -6,7 +6,8 @@ import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
-import { renderWindowEffects } from './windowEffects.js'
+import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
+import type { WindowEffectFrameData } from './windowEffects.js'
 import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
 import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
@@ -53,6 +54,8 @@ import {
   ZONE_LABELS,
   VACUUM_TRAIL_PATCH_SIZE_PX,
   VACUUM_TRAIL_COLOR,
+  EXTERIOR_GLASS_TINT_COLOR,
+  EXTERIOR_GLASS_TINT_OPACITY,
 } from '../../constants.js'
 
 /** Track unknown tool names to log each only once (for future sprite creation) */
@@ -122,6 +125,7 @@ export function renderScene(
   selectedAgentId: number | null,
   hoveredAgentId: number | null,
   vacuumDrawables?: Array<{ sprite: import('../types.js').SpriteData; x: number; y: number; zY: number }>,
+  windowEffects?: { frameData: WindowEffectFrameData; exteriorWindowUids: Set<string> },
 ): void {
   const drawables: ZDrawable[] = []
 
@@ -130,12 +134,45 @@ export function renderScene(
     const cached = getCachedSprite(f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
-    drawables.push({
-      zY: f.zY,
-      draw: (c) => {
-        c.drawImage(cached, fx, fy)
-      },
-    })
+    if (f.clipToRegions && f.clipToRegions.length > 0) {
+      const regions = f.clipToRegions
+      drawables.push({
+        zY: f.zY,
+        draw: (c) => {
+          c.save()
+          c.beginPath()
+          for (const r of regions) {
+            c.rect(r.x, r.y, r.w, r.h)
+          }
+          c.clip()
+          c.drawImage(cached, fx, fy)
+          c.restore()
+        },
+      })
+    } else if (f.clipExclusions && f.clipExclusions.length > 0) {
+      const exclusions = f.clipExclusions
+      drawables.push({
+        zY: f.zY,
+        draw: (c) => {
+          c.save()
+          c.beginPath()
+          c.rect(fx, fy, cached.width, cached.height)
+          for (const ex of exclusions) {
+            c.rect(ex.x, ex.y, ex.w, ex.h)
+          }
+          c.clip('evenodd')
+          c.drawImage(cached, fx, fy)
+          c.restore()
+        },
+      })
+    } else {
+      drawables.push({
+        zY: f.zY,
+        draw: (c) => {
+          c.drawImage(cached, fx, fy)
+        },
+      })
+    }
   }
 
   // Characters
@@ -206,6 +243,23 @@ export function renderScene(
       drawables.push({
         zY: v.zY,
         draw: (c) => c.drawImage(cached, vx, vy),
+      })
+    }
+  }
+
+  // Window glass effects (tint + weather) as z-sorted drawables
+  // so characters walking in front of windows render on top
+  if (windowEffects) {
+    const { frameData, exteriorWindowUids } = windowEffects
+    for (const f of furniture) {
+      if (!f.glassSections?.length) continue
+      if (f.uid && exteriorWindowUids.has(f.uid)) continue
+      const winRef = f
+      drawables.push({
+        zY: f.zY + 0.1, // just above window sprite, below higher-row characters
+        draw: (c) => {
+          renderSingleWindowEffect(c, winRef, offsetX, offsetY, zoom, frameData)
+        },
       })
     }
   }
@@ -852,8 +906,145 @@ export function renderFrame(
   const offsetX = Math.floor((canvasWidth - mapW) / 2) + Math.round(panX)
   const offsetY = Math.floor((canvasHeight - mapH) / 2) + Math.round(panY)
 
+  // Detect exterior walls and identify windows with glass sections on them
+  // (computed early so we can clip tile grid, wall sprites, and bricks)
+  const exteriorWindowUids = new Set<string>()
+  /** Screen-space glass rects for all exterior windows (used to clip walls + bricks + tiles) */
+  const exteriorGlassScreenRects: Array<{ x: number; y: number; w: number; h: number }> = []
+
+  if (exteriorWall && exteriorWall.style !== 'none') {
+    const exteriorTiles = findExteriorWalls(tileMap)
+    const exteriorSet = new Set(exteriorTiles.map(t => `${t.col},${t.row}`))
+    for (const t of exteriorTiles) {
+      if (t.isWall && t.row > 0) exteriorSet.add(`${t.col},${t.row - 1}`)
+    }
+
+    // Find windows with glassSections on exterior walls and compute screen rects
+    for (const f of furniture) {
+      if (!f.uid || !f.glassSections?.length) continue
+      let overlaps = false
+      for (let fr = 0; fr < f.footprintH && !overlaps; fr++) {
+        for (let fc = 0; fc < f.footprintW && !overlaps; fc++) {
+          if (exteriorSet.has(`${f.col + fc},${f.row + fr}`)) overlaps = true
+        }
+      }
+      if (overlaps) {
+        exteriorWindowUids.add(f.uid)
+        const screenRects: Array<{ x: number; y: number; w: number; h: number }> = []
+        for (const sec of f.glassSections) {
+          const rect = {
+            x: offsetX + (f.x + sec.x) * zoom,
+            y: offsetY + (f.y + sec.y) * zoom,
+            w: sec.w * zoom,
+            h: sec.h * zoom,
+          }
+          screenRects.push(rect)
+          exteriorGlassScreenRects.push(rect)
+        }
+        // Clip the window's own sprite during renderScene so its
+        // opaque glass pixels don't cover the interior content behind
+        f.clipExclusions = screenRects
+      }
+    }
+
+    // Tag interior furniture behind exterior walls so it only renders
+    // through glass sections (not above or around the wall)
+    if (exteriorGlassScreenRects.length > 0) {
+      // Build set of exterior wall tile positions (wall row + row above)
+      const wallFaceTiles = new Set<string>()
+      for (const t of exteriorTiles) {
+        if (t.isWall) {
+          wallFaceTiles.add(`${t.col},${t.row}`)
+          if (t.row > 0) wallFaceTiles.add(`${t.col},${t.row - 1}`)
+        }
+      }
+
+      for (const f of furniture) {
+        if (!f.uid || exteriorWindowUids.has(f.uid)) continue
+        if (f.clipExclusions || f.clipToRegions) continue
+        // Check if any of this item's footprint tiles overlap the wall face area
+        let behindWall = false
+        for (let fr = 0; fr < f.footprintH && !behindWall; fr++) {
+          for (let fc = 0; fc < f.footprintW && !behindWall; fc++) {
+            if (wallFaceTiles.has(`${f.col + fc},${f.row + fr}`)) behindWall = true
+          }
+        }
+        if (behindWall) {
+          // Only render this item within glass section rects
+          f.clipToRegions = exteriorGlassScreenRects
+        }
+      }
+    }
+  }
+
   // Draw tiles (floor + wall base color)
   renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols)
+
+  // Draw interior floor behind exterior window glass sections.
+  // Wall tiles have no floor underneath, so we sample the nearest interior
+  // floor tile (row above the wall) and paint it into each glass section area.
+  if (exteriorGlassScreenRects.length > 0) {
+    const s = TILE_SIZE * zoom
+    const tmRows = tileMap.length
+    const tmCols = tmRows > 0 ? tileMap[0].length : 0
+    const useSpriteFloors = hasFloorSprites()
+
+    for (const f of furniture) {
+      if (!f.uid || !exteriorWindowUids.has(f.uid) || !f.glassSections?.length) continue
+      for (const sec of f.glassSections) {
+        const sx = offsetX + (f.x + sec.x) * zoom
+        const sy = offsetY + (f.y + sec.y) * zoom
+        const sw = sec.w * zoom
+        const sh = sec.h * zoom
+
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(sx, sy, sw, sh)
+        ctx.clip()
+
+        // Find the nearest interior floor tile above the window's footprint
+        // and tile-fill the glass area with it
+        let floorDrawn = false
+        for (let searchRow = f.row - 1; searchRow >= 0 && !floorDrawn; searchRow--) {
+          for (let fc = 0; fc < f.footprintW && !floorDrawn; fc++) {
+            const c = f.col + fc
+            if (c < 0 || c >= tmCols || searchRow < 0 || searchRow >= tmRows) continue
+            const tile = tileMap[searchRow][c]
+            if (tile !== TileType.VOID && tile !== TileType.WALL) {
+              // Found an interior floor tile — tile-fill the glass area
+              if (useSpriteFloors) {
+                const colorIdx = searchRow * (layoutCols ?? tmCols) + c
+                const color = tileColors?.[colorIdx] ?? { h: 0, s: 0, b: 0, c: 0 }
+                const floorSprite = getColorizedFloorSprite(tile, color)
+                const cached = getCachedSprite(floorSprite, zoom)
+                // Tile-fill: draw floor sprites aligned to the grid covering the glass area
+                const startCol = Math.floor((sx - offsetX) / s)
+                const endCol = Math.ceil((sx + sw - offsetX) / s)
+                const startRow = Math.floor((sy - offsetY) / s)
+                const endRow = Math.ceil((sy + sh - offsetY) / s)
+                for (let tr = startRow; tr <= endRow; tr++) {
+                  for (let tc = startCol; tc <= endCol; tc++) {
+                    ctx.drawImage(cached, offsetX + tc * s, offsetY + tr * s)
+                  }
+                }
+              } else {
+                ctx.fillStyle = FALLBACK_FLOOR_COLOR
+                ctx.fillRect(sx, sy, sw, sh)
+              }
+              floorDrawn = true
+            }
+          }
+        }
+        // Fallback: dark interior if no floor found
+        if (!floorDrawn) {
+          ctx.fillStyle = '#1a1a2e'
+          ctx.fillRect(sx, sy, sw, sh)
+        }
+
+        ctx.restore()
+      }
+    }
+  }
 
   // Vacuum cleaning trail (small patches centered on vacuum's actual path)
   if (vacuumTrails && vacuumTrails.length > 0) {
@@ -879,18 +1070,60 @@ export function renderFrame(
   const wallInstances = hasWallSprites()
     ? getWallInstances(tileMap, tileColors, layoutCols)
     : []
+
+  // Tag wall instances that overlap with exterior window glass sections
+  // so renderScene clips holes in the wall sprites (revealing interior behind)
+  if (exteriorGlassScreenRects.length > 0) {
+    for (const w of wallInstances) {
+      const wx = offsetX + w.x * zoom
+      const wy = offsetY + w.y * zoom
+      const ww = w.footprintW * TILE_SIZE * zoom
+      const wSprite = w.sprite
+      const wh = wSprite.length * zoom
+      // Check which glass rects overlap this wall sprite
+      const overlapping: Array<{ x: number; y: number; w: number; h: number }> = []
+      for (const r of exteriorGlassScreenRects) {
+        if (r.x < wx + ww && r.x + r.w > wx && r.y < wy + wh && r.y + r.h > wy) {
+          overlapping.push(r)
+        }
+      }
+      if (overlapping.length > 0) {
+        w.clipExclusions = overlapping
+      }
+    }
+  }
+
   const allFurniture = wallInstances.length > 0
     ? [...wallInstances, ...furniture]
     : furniture
 
-  // Draw walls + furniture + characters (z-sorted)
+  // Compute window effect data for z-sorted rendering inside renderScene
+  const windowEffectsData = sunBeamColor
+    ? { frameData: computeWindowEffectFrameData(sunIntensity ?? 0, sunBeamColor), exteriorWindowUids }
+    : undefined
+
+  // Draw walls + furniture + characters + window effects (z-sorted)
+  // Wall sprites with clipExclusions will have glass section holes
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
-  renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables)
+  renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables, windowEffectsData)
 
   // Exterior wall faces — after scene so bricks render on top of wall sprites
   if (exteriorWall && exteriorWall.style !== 'none') {
+    // Clip brick rendering to exclude glass sections of exterior windows
+    if (exteriorGlassScreenRects.length > 0) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, canvasWidth, canvasHeight)
+      for (const r of exteriorGlassScreenRects) {
+        ctx.rect(r.x, r.y, r.w, r.h)
+      }
+      ctx.clip('evenodd')
+    }
     renderExteriorWalls(ctx, tileMap, offsetX, offsetY, zoom, exteriorWall.style, exteriorWall.color, exteriorWall.height)
+    if (exteriorGlassScreenRects.length > 0) {
+      ctx.restore()
+    }
 
     // Re-draw placed furniture (not wall sprites) on exterior walls
     // so windows, paintings etc. appear on top of bricks
@@ -910,15 +1143,34 @@ export function renderFrame(
       if (overlaps) {
         const sprite = f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
         const cached = getCachedSprite(sprite, zoom)
-        ctx.drawImage(cached, offsetX + f.x * zoom, offsetY + f.y * zoom)
+        if (exteriorWindowUids.has(f.uid) && f.glassSections?.length) {
+          // Exterior window: draw frame only (clip out glass sections)
+          ctx.save()
+          ctx.beginPath()
+          ctx.rect(0, 0, canvasWidth, canvasHeight)
+          for (const sec of f.glassSections) {
+            const sx = offsetX + (f.x + sec.x) * zoom
+            const sy = offsetY + (f.y + sec.y) * zoom
+            ctx.rect(sx, sy, sec.w * zoom, sec.h * zoom)
+          }
+          ctx.clip('evenodd')
+          ctx.drawImage(cached, offsetX + f.x * zoom, offsetY + f.y * zoom)
+          ctx.restore()
+
+          // Draw semi-transparent glass tint over the glass sections
+          const [tR, tG, tB] = EXTERIOR_GLASS_TINT_COLOR
+          ctx.fillStyle = `rgba(${tR}, ${tG}, ${tB}, ${EXTERIOR_GLASS_TINT_OPACITY})`
+          for (const sec of f.glassSections) {
+            const sx = offsetX + (f.x + sec.x) * zoom
+            const sy = offsetY + (f.y + sec.y) * zoom
+            ctx.fillRect(sx, sy, sec.w * zoom, sec.h * zoom)
+          }
+        } else {
+          // Normal furniture re-draw on exterior wall
+          ctx.drawImage(cached, offsetX + f.x * zoom, offsetY + f.y * zoom)
+        }
       }
     }
-  }
-
-  // Window glass effects (tint + weather) — after scene and exterior bricks
-  // so effects are visible on top of wall sprites and brick textures
-  if (sunBeamColor) {
-    renderWindowEffects(ctx, allFurniture, offsetX, offsetY, zoom, sunIntensity ?? 0, sunBeamColor)
   }
 
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)

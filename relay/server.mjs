@@ -467,7 +467,8 @@ function hashCode(str) {
 function connectRelay() {
   if (!VIEWER_TOKEN) { showTokenPrompt(); return; }
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = protocol + '//' + location.host + '/ws?role=viewer&token=' + encodeURIComponent(VIEWER_TOKEN);
+  var basePath = location.pathname.replace(/\\/?(index\\.html)?$/, '');
+  var wsUrl = protocol + '//' + location.host + basePath + '/ws?role=viewer&token=' + encodeURIComponent(VIEWER_TOKEN);
   devLog('CONN   Connecting to relay...');
 
   try {

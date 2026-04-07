@@ -235,10 +235,10 @@ export function renderSunBeams(
         }
       }
     }
-    console.log(`[Sunlight] beams=${beams.length}, tileMap=${hasTileMap}, walls=${wallCount}, floor=${floorCount}, maskedAboveWall=${maskedCount}, clipTiles=${clipCount}, zoom=${zoom}, offset=(${offsetX},${offsetY})`)
-    for (const beam of beams) {
-      console.log(`[Sunlight]   beam: top=(${beam.topLeftX.toFixed(1)},${beam.topY.toFixed(1)})-(${beam.topRightX.toFixed(1)},${beam.topY.toFixed(1)}), bottom=(${beam.bottomLeftX.toFixed(1)},${beam.bottomY.toFixed(1)})-(${beam.bottomRightX.toFixed(1)},${beam.bottomY.toFixed(1)}), opacity=${beam.opacity.toFixed(3)}`)
-    }
+    //console.log(`[Sunlight] beams=${beams.length}, tileMap=${hasTileMap}, walls=${wallCount}, floor=${floorCount}, maskedAboveWall=${maskedCount}, clipTiles=${clipCount}, zoom=${zoom}, offset=(${offsetX},${offsetY})`)
+    //for (const beam of beams) {
+    //  console.log(`[Sunlight]   beam: top=(${beam.topLeftX.toFixed(1)},${beam.topY.toFixed(1)})-(${beam.topRightX.toFixed(1)},${beam.topY.toFixed(1)}), bottom=(${beam.bottomLeftX.toFixed(1)},${beam.bottomY.toFixed(1)})-(${beam.bottomRightX.toFixed(1)},${beam.bottomY.toFixed(1)}), opacity=${beam.opacity.toFixed(3)}`)
+    //}
   }
 
   const [r, g, b] = beamColor ?? SUN_BEAM_COLOR_MIDDAY

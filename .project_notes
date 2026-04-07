@@ -1,5 +1,6 @@
  - Remember and restore avatar palette/hueShift on respawn - some fchanges were made, but it doesn't work.
  - The exterior settings doesn't reflect the chosen look when loading the scene
+ - When walls are placed on an exterior wall, the weather effect shouldn't be used for that window, and instead a hole should be added through the wall, with the window placed on top - with semi transparent glass - so that we can look in through the window. The "glassSections" attribute should be used to determine the semi transparent section
 
 
  - Add toilet stuff, and toilet zone (if needed) - toilet could also just be a single seat.

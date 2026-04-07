@@ -244,7 +244,7 @@ export function updateWeather(dt: number): void {
 }
 
 /** Rain intensity info: how many particles to draw and streak length multiplier */
-interface RainLevel {
+export interface RainLevel {
   /** Fraction of rain particles to draw (0-1) */
   particleFraction: number
   /** Streak length multiplier */
@@ -342,125 +342,137 @@ function getGlassTint(
 
 // ── Render ─────────────────────────────────────────────────
 
+/** Pre-computed window effect data for a single frame (shared across all windows). */
+export interface WindowEffectFrameData {
+  tintR: number
+  tintG: number
+  tintB: number
+  tintAlpha: number
+  rainLevel: RainLevel | null
+  rainAlpha: number
+  snow: number
+  blizzard: number
+}
+
 /**
- * Render glass tint overlays and weather particles on all windows.
- * Call after renderScene() — windows are on walls so z-order with characters is not an issue.
+ * Compute shared per-frame window effect data (tint color + weather intensities).
+ * Call once per frame, then pass to renderSingleWindowEffect for each window.
  */
-export function renderWindowEffects(
-  ctx: CanvasRenderingContext2D,
-  furniture: FurnitureInstance[],
-  offsetX: number,
-  offsetY: number,
-  zoom: number,
+export function computeWindowEffectFrameData(
   sunIntensity: number,
   sunColor: [number, number, number],
-): void {
-  const windows = furniture.filter(f => f.glassSections && f.glassSections.length > 0)
-  if (windows.length === 0) return
-
+): WindowEffectFrameData {
   const { rainLevel, rainAlpha, snow, blizzard } = getWeatherIntensities()
   const weatherAmount = Math.max(rainAlpha, snow, blizzard)
   const [tintR, tintG, tintB, tintAlpha] = getGlassTint(sunIntensity, sunColor, weatherAmount)
+  return { tintR, tintG, tintB, tintAlpha, rainLevel, rainAlpha, snow, blizzard }
+}
 
-  ctx.save()
+/**
+ * Render glass tint + weather particles for a single window.
+ * Designed to be called from a z-sorted drawable so characters render on top.
+ */
+export function renderSingleWindowEffect(
+  ctx: CanvasRenderingContext2D,
+  win: FurnitureInstance,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  fd: WindowEffectFrameData,
+): void {
+  const sections = win.glassSections
+  if (!sections || sections.length === 0) return
 
+  const winScreenX = offsetX + win.x * zoom
+  const winScreenY = offsetY + win.y * zoom
+  const winW = win.footprintW * TILE_SIZE * zoom
+  const winH = win.footprintH * TILE_SIZE * zoom
   // Fixed reference size for particle space (2×2 tiles) so density is
   // consistent across all window sizes — smaller windows clip into the center
   const refW = 2 * TILE_SIZE * zoom
   const refH = 2 * TILE_SIZE * zoom
+  const particleBaseX = winScreenX + (winW - refW) / 2
+  const particleBaseY = winScreenY + (winH - refH) / 2
 
-  for (const win of windows) {
-    const sections = win.glassSections!
-    const winScreenX = offsetX + win.x * zoom
-    const winScreenY = offsetY + win.y * zoom
-    const winW = win.footprintW * TILE_SIZE * zoom
-    const winH = win.footprintH * TILE_SIZE * zoom
-    // Center the fixed-size particle field on the window
-    const particleBaseX = winScreenX + (winW - refW) / 2
-    const particleBaseY = winScreenY + (winH - refH) / 2
+  for (const sec of sections) {
+    const sx = winScreenX + sec.x * zoom
+    const sy = winScreenY + sec.y * zoom
+    const sw = sec.w * zoom
+    const sh = sec.h * zoom
 
-    for (const sec of sections) {
-      const sx = winScreenX + sec.x * zoom
-      const sy = winScreenY + sec.y * zoom
-      const sw = sec.w * zoom
-      const sh = sec.h * zoom
+    // Glass tint overlay
+    ctx.fillStyle = `rgba(${fd.tintR}, ${fd.tintG}, ${fd.tintB}, ${fd.tintAlpha})`
+    ctx.fillRect(sx, sy, sw, sh)
 
-      // Glass tint overlay
-      ctx.fillStyle = `rgba(${tintR}, ${tintG}, ${tintB}, ${tintAlpha})`
+    // Weather particles — clip to this glass section, render in window-space coords
+    const hasWeather = (fd.rainLevel && fd.rainAlpha > 0) || fd.snow > 0 || fd.blizzard > 0
+    if (hasWeather) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(sx, sy, sw, sh)
+      ctx.clip()
+
+      // Subtle dark overlay behind weather (cloud cover effect)
+      const wi = Math.max(fd.rainAlpha, fd.snow, fd.blizzard)
+      ctx.fillStyle = `rgba(0, 0, 0, ${GLASS_WEATHER_DARKEN_OPACITY * wi})`
       ctx.fillRect(sx, sy, sw, sh)
 
-      // Weather particles — clip to this glass section, render in window-space coords
-      const hasWeather = (rainLevel && rainAlpha > 0) || snow > 0 || blizzard > 0
-      if (hasWeather) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(sx, sy, sw, sh)
-        ctx.clip()
-
-        // Subtle dark overlay behind weather (cloud cover effect)
-        const wi = Math.max(rainAlpha, snow, blizzard)
-        ctx.fillStyle = `rgba(0, 0, 0, ${GLASS_WEATHER_DARKEN_OPACITY * wi})`
-        ctx.fillRect(sx, sy, sw, sh)
-
-        // Rain — particles in fixed ref space, clipped to glass section
-        if (rainLevel && rainAlpha > 0) {
-          ctx.globalAlpha = rainAlpha
-          ctx.strokeStyle = WEATHER_RAIN_COLOR
-          ctx.lineWidth = Math.max(1, zoom * 0.5)
-          const count = Math.floor(rainParticles.length * rainLevel.particleFraction)
-          for (let i = 0; i < count; i++) {
-            const p = rainParticles[i]
-            const px = particleBaseX + p.x * refW
-            const py = particleBaseY + p.y * refH
-            const len = WEATHER_RAIN_LENGTH_PX * zoom * p.size * rainLevel.streakScale
-            ctx.beginPath()
-            ctx.moveTo(px, py)
-            ctx.lineTo(px - 0.3 * zoom, py + len)
-            ctx.stroke()
-          }
+      // Rain — particles in fixed ref space, clipped to glass section
+      if (fd.rainLevel && fd.rainAlpha > 0) {
+        ctx.globalAlpha = fd.rainAlpha
+        ctx.strokeStyle = WEATHER_RAIN_COLOR
+        ctx.lineWidth = Math.max(1, zoom * 0.5)
+        const count = Math.floor(rainParticles.length * fd.rainLevel.particleFraction)
+        for (let i = 0; i < count; i++) {
+          const p = rainParticles[i]
+          const px = particleBaseX + p.x * refW
+          const py = particleBaseY + p.y * refH
+          const len = WEATHER_RAIN_LENGTH_PX * zoom * p.size * fd.rainLevel.streakScale
+          ctx.beginPath()
+          ctx.moveTo(px, py)
+          ctx.lineTo(px - 0.3 * zoom, py + len)
+          ctx.stroke()
         }
-
-        // Snow — particles in fixed ref space, clipped to glass section
-        if (snow > 0) {
-          ctx.globalAlpha = snow
-          ctx.fillStyle = WEATHER_SNOW_COLOR
-          for (const p of snowParticles) {
-            const drift = Math.sin(p.driftPhase) * WEATHER_SNOW_DRIFT_AMPLITUDE_PX * zoom
-            const px = particleBaseX + ((p.x * refW + drift) % refW + refW) % refW
-            const py = particleBaseY + p.y * refH
-            const r = WEATHER_SNOW_SIZE_PX * zoom * p.size * 0.5
-            ctx.beginPath()
-            ctx.arc(px, py, Math.max(0.5, r), 0, Math.PI * 2)
-            ctx.fill()
-          }
-        }
-
-        // Blizzard — dense snow with strong horizontal wind
-        if (blizzard > 0) {
-          ctx.globalAlpha = blizzard
-          ctx.fillStyle = WEATHER_SNOW_COLOR
-          for (const p of blizzardParticles) {
-            const wobble = Math.sin(p.driftPhase) * 1.5 * zoom
-            const px = particleBaseX + p.x * refW
-            const py = particleBaseY + p.y * refH + wobble
-            const r = WEATHER_SNOW_SIZE_PX * zoom * p.size * 0.5
-            ctx.beginPath()
-            ctx.arc(px, py, Math.max(0.5, r), 0, Math.PI * 2)
-            ctx.fill()
-            // Wind streak trail
-            ctx.strokeStyle = WEATHER_SNOW_COLOR
-            ctx.lineWidth = Math.max(0.5, zoom * 0.3)
-            ctx.beginPath()
-            ctx.moveTo(px, py)
-            ctx.lineTo(px - 2 * zoom * p.size, py + 0.5 * zoom * p.size)
-            ctx.stroke()
-          }
-        }
-
-        ctx.restore()
       }
+
+      // Snow — particles in fixed ref space, clipped to glass section
+      if (fd.snow > 0) {
+        ctx.globalAlpha = fd.snow
+        ctx.fillStyle = WEATHER_SNOW_COLOR
+        for (const p of snowParticles) {
+          const drift = Math.sin(p.driftPhase) * WEATHER_SNOW_DRIFT_AMPLITUDE_PX * zoom
+          const px = particleBaseX + ((p.x * refW + drift) % refW + refW) % refW
+          const py = particleBaseY + p.y * refH
+          const r = WEATHER_SNOW_SIZE_PX * zoom * p.size * 0.5
+          ctx.beginPath()
+          ctx.arc(px, py, Math.max(0.5, r), 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+
+      // Blizzard — dense snow with strong horizontal wind
+      if (fd.blizzard > 0) {
+        ctx.globalAlpha = fd.blizzard
+        ctx.fillStyle = WEATHER_SNOW_COLOR
+        for (const p of blizzardParticles) {
+          const wobble = Math.sin(p.driftPhase) * 1.5 * zoom
+          const px = particleBaseX + p.x * refW
+          const py = particleBaseY + p.y * refH + wobble
+          const r = WEATHER_SNOW_SIZE_PX * zoom * p.size * 0.5
+          ctx.beginPath()
+          ctx.arc(px, py, Math.max(0.5, r), 0, Math.PI * 2)
+          ctx.fill()
+          // Wind streak trail
+          ctx.strokeStyle = WEATHER_SNOW_COLOR
+          ctx.lineWidth = Math.max(0.5, zoom * 0.3)
+          ctx.beginPath()
+          ctx.moveTo(px, py)
+          ctx.lineTo(px - 2 * zoom * p.size, py + 0.5 * zoom * p.size)
+          ctx.stroke()
+        }
+      }
+
+      ctx.restore()
     }
   }
-
-  ctx.restore()
 }

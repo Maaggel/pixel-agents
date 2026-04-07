@@ -405,6 +405,43 @@ function scanForNewJsonlFiles(
 		}
 	}
 
+	// ── Runtime stale reassignment: switch definition agents to fresher JSONL ──
+	// If a definition agent is bound to a stale JSONL but a fresher active file
+	// exists (e.g. a new Claude Code conversation started), reassign to the
+	// active file. This complements the startup-only reassignment in autoAdopt.
+	for (const [agentId, agent] of agents) {
+		if (!agent.agentDefinitionId || !agent.jsonlFile || agent.terminalRef) continue;
+		if (agent.projectDir !== projectDir) continue;
+		if (!isStaleSession(agent.jsonlFile)) continue;
+
+		// Find a fresher active JSONL not tracked by another agent
+		const trackedFiles = new Set<string>();
+		for (const a of agents.values()) {
+			if (a.jsonlFile) trackedFiles.add(a.jsonlFile);
+		}
+		let bestFile: string | null = null;
+		let bestMtime = 0;
+		for (const f of files) {
+			if (trackedFiles.has(f)) continue;
+			try {
+				const stat = fs.statSync(f);
+				if (Date.now() - stat.mtimeMs > ACTIVE_FILE_MAX_AGE_MS) continue;
+				if (stat.mtimeMs > bestMtime && !isSessionEnded(f)) {
+					bestMtime = stat.mtimeMs;
+					bestFile = f;
+				}
+			} catch { /* skip */ }
+		}
+		if (bestFile) {
+			console.log(`[Pixel Agents] Agent ${agentId}: runtime reassign from stale ${path.basename(agent.jsonlFile)} to active ${path.basename(bestFile)}`);
+			reassignAgentToFile(
+				agentId, bestFile,
+				agents, fileWatchers, pollingTimers, permissionTimers,
+				webview, persistAgents,
+			);
+		}
+	}
+
 	// ── Re-adopt: bind unbound definition agents to resumed sessions ──
 	// If a definition agent in this project has no jsonlFile (e.g. all sessions were
 	// ended at startup and one was later resumed by the Claude Code extension),

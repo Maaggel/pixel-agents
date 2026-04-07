@@ -151,6 +151,10 @@ export interface FurnitureInstance {
   idleCycleIdx?: number
   /** Sprite to render when no work/interaction/meeting cycle is active. Set/cleared by game loop. */
   activeIdleSprite?: SpriteData | null
+  /** Screen-space rectangles to exclude from drawing (used for exterior window glass cutouts in wall sprites) */
+  clipExclusions?: Array<{ x: number; y: number; w: number; h: number }>
+  /** Screen-space rectangles to restrict drawing to (used for interior items behind exterior walls) */
+  clipToRegions?: Array<{ x: number; y: number; w: number; h: number }>
 }
 
 export interface ToolActivity {

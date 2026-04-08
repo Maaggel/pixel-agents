@@ -804,6 +804,24 @@ export function useExtensionMessages(
             }
           }
         }
+      } else if (msg.type === 'screenshotRequest') {
+        const requestId = msg.requestId as string
+        const canvas = document.querySelector('canvas') as HTMLCanvasElement | null
+        if (canvas) {
+          const thumbWidth = 320
+          const scale = thumbWidth / canvas.width
+          const thumbHeight = Math.round(canvas.height * scale)
+          const thumbCanvas = document.createElement('canvas')
+          thumbCanvas.width = thumbWidth
+          thumbCanvas.height = thumbHeight
+          const thumbCtx = thumbCanvas.getContext('2d')!
+          thumbCtx.imageSmoothingEnabled = false
+          thumbCtx.drawImage(canvas, 0, 0, thumbWidth, thumbHeight)
+          const dataUrl = thumbCanvas.toDataURL('image/png')
+          vscode.postMessage({ type: 'screenshotResponse', requestId, dataUrl })
+        } else {
+          vscode.postMessage({ type: 'screenshotResponse', requestId, dataUrl: null })
+        }
       }
     }
     window.addEventListener('message', handler)

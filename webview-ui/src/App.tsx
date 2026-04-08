@@ -456,6 +456,7 @@ function App() {
           onToggleDebugMode={handleToggleDebugMode}
           showNametags={showNametags}
           onToggleNametags={handleToggleNametags}
+          showBackups={!!(window as unknown as Record<string, unknown>).__PIXEL_AGENTS_RELAY__}
         />
       )}
 

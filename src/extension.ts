@@ -11,7 +11,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	backend = new PixelAgentsBackend(context);
 	backend.init();
 
-	const outputChannel = vscode.window.createOutputChannel('Pixel Agents');
+	const outputChannel = vscode.window.createOutputChannel('Pixel Agents — Standalone');
 	context.subscriptions.push(outputChannel);
 
 	// Auto-start the standalone server

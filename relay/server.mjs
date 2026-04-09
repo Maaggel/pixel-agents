@@ -1097,7 +1097,15 @@ const server = createServer((req, res) => {
 })
 
 // ── WebSocket Server ────────────────────────────────────────
+const WS_PING_INTERVAL_MS = 25000 // Keep connections alive through proxies
 const wss = new WebSocketServer({ server, path: '/ws' })
+
+// Ping all clients periodically to keep connections alive through reverse proxies
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.readyState === 1) ws.ping()
+  }
+}, WS_PING_INTERVAL_MS)
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://localhost:${PORT}`)
@@ -1144,14 +1152,18 @@ wss.on('connection', (ws, req) => {
       }
     })
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       publishers.delete(ws)
       if (publisherWindowId) {
         publisherStates.delete(publisherWindowId)
         // Notify viewers that agents from this window are gone
         broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
       }
-      console.log(`[Relay] Publisher disconnected (total: ${publishers.size})`)
+      console.log(`[Relay] Publisher disconnected (code=${code} reason="${reason}") (total: ${publishers.size})`)
+    })
+
+    ws.on('error', (err) => {
+      console.log(`[Relay] Publisher error: ${err.message}`)
     })
 
   } else if (role === 'viewer') {

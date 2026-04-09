@@ -99,6 +99,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       sprite, x, y, zY, uid: item.uid,
       col: item.col, row: item.row,
       footprintW: entry.footprintW, footprintH: entry.footprintH,
+      ...(entry.isSeat ? { isSeat: true } : {}),
       ...(entry.sunlight ? { sunlight: true } : {}),
       ...(entry.sunlightInset !== undefined ? { sunlightInset: entry.sunlightInset } : {}),
       ...(entry.glassSections ? { glassSections: entry.glassSections } : {}),

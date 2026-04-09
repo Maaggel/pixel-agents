@@ -1134,6 +1134,8 @@ export function renderFrame(
     }
     for (const f of furniture) {
       if (!f.uid) continue
+      // Skip chairs — they're z-sorted with characters and shouldn't be re-drawn on top
+      if (f.isSeat) continue
       let overlaps = false
       for (let fr = 0; fr < f.footprintH && !overlaps; fr++) {
         for (let fc = 0; fc < f.footprintW && !overlaps; fc++) {

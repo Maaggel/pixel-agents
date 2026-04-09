@@ -28,6 +28,24 @@ export function resetSunCycle(): void {
 }
 
 /**
+ * Get the sun cycle phase for display purposes.
+ * Returns dayProgress (0–1 through the day, -1 if night) and
+ * a label: 'sunrise', 'morning', 'midday', 'afternoon', 'sunset', 'night'.
+ */
+export function getSunPhase(): { dayProgress: number; phase: 'sunrise' | 'morning' | 'midday' | 'afternoon' | 'sunset' | 'night' } {
+  const dayDuration = SUN_CYCLE_DURATION_SEC * (1 - SUN_NIGHT_FRACTION)
+  if (sunCycleTime >= dayDuration) {
+    return { dayProgress: -1, phase: 'night' }
+  }
+  const t = sunCycleTime / dayDuration
+  if (t < 0.1) return { dayProgress: t, phase: 'sunrise' }
+  if (t < 0.35) return { dayProgress: t, phase: 'morning' }
+  if (t < 0.65) return { dayProgress: t, phase: 'midday' }
+  if (t < 0.9) return { dayProgress: t, phase: 'afternoon' }
+  return { dayProgress: t, phase: 'sunset' }
+}
+
+/**
  * Compute current sun angle, intensity and beam reach from cycle time.
  * `reach` is the beam length in tiles — longer at sunrise/sunset (low sun),
  * shorter at midday (high sun). Uses a cosine curve peaking at midday.

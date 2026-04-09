@@ -8,6 +8,7 @@ export interface ViewOptions {
   showSunlight: boolean
   showVacuumPanel: boolean
   autoFollowOnFocus: boolean
+  showWeatherClock: boolean
 }
 
 interface ViewOptionsPanelProps {
@@ -116,6 +117,10 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
           <label style={labelStyle}>
             <input type="checkbox" checked={options.autoFollowOnFocus} onChange={() => toggle('autoFollowOnFocus')} style={checkboxStyle} />
             Auto follow on focus
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={options.showWeatherClock} onChange={() => toggle('showWeatherClock')} style={checkboxStyle} />
+            Weather & clock
           </label>
         </div>
       )}

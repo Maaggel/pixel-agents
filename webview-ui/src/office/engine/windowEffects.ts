@@ -181,6 +181,11 @@ export function getWeatherMode(): WeatherState | 'random' {
   return isRandomMode ? 'random' : currentWeather
 }
 
+/** Get the actual current weather state (ignoring random mode). */
+export function getCurrentWeather(): WeatherState {
+  return currentWeather
+}
+
 // Start with a random initial duration
 weatherTimer = randomDuration()
 

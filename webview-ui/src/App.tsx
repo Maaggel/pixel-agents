@@ -22,6 +22,7 @@ import { BehaviourLog } from './components/BehaviourLog.js'
 import { setWeather, getWeatherMode } from './office/engine/windowEffects.js'
 import { VacuumControlPanel } from './components/VacuumControlPanel.js'
 import { addBehaviourEntry } from './behaviourLog.js'
+import { WeatherClock } from './components/WeatherClock.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -172,7 +173,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -405,6 +406,8 @@ function App() {
       {viewOptions.showZoom && (
         <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
       )}
+
+      <WeatherClock visible={viewOptions.showWeatherClock} />
 
       {/* Dev Console toggle button */}
       <button

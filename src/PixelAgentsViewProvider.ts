@@ -451,7 +451,7 @@ export class PixelAgentsBackend {
 				seenJsonlFiles.set(agent.jsonlFile, agent);
 			}
 
-			const agentProjectName = agent.folderName || this.getProjectName();
+			const agentProjectName = this.getProjectName();
 			let palette = 0;
 			let hueShift = 0;
 			let seatId: string | null = null;

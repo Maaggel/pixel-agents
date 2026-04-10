@@ -14,9 +14,8 @@ import { computeAgentDisplayState, sendAgentStateUpdate } from './agentDisplaySt
 export function getProjectDirPath(cwd?: string): string | null {
 	const workspacePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 	if (!workspacePath) return null;
-	// Match Claude Code's hashing: only replace : \ / with -
-	// (preserves dots, underscores, spaces, etc. in path names)
-	const dirName = workspacePath.replace(/[:\\\/]/g, '-');
+	// Match Claude Code's hashing: replace : \ / and spaces with -
+	const dirName = workspacePath.replace(/[:\\\/ ]/g, '-');
 	const projectDir = path.join(os.homedir(), '.claude', 'projects', dirName);
 	// Check if the dir exists as-is; if not, try case-insensitive match
 	// (Windows drive letter may be uppercase or lowercase)

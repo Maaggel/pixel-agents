@@ -56,6 +56,7 @@ export class PixelAgentsBackend {
 	private readonly windowId = PixelAgentsBackend.workspaceSyncId();
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
 	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
+	private _lastSyncLog = 0;
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
 
 	// Output channel — always visible in VS Code Output tab
@@ -106,6 +107,10 @@ export class PixelAgentsBackend {
 	 * Called from activate(). No webview needed.
 	 */
 	init(): void {
+		const log = (msg: string) => this.outputChannel.appendLine(msg);
+		log(`[Init] Window ID: ${this.windowId}`);
+		log(`[Init] Workspace folders: ${(vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath).join(', ') || '(none)'}`);
+
 		this.registerTerminalEvents();
 
 		restoreAgents(
@@ -116,6 +121,7 @@ export class PixelAgentsBackend {
 			this.jsonlPollTimers, this.projectScanTimers, this.activeAgentId,
 			this.webviewProxy, this.persistAgents,
 		);
+		log(`[Init] Restored ${this.agents.size} agents, ${this.knownJsonlFiles.size} known JSONL files`);
 
 		this.detectAgents();
 
@@ -124,8 +130,11 @@ export class PixelAgentsBackend {
 		const folders = vscode.workspace.workspaceFolders ?? [];
 		for (const folder of folders) {
 			const projectDir = getProjectDirPath(folder.uri.fsPath);
+			log(`[Init] Folder "${folder.name}" → projectDir: ${projectDir ?? '(null)'}`);
 			if (!projectDir || scannedDirs.has(projectDir)) continue;
 			scannedDirs.add(projectDir);
+			const dirExists = projectDir ? fs.existsSync(projectDir) : false;
+			log(`[Init]   Directory exists: ${dirExists}${dirExists ? `, contents: ${fs.readdirSync(projectDir).filter(f => f.endsWith('.jsonl')).length} JSONL files` : ''}`);
 			ensureProjectScan(
 				projectDir, this.knownJsonlFiles, this.projectScanTimers, this.activeAgentId,
 				this.nextAgentId, this.agents,
@@ -143,6 +152,11 @@ export class PixelAgentsBackend {
 		this.bindActiveAgentsToDefinitions();
 		this.startLayoutWatcher();
 		this.startSyncManager();
+
+		log(`[Init] Complete. Agents: ${this.agents.size}, File watchers: ${this.fileWatchers.size}`);
+		for (const [id, agent] of this.agents) {
+			log(`[Init]   Agent #${id}: terminal=${!!agent.terminalRef} jsonl=${agent.jsonlFile ? 'yes' : 'no'} def=${agent.agentDefinitionId ?? 'none'}`);
+		}
 	}
 
 	// ── Terminal lifecycle ────────────────────────────────────────
@@ -526,6 +540,13 @@ export class PixelAgentsBackend {
 			agents,
 			updatedAt: Date.now(),
 		};
+		// Debug: log agent states periodically
+		if (!this._lastSyncLog || Date.now() - this._lastSyncLog > 10000) {
+			this._lastSyncLog = Date.now();
+			for (const a of agents) {
+				this.outputChannel.appendLine(`[Sync] Agent #${a.localId} "${a.name}" active=${a.isActive} tool=${a.currentTool ?? 'none'} waiting=${a.isWaiting} bubble=${a.bubbleType ?? 'none'}`);
+			}
+		}
 		this.syncManager.writeState(state);
 		this.relayClient?.pushState(state);
 	}

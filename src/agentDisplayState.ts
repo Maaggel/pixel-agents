@@ -32,12 +32,15 @@ export function computeAgentDisplayState(agent: AgentState, now?: number): Agent
 
 	// ── 1. Active tools → working ──
 	if (agent.activeToolIds.size > 0) {
-		const currentTool = [...agent.activeToolNames.values()][0] ?? null;
+		const toolNames = [...agent.activeToolNames.values()];
+		const currentTool = toolNames[0] ?? null;
 		const toolStatus = [...agent.activeToolStatuses.values()][0] ?? null;
+		// If all active tools are Agent/Task delegations, show orchestrating status
+		const allDelegations = toolNames.length > 0 && toolNames.every(n => n === 'Agent' || n === 'Task');
 		return {
 			isActive: true,
-			currentTool,
-			toolStatus,
+			currentTool: allDelegations ? 'Agent' : currentTool,
+			toolStatus: allDelegations ? `Orchestrating (${toolNames.length} specialist${toolNames.length > 1 ? 's' : ''})` : toolStatus,
 			bubbleType: agent.permissionSent ? 'permission' : null,
 			idleHint: null,
 		};

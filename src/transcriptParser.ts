@@ -192,6 +192,20 @@ export function processTranscriptLine(
 							toolId: block.id,
 							status,
 						});
+						// When orchestrator delegates via Agent tool, activate matching specialist
+						if (rawToolName === 'Agent' || rawToolName === 'Task') {
+							const subType = block.input?.subagent_type as string | undefined;
+							if (subType) {
+								agent.activeAgentSubtypes.set(block.id, subType);
+								webview?.postMessage({
+									type: 'specialistActivated',
+									id: agentId,
+									toolId: block.id,
+									definitionId: subType,
+									description: typeof block.input?.description === 'string' ? block.input.description : '',
+								});
+							}
+						}
 					}
 				}
 				if (hasNonExemptTool) {
@@ -225,6 +239,17 @@ export function processTranscriptLine(
 									id: agentId,
 									parentToolId: completedToolId,
 								});
+								// Deactivate matching specialist
+								const subType = agent.activeAgentSubtypes.get(completedToolId);
+								if (subType) {
+									agent.activeAgentSubtypes.delete(completedToolId);
+									webview?.postMessage({
+										type: 'specialistDeactivated',
+										id: agentId,
+										toolId: completedToolId,
+										definitionId: subType,
+									});
+								}
 							}
 							agent.lastToolName = agent.activeToolNames.get(completedToolId) ?? null;
 							agent.lastToolDoneAt = now;

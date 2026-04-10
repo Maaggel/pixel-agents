@@ -44,6 +44,7 @@ export interface AgentState {
 	activeToolNames: Map<string, string>;
 	activeSubagentToolIds: Map<string, Set<string>>; // parentToolId → active sub-tool IDs
 	activeSubagentToolNames: Map<string, Map<string, string>>; // parentToolId → (subToolId → toolName)
+	activeAgentSubtypes: Map<string, string>; // toolId → subagent_type (e.g., "angular-specialist")
 	// ── Timestamp-based state (replaces boolean flags) ──
 	/** When the last JSONL data was received (any record type) */
 	lastDataAt: number;
@@ -90,6 +91,7 @@ export function createAgentState(opts: {
 		activeToolNames: new Map(),
 		activeSubagentToolIds: new Map(),
 		activeSubagentToolNames: new Map(),
+		activeAgentSubtypes: new Map(),
 		lastDataAt: 0,
 		lastToolUseAt: null,
 		turnEndedAt: null,

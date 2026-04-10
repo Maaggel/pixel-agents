@@ -56,7 +56,6 @@ export class PixelAgentsBackend {
 	private readonly windowId = PixelAgentsBackend.workspaceSyncId();
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
 	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
-	private _lastSyncLog = 0;
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
 
 	// Output channel — always visible in VS Code Output tab
@@ -508,6 +507,28 @@ export class PixelAgentsBackend {
 			});
 		}
 
+		// Activate specialist agents based on orchestrator's active delegations
+		// Collect all active subagent_types from agents that have terminals (orchestrators)
+		const activeSpecialists = new Set<string>();
+		const specialistToolStatus = new Map<string, string>();
+		for (const agent of this.agents.values()) {
+			if (!agent.terminalRef) continue;
+			for (const [toolId, subType] of agent.activeAgentSubtypes) {
+				activeSpecialists.add(subType);
+				const status = agent.activeToolStatuses.get(toolId);
+				if (status) specialistToolStatus.set(subType, status);
+			}
+		}
+		// Apply active state to matching specialist agents
+		for (const a of agents) {
+			if (a.definitionId && activeSpecialists.has(a.definitionId) && !a.isActive) {
+				a.isActive = true;
+				a.isWaiting = false;
+				a.currentTool = 'Agent';
+				a.currentToolStatus = specialistToolStatus.get(a.definitionId) ?? 'Working';
+			}
+		}
+
 		// Dedup by display name
 		const nameMap = new Map<string, number>();
 		for (let i = 0; i < agents.length; i++) {
@@ -540,12 +561,9 @@ export class PixelAgentsBackend {
 			agents,
 			updatedAt: Date.now(),
 		};
-		// Debug: log agent states periodically
-		if (!this._lastSyncLog || Date.now() - this._lastSyncLog > 10000) {
-			this._lastSyncLog = Date.now();
-			for (const a of agents) {
-				this.outputChannel.appendLine(`[Sync] Agent #${a.localId} "${a.name}" active=${a.isActive} tool=${a.currentTool ?? 'none'} waiting=${a.isWaiting} bubble=${a.bubbleType ?? 'none'}`);
-			}
+		// Debug: log specialist activations
+		if (activeSpecialists.size > 0) {
+			this.outputChannel.appendLine(`[Sync] Active specialists: ${[...activeSpecialists].join(', ')}`);
 		}
 		this.syncManager.writeState(state);
 		this.relayClient?.pushState(state);

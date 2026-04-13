@@ -81,41 +81,50 @@ export interface ExtensionMessageState {
   devLogs: string[]
 }
 
-const REMEMBERED_LOOKS_KEY = 'pixel-agents-remembered-looks'
+const PROJECT_LOOKS_KEY = 'pixel-agents-project-looks'
+const DEFAULT_PROJECT_KEY = '_default'
+const MAX_LOOKS_PER_PROJECT = 12
 
 interface RememberedLook {
   palette: number
   hueShift: number
 }
 
-function loadRememberedLooks(): RememberedLook[] {
+type ProjectLooks = Record<string, RememberedLook[]>
+
+function loadProjectLooks(): ProjectLooks {
   try {
-    const stored = localStorage.getItem(REMEMBERED_LOOKS_KEY)
-    if (stored) return JSON.parse(stored) as RememberedLook[]
+    const stored = localStorage.getItem(PROJECT_LOOKS_KEY)
+    if (stored) return JSON.parse(stored) as ProjectLooks
   } catch { /* ignore */ }
-  return []
+  return {}
 }
 
-function saveRememberedLooks(looks: RememberedLook[]): void {
-  try { localStorage.setItem(REMEMBERED_LOOKS_KEY, JSON.stringify(looks)) } catch { /* ignore */ }
+function saveProjectLooks(all: ProjectLooks): void {
+  try { localStorage.setItem(PROJECT_LOOKS_KEY, JSON.stringify(all)) } catch { /* ignore */ }
+}
+
+function projectKey(projectName?: string): string {
+  return projectName && projectName.trim().length > 0 ? projectName : DEFAULT_PROJECT_KEY
 }
 
 /**
- * Get a remembered look that isn't currently in use by any active non-sub-agent character.
- * Returns the look or null if all remembered looks are already in use.
+ * Get a remembered look for this project that isn't currently in use by any
+ * active non-sub-agent character in the office. Returns null if all remembered
+ * project looks are in use (caller should fall back to diverse pick).
  */
-function getAvailableRememberedLook(os: OfficeState): RememberedLook | null {
-  const remembered = loadRememberedLooks()
+function getAvailableRememberedLook(os: OfficeState, projectName?: string): RememberedLook | null {
+  const all = loadProjectLooks()
+  const key = projectKey(projectName)
+  const remembered = all[key] || []
   if (remembered.length === 0) return null
 
-  // Collect currently active looks
   const activeLooks = new Set<string>()
   for (const ch of os.characters.values()) {
     if (ch.isSubagent) continue
     activeLooks.add(`${ch.palette}:${ch.hueShift}`)
   }
 
-  // Find a remembered look not currently in use
   for (const look of remembered) {
     if (!activeLooks.has(`${look.palette}:${look.hueShift}`)) {
       return look
@@ -124,31 +133,51 @@ function getAvailableRememberedLook(os: OfficeState): RememberedLook | null {
   return null
 }
 
+/** Record a look as remembered for the given project (dedupes, caps list). */
+function rememberLookForProject(projectName: string | undefined, palette: number, hueShift: number): void {
+  const all = loadProjectLooks()
+  const key = projectKey(projectName)
+  const list = all[key] || []
+  const lookKey = `${palette}:${hueShift}`
+  // Move to front if exists (recency), else prepend
+  const filtered = list.filter(l => `${l.palette}:${l.hueShift}` !== lookKey)
+  const updated = [{ palette, hueShift }, ...filtered].slice(0, MAX_LOOKS_PER_PROJECT)
+  all[key] = updated
+  saveProjectLooks(all)
+}
+
 function saveAgentSeats(os: OfficeState): void {
   const seats: Record<number, { palette: number; hueShift: number; seatId: string | null }> = {}
-  // Also remember all unique looks for future respawns
-  const seenLooks = new Set<string>()
-  const looks: RememberedLook[] = []
+  // Group current looks by project so we can persist them per-project
+  const looksByProject = new Map<string, Set<string>>()
   for (const ch of os.characters.values()) {
     if (ch.isSubagent) continue
     seats[ch.id] = { palette: ch.palette, hueShift: ch.hueShift, seatId: ch.seatId }
-    const key = `${ch.palette}:${ch.hueShift}`
-    if (!seenLooks.has(key)) {
-      seenLooks.add(key)
-      looks.push({ palette: ch.palette, hueShift: ch.hueShift })
-    }
+    const pk = projectKey(ch.projectName)
+    let set = looksByProject.get(pk)
+    if (!set) { set = new Set(); looksByProject.set(pk, set) }
+    set.add(`${ch.palette}:${ch.hueShift}`)
   }
-  // Merge with existing remembered looks (keep old ones too, up to a limit)
-  const existing = loadRememberedLooks()
-  for (const look of existing) {
-    const key = `${look.palette}:${look.hueShift}`
-    if (!seenLooks.has(key)) {
-      seenLooks.add(key)
-      looks.push(look)
+
+  // Merge current looks into stored per-project memory (most-recent-first)
+  const all = loadProjectLooks()
+  for (const [pk, lookSet] of looksByProject) {
+    const existing = all[pk] || []
+    const newLooks: RememberedLook[] = []
+    // First, add currently-active looks (they're the most recent signal)
+    for (const key of lookSet) {
+      const [pStr, hStr] = key.split(':')
+      newLooks.push({ palette: Number(pStr), hueShift: Number(hStr) })
     }
+    // Then, keep any previously remembered looks not already present (up to cap)
+    for (const look of existing) {
+      const k = `${look.palette}:${look.hueShift}`
+      if (!lookSet.has(k)) newLooks.push(look)
+    }
+    all[pk] = newLooks.slice(0, MAX_LOOKS_PER_PROJECT)
   }
-  // Cap at 12 remembered looks
-  saveRememberedLooks(looks.slice(0, 12))
+  saveProjectLooks(all)
+
   vscode.postMessage({ type: 'saveAgentSeats', seats })
 }
 
@@ -235,10 +264,21 @@ export function useExtensionMessages(
         }
         // Add buffered agents now that layout (and seats) are correct
         for (const p of pendingAgents) {
-          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, false, p.projectName)
+          // If no saved palette, try a remembered look for this project
+          let palette = p.palette
+          let hueShift = p.hueShift
+          if (palette === undefined) {
+            const remembered = getAvailableRememberedLook(os, p.projectName)
+            if (remembered) { palette = remembered.palette; hueShift = remembered.hueShift }
+          }
+          os.addAgent(p.id, palette, hueShift, p.seatId, true, p.folderName, false, p.projectName)
           if (p.workspaceFolder) {
             const ch = os.characters.get(p.id)
             if (ch) ch.projectColor = projectColorFromFolder(p.workspaceFolder)
+          }
+          const ch = os.characters.get(p.id)
+          if (ch && !ch.isSubagent) {
+            rememberLookForProject(p.projectName, ch.palette, ch.hueShift)
           }
         }
         pendingAgents = []
@@ -259,9 +299,14 @@ export function useExtensionMessages(
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         setSelectedAgent(id)
         if (!os.characters.has(id)) {
-          // Try to reuse a remembered look that isn't currently active
-          const remembered = getAvailableRememberedLook(os)
+          // Try to reuse a remembered look for this project that isn't currently active
+          const remembered = getAvailableRememberedLook(os, projectName)
           os.addAgent(id, remembered?.palette, remembered?.hueShift, undefined, undefined, folderName, false, projectName)
+          // Remember the chosen look for this project (whether reused or freshly picked)
+          const ch = os.characters.get(id)
+          if (ch && !ch.isSubagent) {
+            rememberLookForProject(projectName, ch.palette, ch.hueShift)
+          }
         }
         saveAgentSeats(os)
       } else if (msg.type === 'agentClosed') {
@@ -312,12 +357,24 @@ export function useExtensionMessages(
           for (const id of incoming) {
             const m = meta[id]
             if (os.characters.has(id)) continue // already exists, skip re-add
-            os.addAgent(id, m?.palette, m?.hueShift, m?.seatId, false, folderNames[id], false, pName)
+            // If no saved palette, try a remembered look for this project
+            let palette = m?.palette
+            let hueShift = m?.hueShift
+            if (palette === undefined) {
+              const remembered = getAvailableRememberedLook(os, pName)
+              if (remembered) { palette = remembered.palette; hueShift = remembered.hueShift }
+            }
+            os.addAgent(id, palette, hueShift, m?.seatId, false, folderNames[id], false, pName)
             // Set project color dot from workspace folder path
             const wsFolder = wsFolders[id]
             if (wsFolder) {
               const ch = os.characters.get(id)
               if (ch) ch.projectColor = projectColorFromFolder(wsFolder)
+            }
+            // Remember this agent's look for the project
+            const ch = os.characters.get(id)
+            if (ch && !ch.isSubagent) {
+              rememberLookForProject(pName, ch.palette, ch.hueShift)
             }
           }
         } else {

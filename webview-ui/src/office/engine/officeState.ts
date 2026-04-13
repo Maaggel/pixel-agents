@@ -871,6 +871,7 @@ export class OfficeState {
       const ch = createCharacter(id, palette, null, null, hueShift)
       ch.isRemote = true
       if (folderName) { ch.nametag = folderName; ch.folderName = folderName }
+      if (projectName) ch.projectName = projectName
       // Claim the source window's seat so local agents don't sit there
       let assignedSeatId: string | null = null
       if (preferredSeatId && this.seats.has(preferredSeatId)) {
@@ -942,6 +943,7 @@ export class OfficeState {
       ch.tileRow = spawn.row
     }
 
+    if (projectName) ch.projectName = projectName
     if (folderName) {
       ch.nametag = folderName
     } else {

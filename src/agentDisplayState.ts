@@ -27,7 +27,7 @@ export interface AgentDisplayState {
  * 5. User prompted long ago     → idle (went silent)
  * 6. No activity ever           → idle
  */
-export function computeAgentDisplayState(agent: AgentState, now?: number): AgentDisplayState {
+export function computeAgentDisplayState(agent: AgentState, now?: number, totalAgents?: number): AgentDisplayState {
 	const t = now ?? Date.now();
 
 	// ── 1. Active tools → working ──
@@ -35,8 +35,11 @@ export function computeAgentDisplayState(agent: AgentState, now?: number): Agent
 		const toolNames = [...agent.activeToolNames.values()];
 		const currentTool = toolNames[0] ?? null;
 		const toolStatus = [...agent.activeToolStatuses.values()][0] ?? null;
-		// If all active tools are Agent/Task delegations AND there are actual specialist agents, show orchestrating status
-		const allDelegations = toolNames.length > 0 && toolNames.every(n => n === 'Agent' || n === 'Task') && agent.activeAgentSubtypes.size > 0;
+		// "Orchestrating" only makes sense when there are multiple agents in the project
+		// (i.e., the workspace has configured specialist agents via .claude/agents/*.md).
+		// If there's only one agent, a Task call is just a regular tool, not orchestration.
+		const hasMultipleAgents = (totalAgents ?? 0) > 1;
+		const allDelegations = toolNames.length > 0 && toolNames.every(n => n === 'Agent' || n === 'Task') && agent.activeAgentSubtypes.size > 0 && hasMultipleAgents;
 		return {
 			isActive: true,
 			currentTool: allDelegations ? 'Agent' : currentTool,
@@ -164,7 +167,7 @@ export function sendAgentStateUpdate(
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;
-	const state = computeAgentDisplayState(agent);
+	const state = computeAgentDisplayState(agent, undefined, agents.size);
 	webview?.postMessage({
 		type: 'agentStateUpdate',
 		id: agentId,
@@ -185,8 +188,9 @@ export function tickAllAgents(
 	webview: vscode.Webview | undefined,
 ): void {
 	const now = Date.now();
+	const totalAgents = agents.size;
 	for (const [id, agent] of agents) {
-		const state = computeAgentDisplayState(agent, now);
+		const state = computeAgentDisplayState(agent, now, totalAgents);
 		const key = `${state.isActive}|${state.currentTool}|${state.toolStatus}|${state.bubbleType}|${state.idleHint}`;
 		if (lastStates.get(id) !== key) {
 			lastStates.set(id, key);

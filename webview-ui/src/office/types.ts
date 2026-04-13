@@ -374,6 +374,8 @@ export interface Character {
   meetingGroupId: number | null
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
+  /** Project name (used for per-project look memory) */
+  projectName?: string
   /** Display name shown as nametag above character */
   nametag?: string
   /** Agent definition ID from agent config (e.g., 'main', 'backend') */

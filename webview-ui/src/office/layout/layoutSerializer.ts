@@ -103,6 +103,16 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       ...(entry.sunlight ? { sunlight: true } : {}),
       ...(entry.sunlightInset !== undefined ? { sunlightInset: entry.sunlightInset } : {}),
       ...(entry.glassSections ? { glassSections: entry.glassSections } : {}),
+      ...(entry.isLamp ? { isLamp: true } : {}),
+      ...(entry.lightRadius !== undefined ? { lightRadius: entry.lightRadius } : {}),
+      ...(entry.lightColor ? { lightColor: entry.lightColor } : {}),
+      ...(entry.isCeiling ? { isCeiling: true } : {}),
+    }
+
+    // Ceiling items render on top of everything (very high zY)
+    if (entry.isCeiling) {
+      const rows = layout?.rows ?? 64
+      instance.zY = (rows + 1) * TILE_SIZE
     }
 
     // Attach meeting cycle data from catalog entry

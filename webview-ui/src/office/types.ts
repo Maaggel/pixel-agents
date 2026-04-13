@@ -115,6 +115,14 @@ export interface FurnitureInstance {
   sunlightInset?: number
   /** Rectangular glass regions within the sprite for day/night tinting and weather effects */
   glassSections?: GlassSection[]
+  /** Whether this furniture is a lamp that casts light pools */
+  isLamp?: boolean
+  /** Light radius in tiles */
+  lightRadius?: number
+  /** Light color [r, g, b] */
+  lightColor?: [number, number, number]
+  /** Whether this is a ceiling-mounted item (renders on top of everything except walls) */
+  isCeiling?: boolean
   /** Cycle frame sprites for meeting animation. Present when catalog entry has meetingCycle. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -225,6 +233,14 @@ export interface FurnitureCatalogEntry {
   sunlightInset?: number
   /** Rectangular glass regions within the sprite for day/night tinting and weather effects */
   glassSections?: GlassSection[]
+  /** Whether this furniture is a lamp that casts light pools */
+  isLamp?: boolean
+  /** Light radius in tiles (default: LAMP_LIGHT_RADIUS_DEFAULT) */
+  lightRadius?: number
+  /** Light color override [r, g, b] (default: LAMP_LIGHT_COLOR) */
+  lightColor?: [number, number, number]
+  /** Whether this is a ceiling-mounted item (renders on top of everything except walls) */
+  isCeiling?: boolean
   /** Resolved cycle frame sprites for meeting animation. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean

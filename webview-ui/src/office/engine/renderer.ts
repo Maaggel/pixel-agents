@@ -6,6 +6,7 @@ import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
+import { computeLampLights, renderLampLights } from './lampLight.js'
 import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
 import type { WindowEffectFrameData } from './windowEffects.js'
 import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
@@ -1178,6 +1179,12 @@ export function renderFrame(
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)
   if (sunBeams && sunBeams.length > 0) {
     renderSunBeams(ctx, sunBeams, offsetX, offsetY, zoom, tileMap, sunBeamColor)
+  }
+
+  // Lamp light pools (warm glow from active lamps, clipped to floor tiles)
+  const lampLights = computeLampLights(furniture)
+  if (lampLights.length > 0) {
+    renderLampLights(ctx, lampLights, offsetX, offsetY, zoom, tileMap)
   }
 
   // Nametags (above characters, below bubbles)

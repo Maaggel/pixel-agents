@@ -40,10 +40,13 @@ import {
   WORK_SEAT_RANDOM_CHANCE,
   VACUUM_TRAIL_FADE_SEC,
   VACUUM_TRAIL_OPACITY,
+  LAMP_ON_INTENSITY_THRESHOLD,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
+import { getSunState } from './sunlight.js'
+import { getWeatherSeverity } from './windowEffects.js'
 import { isWalkable, getWalkableTiles, findPath } from '../layout/tileMap.js'
 import {
   createDefaultLayout,
@@ -105,6 +108,8 @@ export class OfficeState {
   private sharedCleanedRoomKeys: Set<string> = new Set()
   /** Shared detected rooms (computed once, used by all vacuums) */
   private sharedRooms: Array<Set<string>> = []
+  /** Whether lamps are currently auto-toggled ON (sun intensity below threshold) */
+  private lampsOn = false
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
@@ -1419,7 +1424,7 @@ export class OfficeState {
     return this.findFreeSeat(fromCol, fromRow)
   }
 
-  /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */
+  /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON, lamps toggle by sun cycle) */
   rebuildFurnitureInstances(): void {
     // Collect tiles where active agents face desks (only when seated, not while walking to seat)
     const autoOnTiles = new Set<string>()
@@ -1452,7 +1457,14 @@ export class OfficeState {
       }
     }
 
-    if (autoOnTiles.size === 0) {
+    // Determine lamp state from sun cycle + weather
+    // Lamps turn on when it's dark: low sun intensity OR heavy weather (overcast/blizzard)
+    const { intensity } = getSunState()
+    const weatherSev = getWeatherSeverity()
+    const effectiveIntensity = intensity * (1 - weatherSev * 0.85)
+    this.lampsOn = effectiveIntensity < LAMP_ON_INTENSITY_THRESHOLD
+
+    if (autoOnTiles.size === 0 && !this.lampsOn) {
       this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
       return
     }
@@ -1461,15 +1473,29 @@ export class OfficeState {
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
-      // Check if any tile of this furniture overlaps an auto-on tile
-      for (let dr = 0; dr < entry.footprintH; dr++) {
-        for (let dc = 0; dc < entry.footprintW; dc++) {
-          if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
-            const onType = getOnStateType(item.type)
-            if (onType !== item.type) {
-              return { ...item, type: onType }
+
+      // Lamps: toggle ON when sun is dim
+      // Check current entry OR its ON variant for isLamp
+      if (this.lampsOn) {
+        const onType = getOnStateType(item.type)
+        const onEntry = onType !== item.type ? getCatalogEntry(onType) : null
+        if (entry.isLamp || onEntry?.isLamp) {
+          if (onType !== item.type) return { ...item, type: onType }
+          return item
+        }
+      }
+
+      // Electronics: toggle ON when near active agent
+      if (autoOnTiles.size > 0) {
+        for (let dr = 0; dr < entry.footprintH; dr++) {
+          for (let dc = 0; dc < entry.footprintW; dc++) {
+            if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
+              const onType = getOnStateType(item.type)
+              if (onType !== item.type) {
+                return { ...item, type: onType }
+              }
+              return item
             }
-            return item
           }
         }
       }
@@ -1781,7 +1807,16 @@ export class OfficeState {
       this.characters.delete(id)
     }
 
-    // Rebuild furniture sprites when an active agent just sat down (turns electronics ON)
+    // Check if lamp state changed (sun intensity + weather crossed threshold)
+    const { intensity: sunIntensity } = getSunState()
+    const weatherSeverity = getWeatherSeverity()
+    const effectiveSunIntensity = sunIntensity * (1 - weatherSeverity * 0.85)
+    const shouldLampsBeOn = effectiveSunIntensity < LAMP_ON_INTENSITY_THRESHOLD
+    if (shouldLampsBeOn !== this.lampsOn) {
+      needFurnitureRebuild = true
+    }
+
+    // Rebuild furniture sprites when an active agent just sat down or lamp state changed
     if (needFurnitureRebuild) {
       this.rebuildFurnitureInstances()
     }

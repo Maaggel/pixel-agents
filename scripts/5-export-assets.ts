@@ -37,6 +37,9 @@ interface Asset {
   state?: string
   canPlaceOnSurfaces?: boolean
   backgroundTiles?: number
+  isLamp?: boolean
+  lightRadius?: number
+  lightColor?: [number, number, number]
 }
 
 interface CatalogEntry {
@@ -56,6 +59,9 @@ interface CatalogEntry {
   state?: string
   canPlaceOnSurfaces?: boolean
   backgroundTiles?: number
+  isLamp?: boolean
+  lightRadius?: number
+  lightColor?: [number, number, number]
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -206,6 +212,13 @@ for (const asset of assets) {
     // Background tiles
     if (asset.backgroundTiles && asset.backgroundTiles > 0) {
       entry.backgroundTiles = asset.backgroundTiles
+    }
+
+    // Lamp lighting
+    if (asset.isLamp) {
+      entry.isLamp = true
+      if (asset.lightRadius !== undefined) entry.lightRadius = asset.lightRadius
+      if (asset.lightColor) entry.lightColor = asset.lightColor
     }
 
     // Rotation group: use explicit orientation if present, otherwise derive from name suffix

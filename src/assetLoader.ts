@@ -42,6 +42,10 @@ export interface FurnitureAsset {
   interactable?: boolean
   isSeat?: boolean
   backgroundTiles?: number
+  isLamp?: boolean
+  lightRadius?: number
+  lightColor?: [number, number, number]
+  isCeiling?: boolean
   orientation?: string
   state?: string
   /** Sprite IDs for meeting cycle animation (resolved from file paths during load) */

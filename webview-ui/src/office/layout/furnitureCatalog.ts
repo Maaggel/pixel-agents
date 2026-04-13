@@ -32,6 +32,10 @@ export interface LoadedAssetData {
     sunlight?: boolean
     sunlightInset?: number
     glassSections?: Array<{ x: number; y: number; w: number; h: number }>
+    isLamp?: boolean
+    lightRadius?: number
+    lightColor?: [number, number, number]
+    isCeiling?: boolean
     /** Resolved sprite IDs for meeting cycle animation frames */
     meetingCycle?: string[]
     randomMeetingCycle?: boolean
@@ -58,7 +62,7 @@ export interface LoadedAssetData {
   sprites: Record<string, SpriteData>
 }
 
-export type FurnitureCategory = 'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'wall' | 'windows' | 'misc'
+export type FurnitureCategory = 'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'lamps' | 'wall' | 'windows' | 'misc'
 
 export interface CatalogEntryWithCategory extends FurnitureCatalogEntry {
   category: FurnitureCategory
@@ -73,7 +77,7 @@ export const FURNITURE_CATALOG: CatalogEntryWithCategory[] = [
   { type: FurnitureType.WHITEBOARD, label: 'Whiteboard', footprintW: 2, footprintH: 1, sprite: WHITEBOARD_SPRITE,   isDesk: false, category: 'decor', interactable: true },
   { type: FurnitureType.CHAIR,      label: 'Chair',      footprintW: 1, footprintH: 1, sprite: CHAIR_SPRITE,        isDesk: false, category: 'chairs', isSeat: true },
   { type: FurnitureType.PC,         label: 'PC',         footprintW: 1, footprintH: 1, sprite: PC_SPRITE,           isDesk: false, category: 'electronics' },
-  { type: FurnitureType.LAMP,       label: 'Lamp',       footprintW: 1, footprintH: 1, sprite: LAMP_SPRITE,         isDesk: false, category: 'decor' },
+  { type: FurnitureType.LAMP,       label: 'Lamp',       footprintW: 1, footprintH: 1, sprite: LAMP_SPRITE,         isDesk: false, category: 'decor', isLamp: true },
 
 ]
 
@@ -182,6 +186,10 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.sunlight ? { sunlight: true } : {}),
       ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),
       ...(asset.glassSections ? { glassSections: asset.glassSections } : {}),
+      ...(asset.isLamp ? { isLamp: true } : {}),
+      ...(asset.lightRadius !== undefined ? { lightRadius: asset.lightRadius } : {}),
+      ...(asset.lightColor ? { lightColor: asset.lightColor } : {}),
+      ...(asset.isCeiling ? { isCeiling: true } : {}),
       ...(meetingCycleSprites ? { meetingCycleSprites } : {}),
       ...(asset.randomMeetingCycle ? { randomMeetingCycle: true } : {}),
       ...(asset.meetingCycleIntervalMin !== undefined ? { meetingCycleIntervalMin: asset.meetingCycleIntervalMin } : {}),
@@ -359,6 +367,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'storage', label: 'Storage' },
   { id: 'electronics', label: 'Tech' },
   { id: 'decor', label: 'Decor' },
+  { id: 'lamps', label: 'Lamps' },
   { id: 'wall', label: 'Wall' },
   { id: 'windows', label: 'Windows' },
   { id: 'misc', label: 'Misc' },

@@ -183,6 +183,18 @@ export const SUN_ANGLE_MIN_RAD = -0.4
 /** Maximum sun angle in radians (rightmost sweep, positive = right) */
 export const SUN_ANGLE_MAX_RAD = 0.4
 
+// ── Lamp Lighting ──────────────────────────────────────────
+/** Default light radius in tiles for lamp furniture */
+export const LAMP_LIGHT_RADIUS_DEFAULT = 3
+/** Lamp light color (warm amber) */
+export const LAMP_LIGHT_COLOR: [number, number, number] = [255, 200, 100]
+/** Peak opacity of lamp light pool at center */
+export const LAMP_LIGHT_OPACITY = 0.25
+/** Sun intensity threshold below which lamps auto-toggle ON (0-1) */
+export const LAMP_ON_INTENSITY_THRESHOLD = 0.3
+/** Lamp light Y offset in sprite pixels (light emits from top of lamp sprite) */
+export const LAMP_LIGHT_Y_OFFSET_PX = 4
+
 // ── Window Glass Effects ────────────────────────────────────
 /** Glass tint opacity at full sun during clear weather */
 export const GLASS_DAY_TINT_OPACITY = 0.22

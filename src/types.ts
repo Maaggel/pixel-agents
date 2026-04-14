@@ -157,4 +157,6 @@ export interface SyncWindowState {
 	pid: number;
 	agents: SyncAgentState[];
 	updatedAt: number;
+	/** Personality snapshots for all agents (keyed by stable agent key) */
+	personalities?: Record<string, unknown>;
 }

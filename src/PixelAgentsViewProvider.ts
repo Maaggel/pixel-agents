@@ -18,6 +18,7 @@ import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layout
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
 import type { AgentDefinitionWatcher } from './agentDetector.js';
+import { PersonalityEngine, setPersonalityEngine } from './personalityEngine.js';
 import { computeAgentDisplayState, registerDisplayStateCallback, tickAllAgents } from './agentDisplayState.js';
 import { createRelayClient } from './relayClient.js';
 import type { RelayClient } from './relayClient.js';
@@ -57,6 +58,9 @@ export class PixelAgentsBackend {
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
 	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
+
+	// Personality engine
+	private personalityEngine: PersonalityEngine | null = null;
 
 	// Output channel — always visible in VS Code Output tab
 	private readonly outputChannel = vscode.window.createOutputChannel('Pixel Agents');
@@ -109,6 +113,11 @@ export class PixelAgentsBackend {
 		const log = (msg: string) => this.outputChannel.appendLine(msg);
 		log(`[Init] Window ID: ${this.windowId}`);
 		log(`[Init] Workspace folders: ${(vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath).join(', ') || '(none)'}`);
+
+		// Initialize personality engine (uses workspace sync ID as project hash)
+		this.personalityEngine = new PersonalityEngine(this.windowId);
+		setPersonalityEngine(this.personalityEngine);
+		log(`[Init] Personality engine initialized`);
 
 		this.registerTerminalEvents();
 
@@ -560,6 +569,7 @@ export class PixelAgentsBackend {
 			pid: process.pid,
 			agents,
 			updatedAt: Date.now(),
+			personalities: this.personalityEngine?.getSnapshot(),
 		};
 		// Debug: log specialist activations
 		if (activeSpecialists.size > 0) {
@@ -595,6 +605,7 @@ export class PixelAgentsBackend {
 	// ── Cleanup ──────────────────────────────────────────────────
 
 	dispose(): void {
+		this.personalityEngine?.flush();
 		this.relayClient?.dispose();
 		this.relayClient = null;
 		this.syncManager?.dispose();

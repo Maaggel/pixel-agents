@@ -14,6 +14,7 @@ import {
 	MISSING_SPRITES_MAX_ENTRIES,
 } from './constants.js';
 import { sendAgentStateUpdate } from './agentDisplayState.js';
+import { getPersonalityEngine } from './personalityEngine.js';
 
 export const PERMISSION_EXEMPT_TOOLS = new Set([
 	'Task', 'Agent', 'AskUserQuestion', 'TaskOutput', 'TaskStop',
@@ -192,6 +193,7 @@ export function processTranscriptLine(
 							toolId: block.id,
 							status,
 						});
+						getPersonalityEngine()?.onToolStart(agentId, toolName, block.input || {});
 						// When orchestrator delegates via Agent tool, activate matching specialist
 						if (rawToolName === 'Agent' || rawToolName === 'Task') {
 							const subType = block.input?.subagent_type as string | undefined;
@@ -251,7 +253,11 @@ export function processTranscriptLine(
 									});
 								}
 							}
-							agent.lastToolName = agent.activeToolNames.get(completedToolId) ?? null;
+							const doneToolName = agent.activeToolNames.get(completedToolId) ?? '';
+							// Detect retry: same tool name used again quickly (within 5s of last done)
+							const wasRetry = agent.lastToolName === doneToolName && agent.lastToolDoneAt !== null && (now - agent.lastToolDoneAt) < 5000;
+							getPersonalityEngine()?.onToolDone(agentId, doneToolName, wasRetry);
+							agent.lastToolName = doneToolName || null;
 							agent.lastToolDoneAt = now;
 							agent.activeToolIds.delete(completedToolId);
 							agent.activeToolStatuses.delete(completedToolId);
@@ -282,6 +288,7 @@ export function processTranscriptLine(
 					webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 					sendAgentStateUpdate(agentId, agents, webview);
+					getPersonalityEngine()?.onNewTask(agentId);
 				}
 			} else if (typeof content === 'string' && content.trim()) {
 				// New user text prompt — new turn starting
@@ -298,9 +305,11 @@ export function processTranscriptLine(
 				webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 				webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 				sendAgentStateUpdate(agentId, agents, webview);
+				getPersonalityEngine()?.onNewTask(agentId);
 			}
 		} else if (record.type === 'system' && record.subtype === 'turn_duration') {
 			// Definitive turn-end signal
+			const turnDurationMs = typeof record.data?.duration_ms === 'number' ? record.data.duration_ms : undefined;
 			agent.turnEndedAt = now;
 			agent.userPromptAt = null;
 			agent.lastToolStatus = null;
@@ -314,6 +323,7 @@ export function processTranscriptLine(
 			agent.activeSubagentToolNames.clear();
 			webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 			sendAgentStateUpdate(agentId, agents, webview);
+			getPersonalityEngine()?.onTurnComplete(agentId, turnDurationMs);
 		}
 	} catch {
 		// Ignore malformed lines

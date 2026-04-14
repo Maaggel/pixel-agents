@@ -8,6 +8,7 @@ import { cancelPermissionTimer } from './timerManager.js';
 import { startFileWatching, readNewLines, ensureProjectScan } from './fileWatcher.js';
 import { writeSessionMarker } from './agentDetector.js';
 import { JSONL_POLL_INTERVAL_MS, TERMINAL_NAME_PREFIX, WORKSPACE_KEY_AGENTS, WORKSPACE_KEY_AGENT_SEATS } from './constants.js';
+import { getPersonalityEngine } from './personalityEngine.js';
 import { migrateAndLoadLayout } from './layoutPersistence.js';
 import { computeAgentDisplayState, sendAgentStateUpdate } from './agentDisplayState.js';
 
@@ -107,6 +108,7 @@ export async function launchNewTerminal(
 		const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
 		console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
 		webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
+		getPersonalityEngine()?.registerAgent(id, agent.agentDefinitionId || `agent-${id}`, folderName || projectName || `Agent ${id}`);
 	}
 
 	// Both id and agent are guaranteed non-null after the if/else above
@@ -300,6 +302,7 @@ export function restoreAgents(
 		knownJsonlFiles.add(p.jsonlFile);
 		restoredIds.add(p.id);
 		console.log(`[Pixel Agents] Restored agent ${p.id} → terminal "${terminal.name}"`);
+		getPersonalityEngine()?.registerAgent(p.id, p.agentDefinitionId || `agent-${p.id}`, p.folderName || `Agent ${p.id}`);
 
 		if (p.id > maxId) maxId = p.id;
 		const match = p.terminalName.match(/#(\d+)$/);

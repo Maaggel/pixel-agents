@@ -194,6 +194,8 @@ export const LAMP_LIGHT_OPACITY = 0.25
 export const LAMP_ON_INTENSITY_THRESHOLD = 0.3
 /** Lamp light Y offset in sprite pixels (light emits from top of lamp sprite) */
 export const LAMP_LIGHT_Y_OFFSET_PX = 4
+/** Maximum random delay (seconds) for lamps with lampRandomToggle before toggling on/off */
+export const LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC = 2.0
 
 // ── Window Glass Effects ────────────────────────────────────
 /** Glass tint opacity at full sun during clear weather */

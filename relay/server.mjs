@@ -40,7 +40,7 @@ if (!RELAY_TOKEN) {
 }
 
 // ── PNG parsing (mirrors assetLoader.ts) ────────────────────
-function pngToSpriteData(buffer, width, height) {
+function pngToSpriteData(buffer, width, height, preserveAlpha) {
   try {
     const png = PNG.sync.read(buffer)
     const sprite = []
@@ -49,7 +49,9 @@ function pngToSpriteData(buffer, width, height) {
       for (let x = 0; x < width; x++) {
         const idx = (y * png.width + x) * 4
         const r = png.data[idx], g = png.data[idx + 1], b = png.data[idx + 2], a = png.data[idx + 3]
-        if (a < PNG_ALPHA_THRESHOLD) { row.push('') }
+        if (a === 0) { row.push('') }
+        else if (preserveAlpha && a < 255) { row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a.toString(16).padStart(2, '0')}`.toUpperCase()) }
+        else if (a < PNG_ALPHA_THRESHOLD) { row.push('') }
         else { row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase()) }
       }
       sprite.push(row)
@@ -174,6 +176,31 @@ function loadFurnitureAssets() {
       asset.idleCycle = loadCycleFrames(asset.idleCycle, asset.width, asset.height, sprites)
     if (Array.isArray(asset.dockedCycle) && asset.dockedCycle.length > 0)
       asset.dockedCycle = loadCycleFrames(asset.dockedCycle, asset.width, asset.height, sprites)
+    // Load lamp overlay sprite (single file path → sprite ID)
+    if (asset.lampOverlay) {
+      const overlayId = asset.lampOverlay.split('/').pop().replace(/\.[^.]+$/, '')
+      let fp = asset.lampOverlay.startsWith('assets/') ? asset.lampOverlay : `assets/${asset.lampOverlay}`
+      const fullPath = join(ASSETS_ROOT, fp)
+      if (existsSync(fullPath)) {
+        sprites[overlayId] = pngToSpriteData(readFileSync(fullPath), asset.width, asset.height, true)
+        asset.lampOverlay = overlayId
+      } else {
+        delete asset.lampOverlay
+      }
+    }
+  }
+  // ON-state fallback: if an ON sprite wasn't loaded, use its OFF counterpart's sprite
+  const stateMap = new Map()
+  for (const asset of catalog) {
+    if (asset.groupId && asset.state) stateMap.set(`${asset.groupId}|${asset.state}`, asset)
+  }
+  for (const asset of catalog) {
+    if (asset.state === 'on' && !sprites[asset.id]) {
+      const offAsset = stateMap.get(`${asset.groupId}|off`)
+      if (offAsset && sprites[offAsset.id]) {
+        sprites[asset.id] = sprites[offAsset.id]
+      }
+    }
   }
   return { catalog, sprites }
 }

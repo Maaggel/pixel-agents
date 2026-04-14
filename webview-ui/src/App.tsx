@@ -173,7 +173,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -400,6 +400,7 @@ function App() {
         panRef={editor.panRef}
         showNametags={showNametags}
         showSunlight={viewOptions.showSunlight}
+        debugLampLights={viewOptions.debugLampLights}
         autoFollowOnFocus={viewOptions.autoFollowOnFocus}
       />
 

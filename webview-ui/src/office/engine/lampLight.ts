@@ -29,6 +29,7 @@ export interface LampLight {
  */
 export function computeLampLights(
   furniture: FurnitureInstance[],
+  debug?: boolean,
 ): LampLight[] {
   const lights: LampLight[] = []
 
@@ -40,9 +41,11 @@ export function computeLampLights(
     const cy = f.y + (f.footprintH * TILE_SIZE) / 2 - LAMP_LIGHT_Y_OFFSET_PX
     const radiusTiles = f.lightRadius ?? LAMP_LIGHT_RADIUS_DEFAULT
     const radius = radiusTiles * TILE_SIZE
-    const color = f.lightColor ?? LAMP_LIGHT_COLOR
+    // Debug mode: bright red at high opacity for easy visibility
+    const color: [number, number, number] = debug ? [255, 40, 40] : (f.lightColor ?? LAMP_LIGHT_COLOR)
+    const opacity = debug ? 0.5 : LAMP_LIGHT_OPACITY
 
-    lights.push({ cx, cy, radius, color, opacity: LAMP_LIGHT_OPACITY })
+    lights.push({ cx, cy, radius, color, opacity })
   }
 
   return lights
@@ -60,12 +63,14 @@ export function renderLampLights(
   offsetY: number,
   zoom: number,
   tileMap?: TileTypeVal[][],
+  lampInstances?: FurnitureInstance[],
 ): void {
   if (lights.length === 0) return
 
   ctx.save()
 
-  // Clip to floor tiles (exclude walls, void, and tiles directly above walls)
+  // Build a clip region: floor tiles only, with lamp opaque pixels excluded.
+  // Uses evenodd so the lamp pixel rects punch holes in the floor region.
   if (tileMap && tileMap.length > 0) {
     const s = TILE_SIZE * zoom
     const rows = tileMap.length
@@ -75,13 +80,36 @@ export function renderLampLights(
       for (let col = 0; col < cols; col++) {
         const tile = tileMap[row][col]
         if (tile === TileType.WALL || tile === TileType.VOID) continue
-        // Skip floor tiles directly above a wall — the wall face covers this area
         const belowIsWall = row + 1 < rows && tileMap[row + 1][col] === TileType.WALL
         if (belowIsWall) continue
         ctx.rect(offsetX + col * s, offsetY + row * s, s, s)
       }
     }
-    ctx.clip()
+    // Punch pixel-perfect holes for lamp sprites (only opaque pixels)
+    if (lampInstances) {
+      for (const f of lampInstances) {
+        const sprite = f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
+        const baseX = offsetX + f.x * zoom
+        const baseY = offsetY + f.y * zoom
+        for (let sy = 0; sy < sprite.length; sy++) {
+          const row = sprite[sy]
+          // Run-length: merge consecutive opaque pixels into one rect per row
+          let runStart = -1
+          for (let sx = 0; sx <= row.length; sx++) {
+            const opaque = sx < row.length && row[sx] !== ''
+            if (opaque && runStart === -1) {
+              runStart = sx
+            } else if (!opaque && runStart !== -1) {
+              ctx.rect(baseX + runStart * zoom, baseY + sy * zoom, (sx - runStart) * zoom, zoom)
+              runStart = -1
+            }
+          }
+        }
+        // NOTE: overlay sprite pixels are NOT excluded — the overlay glow
+        // should blend naturally with the light pool, not punch holes in it
+      }
+    }
+    ctx.clip('evenodd')
   }
 
   // Render each lamp light as a radial gradient circle

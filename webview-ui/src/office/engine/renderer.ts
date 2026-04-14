@@ -116,6 +116,8 @@ interface ZDrawable {
   draw: (ctx: CanvasRenderingContext2D) => void
 }
 
+let _overlayLogged = false
+
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   furniture: FurnitureInstance[],
@@ -135,6 +137,32 @@ export function renderScene(
     const cached = getCachedSprite(f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
+    // Pre-cache overlay sprite (uncolorized — ignores user color changes)
+    const overlayCached = f.lampOverlaySprite ? getCachedSprite(f.lampOverlaySprite, zoom) : null
+    if (f.isLamp && !_overlayLogged) {
+      _overlayLogged = true
+      let opaqueCount = 0
+      let totalPx = 0
+      if (f.lampOverlaySprite) {
+        for (const row of f.lampOverlaySprite) {
+          for (const px of row) {
+            totalPx++
+            if (px !== '') opaqueCount++
+          }
+        }
+      }
+      console.log(`[LampOverlay] uid=${f.uid}, hasOverlay=${!!f.lampOverlaySprite}, cached=${!!overlayCached}, pixels=${opaqueCount}/${totalPx} opaque`)
+      // Log first few non-empty pixels to see their colors
+      if (f.lampOverlaySprite) {
+        const samples: string[] = []
+        for (const row of f.lampOverlaySprite) {
+          for (const px of row) {
+            if (px !== '' && samples.length < 10) samples.push(px)
+          }
+        }
+        console.log(`[LampOverlay] sample colors: ${samples.join(', ')}`)
+      }
+    }
     if (f.clipToRegions && f.clipToRegions.length > 0) {
       const regions = f.clipToRegions
       drawables.push({
@@ -147,6 +175,7 @@ export function renderScene(
           }
           c.clip()
           c.drawImage(cached, fx, fy)
+          if (overlayCached) c.drawImage(overlayCached, fx, fy)
           c.restore()
         },
       })
@@ -163,6 +192,7 @@ export function renderScene(
           }
           c.clip('evenodd')
           c.drawImage(cached, fx, fy)
+          if (overlayCached) c.drawImage(overlayCached, fx, fy)
           c.restore()
         },
       })
@@ -171,6 +201,7 @@ export function renderScene(
         zY: f.zY,
         draw: (c) => {
           c.drawImage(cached, fx, fy)
+          if (overlayCached) c.drawImage(overlayCached, fx, fy)
         },
       })
     }
@@ -893,6 +924,7 @@ export function renderFrame(
   vacuumSpeechBubbles?: Array<{ text: string; x: number; y: number; opacity: number }>,
   vacuumOverlays?: VacuumOverlay[],
   exteriorWall?: { style: import('../types.js').ExteriorWallStyle; color: FloorColor; height: number },
+  debugLampLights?: boolean,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -1181,10 +1213,12 @@ export function renderFrame(
     renderSunBeams(ctx, sunBeams, offsetX, offsetY, zoom, tileMap, sunBeamColor)
   }
 
-  // Lamp light pools (warm glow from active lamps, clipped to floor tiles)
-  const lampLights = computeLampLights(furniture)
+  // Lamp light pools (on top of furniture + characters, but masked behind their own lamp pixels)
+  const lampLights = computeLampLights(furniture, debugLampLights)
   if (lampLights.length > 0) {
-    renderLampLights(ctx, lampLights, offsetX, offsetY, zoom, tileMap)
+    // Collect lamp instances so renderLampLights can build pixel-perfect exclusion masks
+    const lampInstances = furniture.filter(f => f.isLamp)
+    renderLampLights(ctx, lampLights, offsetX, offsetY, zoom, tileMap, lampInstances)
   }
 
   // Nametags (above characters, below bubbles)

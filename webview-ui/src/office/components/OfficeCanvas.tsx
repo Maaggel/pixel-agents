@@ -29,10 +29,11 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>
   showNametags?: boolean
   showSunlight?: boolean
+  debugLampLights?: boolean
   autoFollowOnFocus?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, autoFollowOnFocus = true }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -300,6 +301,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           vacuumSpeech.length > 0 ? vacuumSpeech : undefined,
           vacuumOverlays.length > 0 ? vacuumOverlays : undefined,
           officeState.getLayout().exteriorWall ?? { style: 'brick_small' as const, color: { h: 10, s: 50, b: -15, c: 10 }, height: 0 },
+          debugLampLights,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
@@ -313,7 +315,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       stop()
       observer.disconnect()
     }
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags, showSunlight])
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags, showSunlight, debugLampLights])
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(

@@ -46,6 +46,8 @@ export interface FurnitureAsset {
   lightRadius?: number
   lightColor?: [number, number, number]
   isCeiling?: boolean
+  lampRandomToggle?: boolean
+  lampOverlay?: string
   orientation?: string
   state?: string
   /** Sprite IDs for meeting cycle animation (resolved from file paths during load) */
@@ -258,8 +260,38 @@ export async function loadFurnitureAssets(
           }
           asset.dockedCycle = resolvedIds
         }
+
+        // Load lamp overlay sprite (single file path → sprite ID)
+        if (typeof (asset as FurnitureAsset & { lampOverlay?: string }).lampOverlay === 'string') {
+          const overlayPath = (asset as FurnitureAsset & { lampOverlay?: string }).lampOverlay!
+          const overlayId = path.basename(overlayPath, path.extname(overlayPath))
+          let fp = overlayPath.startsWith('assets/') ? overlayPath : `assets/${overlayPath}`
+          const fullPath = path.join(workspaceRoot, fp)
+          if (fs.existsSync(fullPath)) {
+            const buf = fs.readFileSync(fullPath)
+            const overlaySprite = pngToSpriteData(buf, asset.width, asset.height, true)
+            sprites.set(overlayId, overlaySprite);
+            (asset as FurnitureAsset & { lampOverlay?: string }).lampOverlay = overlayId
+          } else {
+            delete (asset as FurnitureAsset & { lampOverlay?: string }).lampOverlay
+          }
+        }
       } catch (err) {
         console.warn(`  ⚠️  Error loading ${asset.id}: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+
+    // ON-state fallback: if an ON sprite wasn't loaded, use its OFF counterpart's sprite
+    const stateMap = new Map<string, FurnitureAsset>()
+    for (const asset of catalog) {
+      if (asset.groupId && asset.state) stateMap.set(`${asset.groupId}|${asset.state}`, asset)
+    }
+    for (const asset of catalog) {
+      if (asset.state === 'on' && !sprites.has(asset.id)) {
+        const offAsset = stateMap.get(`${asset.groupId}|off`)
+        if (offAsset && sprites.has(offAsset.id)) {
+          sprites.set(asset.id, sprites.get(offAsset.id)!)
+        }
       }
     }
 
@@ -279,7 +311,7 @@ export async function loadFurnitureAssets(
  * PNG format: RGBA
  * SpriteData format: string[][] where '' = transparent, '#RRGGBB' = opaque color
  */
-function pngToSpriteData(pngBuffer: Buffer, width: number, height: number): string[][] {
+function pngToSpriteData(pngBuffer: Buffer, width: number, height: number, preserveAlpha?: boolean): string[][] {
   try {
     // Parse PNG using pngjs
     const png = PNG.sync.read(pngBuffer)
@@ -303,11 +335,15 @@ function pngToSpriteData(pngBuffer: Buffer, width: number, height: number): stri
         const b = data[pixelIndex + 2]
         const a = data[pixelIndex + 3]
 
-        // If alpha is near zero, treat as transparent
-        if (a < PNG_ALPHA_THRESHOLD) {
+        if (a === 0) {
+          row.push('')
+        } else if (preserveAlpha && a < 255) {
+          // Store semi-transparent pixels as #RRGGBBAA (CSS Color Level 4)
+          const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a.toString(16).padStart(2, '0')}`.toUpperCase()
+          row.push(hex)
+        } else if (a < PNG_ALPHA_THRESHOLD) {
           row.push('')
         } else {
-          // Convert RGB to hex color string
           const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase()
           row.push(hex)
         }

@@ -41,6 +41,7 @@ import {
   VACUUM_TRAIL_FADE_SEC,
   VACUUM_TRAIL_OPACITY,
   LAMP_ON_INTENSITY_THRESHOLD,
+  LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -110,6 +111,12 @@ export class OfficeState {
   private sharedRooms: Array<Set<string>> = []
   /** Whether lamps are currently auto-toggled ON (sun intensity below threshold) */
   private lampsOn = false
+  /** Target lamp state (what all lamps should eventually be — may differ from lampsOn during staggered toggle) */
+  private lampsTargetOn = false
+  /** Per-lamp ON/OFF state (uid → currently on). Allows staggered toggling. */
+  private lampIndividualOn: Map<string, boolean> = new Map()
+  /** Pending lamp toggle delays (uid → seconds remaining) */
+  private lampPendingToggles: Map<string, number> = new Map()
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
@@ -1459,14 +1466,10 @@ export class OfficeState {
       }
     }
 
-    // Determine lamp state from sun cycle + weather
-    // Lamps turn on when it's dark: low sun intensity OR heavy weather (overcast/blizzard)
-    const { intensity } = getSunState()
-    const weatherSev = getWeatherSeverity()
-    const effectiveIntensity = intensity * (1 - weatherSev * 0.85)
-    this.lampsOn = effectiveIntensity < LAMP_ON_INTENSITY_THRESHOLD
+    // Check if any lamp should be individually ON (staggered toggle support)
+    const anyLampOn = this.lampsOn || this.lampIndividualOn.size > 0
 
-    if (autoOnTiles.size === 0 && !this.lampsOn) {
+    if (autoOnTiles.size === 0 && !anyLampOn) {
       this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
       return
     }
@@ -1476,15 +1479,13 @@ export class OfficeState {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
 
-      // Lamps: toggle ON when sun is dim
-      // Check current entry OR its ON variant for isLamp
-      if (this.lampsOn) {
-        const onType = getOnStateType(item.type)
-        const onEntry = onType !== item.type ? getCatalogEntry(onType) : null
-        if (entry.isLamp || onEntry?.isLamp) {
-          if (onType !== item.type) return { ...item, type: onType }
-          return item
-        }
+      // Lamps: use per-lamp individual ON state (supports staggered toggling)
+      const onType = getOnStateType(item.type)
+      const onEntry = onType !== item.type ? getCatalogEntry(onType) : null
+      if (entry.isLamp || onEntry?.isLamp) {
+        const shouldBeOn = this.lampIndividualOn.get(item.uid) ?? false
+        if (shouldBeOn && onType !== item.type) return { ...item, type: onType }
+        return item
       }
 
       // Electronics: toggle ON when near active agent
@@ -1809,13 +1810,48 @@ export class OfficeState {
       this.characters.delete(id)
     }
 
-    // Check if lamp state changed (sun intensity + weather crossed threshold)
+    // Check if lamp target state changed (sun intensity + weather crossed threshold)
     const { intensity: sunIntensity } = getSunState()
     const weatherSeverity = getWeatherSeverity()
     const effectiveSunIntensity = sunIntensity * (1 - weatherSeverity * 0.85)
     const shouldLampsBeOn = effectiveSunIntensity < LAMP_ON_INTENSITY_THRESHOLD
-    if (shouldLampsBeOn !== this.lampsOn) {
-      needFurnitureRebuild = true
+    if (shouldLampsBeOn !== this.lampsTargetOn) {
+      this.lampsTargetOn = shouldLampsBeOn
+      // Schedule per-lamp toggles with optional random delay
+      for (const item of this.layout.furniture) {
+        const entry = getCatalogEntry(item.type)
+        const onType = getOnStateType(item.type)
+        const onEntry = onType !== item.type ? getCatalogEntry(onType) : null
+        if (entry?.isLamp || onEntry?.isLamp) {
+          const hasRandom = entry?.lampRandomToggle || onEntry?.lampRandomToggle
+          const delay = hasRandom ? Math.random() * LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC : 0
+          if (delay === 0) {
+            this.lampIndividualOn.set(item.uid, shouldLampsBeOn)
+            needFurnitureRebuild = true
+          } else {
+            this.lampPendingToggles.set(item.uid, delay)
+          }
+        }
+      }
+    }
+
+    // Tick pending lamp toggle timers
+    if (this.lampPendingToggles.size > 0) {
+      for (const [uid, remaining] of this.lampPendingToggles) {
+        const newRemaining = remaining - dt
+        if (newRemaining <= 0) {
+          this.lampIndividualOn.set(uid, this.lampsTargetOn)
+          this.lampPendingToggles.delete(uid)
+          needFurnitureRebuild = true
+        } else {
+          this.lampPendingToggles.set(uid, newRemaining)
+        }
+      }
+    }
+
+    // Update global lampsOn when all toggles have completed
+    if (this.lampPendingToggles.size === 0) {
+      this.lampsOn = this.lampsTargetOn
     }
 
     // Rebuild furniture sprites when an active agent just sat down or lamp state changed

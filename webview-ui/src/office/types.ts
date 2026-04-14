@@ -123,6 +123,10 @@ export interface FurnitureInstance {
   lightColor?: [number, number, number]
   /** Whether this is a ceiling-mounted item (renders on top of everything except walls) */
   isCeiling?: boolean
+  /** Whether this lamp toggles with a random delay */
+  lampRandomToggle?: boolean
+  /** Overlay sprite rendered on top of lamp when lit */
+  lampOverlaySprite?: SpriteData
   /** Cycle frame sprites for meeting animation. Present when catalog entry has meetingCycle. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean
@@ -241,6 +245,10 @@ export interface FurnitureCatalogEntry {
   lightColor?: [number, number, number]
   /** Whether this is a ceiling-mounted item (renders on top of everything except walls) */
   isCeiling?: boolean
+  /** Whether this lamp toggles with a random delay (simulates human behavior) */
+  lampRandomToggle?: boolean
+  /** Resolved overlay sprite rendered on top of lamp when lit */
+  lampOverlaySprite?: SpriteData
   /** Resolved cycle frame sprites for meeting animation. */
   meetingCycleSprites?: SpriteData[]
   randomMeetingCycle?: boolean

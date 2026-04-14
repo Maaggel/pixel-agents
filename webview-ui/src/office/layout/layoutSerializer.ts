@@ -107,6 +107,8 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       ...(entry.lightRadius !== undefined ? { lightRadius: entry.lightRadius } : {}),
       ...(entry.lightColor ? { lightColor: entry.lightColor } : {}),
       ...(entry.isCeiling ? { isCeiling: true } : {}),
+      ...(entry.lampRandomToggle ? { lampRandomToggle: true } : {}),
+      ...(entry.lampOverlaySprite ? { lampOverlaySprite: entry.lampOverlaySprite } : {}),
     }
 
     // Ceiling items render on top of everything (very high zY)

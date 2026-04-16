@@ -222,6 +222,7 @@ export function trySeatedConversation(ch: Character, ctx: IdleActionContext): bo
   partner.dir = directionBetween(partner.tileCol, partner.tileRow, ch.tileCol, ch.tileRow)
 
   logIdle(ch, `chatting with ${partner.nametag || `Agent ${partner.id}`}`)
+  ctx.onIdleEvent?.('conversation', [ch.id, partner.id])
   return true
 }
 
@@ -242,6 +243,8 @@ export interface IdleActionContext {
   getFurnitureFootprint: (type: string) => { w: number; h: number } | null
   /** Find path with own seat unblocked */
   findPathUnblocked: (ch: Character, toCol: number, toRow: number) => Array<{ col: number; row: number }>
+  /** Callback for personality tracking of idle events */
+  onIdleEvent?: (type: string, agentIds: number[]) => void
 }
 
 /** Pick an idle action for a character based on weighted registry + prerequisites */
@@ -330,6 +333,7 @@ export function initIdleAction(
         partner.dir = directionBetween(partner.tileCol, partner.tileRow, ch.tileCol, ch.tileRow)
 
         logIdle(ch, `chatting with ${partner.nametag || `Agent ${partner.id}`}`)
+        ctx.onIdleEvent?.('conversation', [ch.id, partner.id])
         return true
       }
 
@@ -421,6 +425,7 @@ export function initIdleAction(
         const entry = getCatalogEntry(target.type)
         const label = entry?.label ?? target.type.replace(/_/g, ' ').toLowerCase()
         logIdle(ch, `going to look at the ${label}`)
+        ctx.onIdleEvent?.('furniture_visit', [ch.id])
         return true
       }
       return false
@@ -480,6 +485,7 @@ export function initIdleAction(
         }
       }
       logIdle(ch, 'having a meal in the kitchen')
+      ctx.onIdleEvent?.('eating', [ch.id])
       return true
     }
 

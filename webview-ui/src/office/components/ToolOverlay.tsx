@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToolActivity } from '../types.js'
 import type { OfficeState } from '../engine/officeState.js'
-import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js'
+import type { SubagentCharacter, PersonalitySnapshot } from '../../hooks/useExtensionMessages.js'
 import { TILE_SIZE, IdleActionType } from '../types.js'
 import { isSittingState } from '../engine/characters.js'
 import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
@@ -16,6 +16,8 @@ interface ToolOverlayProps {
   panRef: React.RefObject<{ x: number; y: number }>
   onShuffleAgent: (id: number) => void
   alwaysShowActivities?: boolean
+  personalities?: Record<string, PersonalitySnapshot>
+  onPersonalityClick?: (agentKey: string) => void
 }
 
 /** Format seconds as "Xm Ys" or "Ys" */
@@ -92,6 +94,8 @@ export function ToolOverlay({
   panRef,
   onShuffleAgent,
   alwaysShowActivities,
+  personalities,
+  onPersonalityClick,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -298,6 +302,44 @@ export function ToolOverlay({
               </div>
               {isSelected && !isSub && (
                 <>
+                  {/* Personality button — find matching personality by name */}
+                  {(() => {
+                    if (!personalities || !onPersonalityClick) {
+                      console.log(`[Personality] Button skip: personalities=${!!personalities} (keys=${personalities ? Object.keys(personalities).length : 0}), onClick=${!!onPersonalityClick}`)
+                      return null
+                    }
+                    // Match by definitionId (which carries personalityKey for remote agents)
+                    const matchKey = Object.keys(personalities).find((k) => {
+                      return k === ch.definitionId
+                    }) ?? Object.keys(personalities).find((k) => {
+                      const p = personalities[k]
+                      return p.name === ch.nametag || p.agentKey === ch.definitionId
+                    })
+                    if (!matchKey) {
+                      console.log(`[Personality] No match for nametag="${ch.nametag}" definitionId="${ch.definitionId}" in keys:`, Object.keys(personalities).map(k => `${k}="${personalities[k].name}"`))
+                      return null
+                    }
+                    const moodEmojis: Record<string, string> = {
+                      neutral: '\u{1F610}', focused: '\u{1F9D0}', productive: '\u{26A1}',
+                      accomplished: '\u{1F3C6}', satisfied: '\u{1F60A}', frustrated: '\u{1F624}',
+                      impatient: '\u{23F3}', tired: '\u{1F634}', relaxed: '\u{1F60C}',
+                      energized: '\u{1F525}', curious: '\u{1F914}',
+                    }
+                    const mood = personalities[matchKey].mood.current
+                    return (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onPersonalityClick(matchKey) }}
+                        title={`${personalities[matchKey].name} — ${mood}`}
+                        style={{
+                          background: 'none', border: 'none',
+                          cursor: 'pointer', padding: '0 2px',
+                          fontSize: '16px', lineHeight: 1, flexShrink: 0,
+                        }}
+                      >
+                        {moodEmojis[mood] ?? '\u{1F610}'}
+                      </button>
+                    )
+                  })()}
                   <button
                     onClick={(e) => {
                       e.stopPropagation()

@@ -14,6 +14,7 @@ export function createRelayClient(
 	token: string,
 	onLayoutUpdate: (layout: LayoutData) => void,
 	log: (msg: string) => void,
+	onIdleInteraction?: (msg: { type: string; interactionType: string; agentKeys: string[] }) => void,
 ): RelayClient {
 	let ws: WebSocket | null = null;
 	let disposed = false;
@@ -54,6 +55,9 @@ export function createRelayClient(
 				const msg = JSON.parse(String(event.data));
 				if (msg.type === 'layoutUpdate' && msg.layout) {
 					onLayoutUpdate(msg.layout);
+				}
+				if (msg.type === 'idleInteraction' && onIdleInteraction) {
+					onIdleInteraction(msg as { type: string; interactionType: string; agentKeys: string[] });
 				}
 			} catch {
 				// Ignore bad messages

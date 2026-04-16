@@ -65,7 +65,16 @@ import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
 import { VACUUM_MAX_TILES_PER_CHARGE } from '../../constants.js'
 
+export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
+export interface IdleEvent {
+  type: IdleEventType
+  agentIds: number[]
+}
+
 export class OfficeState {
+  /** Callback for idle interaction events (conversations, meetings, etc.) */
+  onIdleEvent: ((event: IdleEvent) => void) | null = null
+
   layout: OfficeLayout
   tileMap: TileTypeVal[][]
   seats: Map<string, Seat>
@@ -299,6 +308,9 @@ export class OfficeState {
         return this.withOwnSeatUnblocked(ch, () =>
           findPath(ch.tileCol, ch.tileRow, toCol, toRow, this.tileMap, this.blockedTiles)
         )
+      },
+      onIdleEvent: (type: string, agentIds: number[]) => {
+        this.onIdleEvent?.({ type: type as IdleEventType, agentIds })
       },
     }
   }
@@ -583,6 +595,9 @@ export class OfficeState {
       const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
       addBehaviourEntry({ agentId: ch.id, agentName: name, message: `heading to meeting (${durationStr})`, type: 'idle' })
     }
+
+    // Fire idle event for personality tracking
+    this.onIdleEvent?.({ type: 'meeting', agentIds: participants.map(p => p.id) })
 
     return null
   }

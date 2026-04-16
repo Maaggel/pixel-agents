@@ -148,6 +148,8 @@ export interface SyncAgentState {
 	idleHint: 'thinking' | 'between-turns' | null;
 	folderName?: string;
 	visual?: SyncCharacterVisual;
+	/** Personality engine key for matching agent to personality data */
+	personalityKey?: string;
 }
 
 export interface SyncWindowState {

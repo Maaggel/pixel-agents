@@ -422,7 +422,28 @@ export class PixelAgentsBackend {
 			this.relayClient = createRelayClient(relayUrl, relayToken, (layout) => {
 				this.layoutWatcher?.markOwnWrite();
 				writeLayoutToFile(layout);
-			}, (msg) => this.outputChannel.appendLine(msg));
+			}, (msg) => this.outputChannel.appendLine(msg), (msg) => {
+				// Route idle interaction events from the online viewer to the personality engine
+				// msg.agentKeys contains personality keys (not browser runtime IDs)
+				if (this.personalityEngine) {
+					const keys: string[] = msg.agentKeys ?? [];
+					const runtimeIds = keys.map((k: string) => this.personalityEngine!.getRuntimeId(k)).filter((id: number | null): id is number => id !== null);
+					switch (msg.interactionType) {
+						case 'conversation':
+							if (runtimeIds.length >= 2) this.personalityEngine.onConversation(runtimeIds[0], runtimeIds[1]);
+							break;
+						case 'meeting':
+							if (runtimeIds.length >= 2) this.personalityEngine.onMeeting(runtimeIds);
+							break;
+						case 'eating':
+							if (runtimeIds.length >= 1) this.personalityEngine.onEating(runtimeIds[0]);
+							break;
+						case 'furniture_visit':
+							if (runtimeIds.length >= 1) this.personalityEngine.onFurnitureVisit(runtimeIds[0]);
+							break;
+					}
+				}
+			});
 		}
 		registerDisplayStateCallback(() => this.scheduleSyncWrite());
 		this.stateTickInterval = setInterval(() => {
@@ -497,6 +518,10 @@ export class PixelAgentsBackend {
 				}
 			}
 
+			// Keep personality engine name in sync with display name
+			const pKey = agent.agentDefinitionId || `agent-${agent.id}`;
+			this.personalityEngine?.registerAgent(agent.id, pKey, name);
+
 			const displayState = computeAgentDisplayState(agent);
 			agents.push({
 				localId: agent.id,
@@ -513,6 +538,7 @@ export class PixelAgentsBackend {
 				idleHint: displayState.idleHint,
 				folderName: agent.folderName,
 				visual: this.characterVisuals.get(agent.id),
+				personalityKey: agent.agentDefinitionId || `agent-${agent.id}`,
 			});
 		}
 

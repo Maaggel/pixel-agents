@@ -64,6 +64,27 @@ export interface DetectedAgentInfo {
   seatId: string | null
 }
 
+/** Serialized personality snapshot from the backend engine */
+export interface PersonalitySnapshot {
+  agentKey: string
+  name: string
+  mood: { current: string; intensity: number }
+  traits: { methodical: number; collaborative: number; careful: number; specialist: number }
+  latestThought: { text: string; mood: string; timestamp: number; trigger: string } | null
+  recentThoughts: Array<{ text: string; mood: string; timestamp: number; trigger: string }>
+  relationships: Array<{ agentId: string; name: string; familiarity: number; collaboration: number; sentiment: number }>
+  moodHistory: Array<[number, string, number, string]>
+  averageSentiment: number
+  /** Current activity status (injected by the panel, not from backend) */
+  currentActivity?: string
+  stats: {
+    totalTurns: number
+    totalTools: number
+    activeTimeSec: number
+    topTools: Array<{ name: string; count: number }>
+  }
+}
+
 export interface ExtensionMessageState {
   agents: number[]
   selectedAgent: number | null
@@ -79,6 +100,8 @@ export interface ExtensionMessageState {
   setShowNametags: (enabled: boolean) => void
   detectedAgents: DetectedAgentInfo[]
   devLogs: string[]
+  /** Personality snapshots keyed by agent key */
+  personalities: Record<string, PersonalitySnapshot>
 }
 
 const PROJECT_LOOKS_KEY = 'pixel-agents-project-looks'
@@ -209,6 +232,7 @@ export function useExtensionMessages(
   })
   const [detectedAgents, setDetectedAgents] = useState<DetectedAgentInfo[]>([])
   const [devLogs, setDevLogs] = useState<string[]>([])
+  const [personalities, setPersonalities] = useState<Record<string, PersonalitySnapshot>>({})
 
   // Ref for accessing agentTools inside message handler without stale closure
   const agentToolsRef = useRef(agentTools)
@@ -346,7 +370,7 @@ export function useExtensionMessages(
         pendingCloses.set(id, timer)
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[]
-        const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
+        const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string; personalityKey?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
         const wsFolders = (msg.workspaceFolders || {}) as Record<number, string>
         const pName = msg.projectName as string | undefined
@@ -365,16 +389,13 @@ export function useExtensionMessages(
               if (remembered) { palette = remembered.palette; hueShift = remembered.hueShift }
             }
             os.addAgent(id, palette, hueShift, m?.seatId, false, folderNames[id], false, pName)
-            // Set project color dot from workspace folder path
-            const wsFolder = wsFolders[id]
-            if (wsFolder) {
-              const ch = os.characters.get(id)
-              if (ch) ch.projectColor = projectColorFromFolder(wsFolder)
-            }
-            // Remember this agent's look for the project
+            // Set project color dot and personality key
             const ch = os.characters.get(id)
-            if (ch && !ch.isSubagent) {
-              rememberLookForProject(pName, ch.palette, ch.hueShift)
+            if (ch) {
+              const wsFolder = wsFolders[id]
+              if (wsFolder) ch.projectColor = projectColorFromFolder(wsFolder)
+              if (m?.personalityKey) ch.definitionId = m.personalityKey
+              if (!ch.isSubagent) rememberLookForProject(pName, ch.palette, ch.hueShift)
             }
           }
         } else {
@@ -744,6 +765,10 @@ export function useExtensionMessages(
       } else if (msg.type === 'devConsoleHistory') {
         const entries = msg.entries as string[]
         setDevLogs(entries.slice(-200))
+      } else if (msg.type === 'personalitiesUpdate') {
+        const data = msg.personalities as Record<string, PersonalitySnapshot>
+        console.log(`[Personality] Received personalitiesUpdate: ${data ? Object.keys(data).length : 0} agents`, data ? Object.keys(data) : [])
+        if (data) setPersonalities(data)
       } else if (msg.type === 'remoteAgents') {
         const remoteList = msg.agents as Array<{
           id: number
@@ -759,6 +784,7 @@ export function useExtensionMessages(
           idleHint?: 'thinking' | 'between-turns' | null
           workspaceName: string
           workspaceFolder: string
+          personalityKey?: string | null
           visual?: { x: number; y: number; tileCol: number; tileRow: number; state: string; dir: number; frame: number; moveProgress: number; path?: Array<{ col: number; row: number }> }
         }>
         const remoteIds = new Set(remoteList.map((a) => a.id))
@@ -777,6 +803,7 @@ export function useExtensionMessages(
             existing.nametag = ra.name
             existing.palette = ra.palette
             existing.hueShift = ra.hueShift
+            if (ra.personalityKey) existing.definitionId = ra.personalityKey
             existing.currentTool = ra.currentTool
             existing.remoteToolStatus = ra.currentToolStatus
             existing.idleHint = ra.idleHint ?? null
@@ -891,5 +918,5 @@ export function useExtensionMessages(
     }
   }, [getOfficeState])
 
-  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents, devLogs }
+  return { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders, claudeExtAvailable, showNametags, setShowNametags, detectedAgents, devLogs, personalities }
 }

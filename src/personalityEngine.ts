@@ -129,6 +129,14 @@ export interface AgentPersonality {
 	stats: WorkStats;
 	/** Mood timeline for graph: [timestamp, moodType, intensity, trigger] */
 	moodHistory: Array<[number, MoodType, number, string]>;
+	/** Tools used in the current turn (reset on new task, used for pattern analysis) */
+	currentTurnTools: string[];
+	/** Number of retries in current turn */
+	currentTurnRetries: number;
+	/** Files touched in current turn */
+	currentTurnFiles: string[];
+	/** Count of consecutive successful turns (no retries) */
+	successStreak: number;
 }
 
 const MAX_THOUGHTS = 50;
@@ -275,6 +283,69 @@ const THOUGHT_TEMPLATES: Record<string, string[]> = {
 		'Fresh session, let\'s go',
 		'Alright, where were we?',
 	],
+
+	// ── Turn pattern thoughts ──
+	'breakthrough:satisfied': [
+		'Finally! That took some persistence but we got there',
+		'The fix clicked after a few attempts — satisfying',
+		'Overcame that one, feels good',
+	],
+	'perseverance:accomplished': [
+		'That was a tough one — three attempts before it worked',
+		'Perseverance paid off, the issue is resolved',
+		'Took some digging, but found the root cause',
+	],
+	'big_build:accomplished': [
+		'Major piece of work done — that was substantial',
+		'Big implementation session, proud of the result',
+		'Quite a lot of code written, but it came together well',
+	],
+	'research_payoff:satisfied': [
+		'The research paid off — understood the problem before fixing it',
+		'Glad I took the time to read through the code first',
+		'Good approach: understand first, then make targeted changes',
+	],
+	'deep_research:curious': [
+		'Lots to explore in this codebase',
+		'Still piecing together how this all fits',
+		'Interesting architecture, need to understand it better',
+	],
+	'flow_state:productive': [
+		'Good rhythm right now, everything is clicking',
+		'In the zone — smooth progress across multiple tasks',
+		'Three clean turns in a row, nice flow',
+	],
+	'broad_scope:focused': [
+		'Touching a lot of files today — wide-ranging changes',
+		'This task spans several modules, keeping it all in mind',
+		'Broad scope but keeping track of the interconnections',
+	],
+	'quick_clean:satisfied': [
+		'Quick and clean, exactly what was needed',
+		'Simple fix, no complications',
+		'In and out, efficient',
+	],
+
+	// ── Idle interaction thoughts ──
+	'had_conversation:relaxed': [
+		'Nice chat, good to catch up',
+		'Good to connect with a colleague',
+		'Enjoyed that conversation',
+	],
+	'attended_meeting:productive': [
+		'Productive meeting',
+		'Good to align with the team',
+		'Useful discussion',
+	],
+	'had_snack:relaxed': [
+		'Quick break for a snack, refreshing',
+		'Coffee break — needed that',
+		'Good to step away for a moment',
+	],
+	'visited_furniture:relaxed': [
+		'Stretching my legs a bit',
+		'Nice to wander around the office',
+	],
 };
 
 // ── Personality Engine ──────────────────────────────────────
@@ -324,12 +395,25 @@ export class PersonalityEngine {
 		return [...this.personalities.values()];
 	}
 
+	/** Reverse lookup: personality key → runtime agent ID (or null if not registered) */
+	getRuntimeId(agentKey: string): number | null {
+		for (const [runtimeId, key] of this.agentKeyMap) {
+			if (key === agentKey) return runtimeId;
+		}
+		return null;
+	}
+
 	// ── Event handlers (called from transcript parser) ──────
 
 	/** Agent started working on a new user prompt */
 	onNewTask(runtimeId: number): void {
 		const p = this.getP(runtimeId);
 		if (!p) return;
+
+		// Reset per-turn tracking
+		p.currentTurnTools = [];
+		p.currentTurnRetries = 0;
+		p.currentTurnFiles = [];
 
 		const isFirstTask = p.stats.totalTurns === 0;
 		if (isFirstTask) {
@@ -351,6 +435,13 @@ export class PersonalityEngine {
 
 		p.stats.totalTools++;
 		p.stats.toolCounts[toolName] = (p.stats.toolCounts[toolName] || 0) + 1;
+		p.currentTurnTools.push(toolName);
+
+		// Track files touched in this turn
+		const filePath = _input.file_path as string | undefined;
+		if (filePath && !p.currentTurnFiles.includes(filePath)) {
+			p.currentTurnFiles.push(filePath);
+		}
 
 		// Determine activity type for mood
 		const isResearch = ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'].includes(toolName);
@@ -398,6 +489,7 @@ export class PersonalityEngine {
 
 		if (wasRetry) {
 			p.stats.totalErrors++;
+			p.currentTurnRetries++;
 			this.setMood(p, MoodType.FRUSTRATED, 0.7, 'tool_retry');
 			if (Math.random() < 0.5) this.addThought(p, 'tool_retry', MoodType.FRUSTRATED);
 			this.evolveTrait(p, 'careful', 1); // errors make agents more careful
@@ -414,7 +506,7 @@ export class PersonalityEngine {
 		}
 	}
 
-	/** Turn completed (turn_duration signal) */
+	/** Turn completed (turn_duration signal) — runs pattern analysis on the tool sequence */
 	onTurnComplete(runtimeId: number, durationMs?: number): void {
 		const p = this.getP(runtimeId);
 		if (!p) return;
@@ -428,29 +520,89 @@ export class PersonalityEngine {
 			p.stats.activeTimeSec += durationMs / 1000;
 		}
 
-		// Determine completion mood based on turn characteristics
-		const toolsThisTurn = p.stats.totalTools; // approximate
+		// ── Turn pattern analysis ────────────────────────────
+		const tools = p.currentTurnTools;
+		const retries = p.currentTurnRetries;
+		const fileCount = p.currentTurnFiles.length;
+		const toolCount = tools.length;
+		const avgDuration = p.stats.turnDurations.length > 1
+			? p.stats.turnDurations.slice(0, -1).reduce((a, b) => a + b, 0) / (p.stats.turnDurations.length - 1)
+			: 30000;
+		const wasLong = durationMs !== undefined && durationMs > avgDuration * 2;
 		const wasFrustrated = p.mood.current === MoodType.FRUSTRATED;
-		const wasLong = durationMs !== undefined && durationMs > 60000;
-		const wasComplex = toolsThisTurn > 10;
 
-		if (wasComplex || wasLong) {
-			this.setMood(p, MoodType.ACCOMPLISHED, 0.9, 'turn_complete');
-		} else if (wasFrustrated) {
-			// Completing despite frustration → relief + satisfaction
-			this.setMood(p, MoodType.SATISFIED, 0.7, 'turn_complete');
+		// Classify the turn pattern
+		const readCount = tools.filter(t => ['Read', 'Grep', 'Glob'].includes(t)).length;
+		const editCount = tools.filter(t => ['Edit', 'Write'].includes(t)).length;
+		const bashCount = tools.filter(t => t.startsWith('Bash')).length;
+		const delegateCount = tools.filter(t => t === 'Task' || t === 'Agent').length;
+
+		// Pattern: research-heavy (many reads, few edits)
+		const isResearchHeavy = readCount > 5 && editCount <= 2;
+		// Pattern: build-heavy (many edits/writes)
+		const isBuildHeavy = editCount > 3;
+		// Pattern: research → targeted fix (reads then a few edits)
+		const isResearchThenFix = readCount > 3 && editCount > 0 && editCount <= 3;
+		// Pattern: debugging (retries, bash:test/build failures)
+		const isDebugging = retries > 1;
+		// Pattern: delegating (used Task/Agent tools)
+		const isDelegating = delegateCount > 0;
+		// Pattern: many different files
+		const isBroadScope = fileCount > 5;
+		// Pattern: quick and clean (few tools, no retries)
+		const isQuickClean = toolCount <= 5 && retries === 0;
+
+		// Update success streak
+		if (retries === 0) {
+			p.successStreak++;
 		} else {
-			this.setMood(p, MoodType.SATISFIED, 0.6, 'turn_complete');
+			p.successStreak = 0;
 		}
 
-		this.addThought(p, 'turn_complete', p.mood.current);
+		// Determine mood and generate pattern-specific thought
+		if (isDebugging && retries > 2) {
+			if (wasFrustrated) {
+				this.setMood(p, MoodType.SATISFIED, 0.8, 'breakthrough');
+				this.addThought(p, 'breakthrough', MoodType.SATISFIED);
+			} else {
+				this.setMood(p, MoodType.ACCOMPLISHED, 0.7, 'perseverance');
+				this.addThought(p, 'perseverance', MoodType.ACCOMPLISHED);
+			}
+		} else if (wasLong && isBuildHeavy) {
+			this.setMood(p, MoodType.ACCOMPLISHED, 0.9, 'big_build');
+			this.addThought(p, 'big_build', MoodType.ACCOMPLISHED);
+		} else if (isResearchThenFix) {
+			this.setMood(p, MoodType.SATISFIED, 0.7, 'research_payoff');
+			this.addThought(p, 'research_payoff', MoodType.SATISFIED);
+		} else if (isResearchHeavy) {
+			this.setMood(p, MoodType.CURIOUS, 0.6, 'deep_research');
+			this.addThought(p, 'deep_research', MoodType.CURIOUS);
+		} else if (p.successStreak >= 3) {
+			this.setMood(p, MoodType.PRODUCTIVE, 0.8, 'flow_state');
+			this.addThought(p, 'flow_state', MoodType.PRODUCTIVE);
+		} else if (isDelegating) {
+			this.setMood(p, MoodType.PRODUCTIVE, 0.6, 'collab_complete');
+			this.addThought(p, 'collab_complete', MoodType.SATISFIED);
+		} else if (isBroadScope) {
+			this.setMood(p, MoodType.FOCUSED, 0.6, 'broad_scope');
+			this.addThought(p, 'broad_scope', MoodType.FOCUSED);
+		} else if (isQuickClean) {
+			this.setMood(p, MoodType.SATISFIED, 0.6, 'quick_clean');
+			this.addThought(p, 'quick_clean', MoodType.SATISFIED);
+		} else {
+			this.setMood(p, MoodType.SATISFIED, 0.5, 'turn_complete');
+			this.addThought(p, 'turn_complete', p.mood.current);
+		}
 
 		// Check for tiredness (long active time)
-		if (p.stats.activeTimeSec > 1800) { // 30+ minutes active
-			if (Math.random() < 0.3) {
-				this.setMood(p, MoodType.TIRED, 0.4, 'long_session');
-			}
+		if (p.stats.activeTimeSec > 1800 && Math.random() < 0.3) {
+			this.setMood(p, MoodType.TIRED, 0.4, 'long_session');
 		}
+
+		// Reset per-turn tracking
+		p.currentTurnTools = [];
+		p.currentTurnRetries = 0;
+		p.currentTurnFiles = [];
 
 		this.scheduleSave();
 	}
@@ -462,6 +614,50 @@ export class PersonalityEngine {
 		// Only show impatience after a brief delay (handled by caller)
 		this.setMood(p, MoodType.IMPATIENT, 0.5, 'permission_wait');
 		if (Math.random() < 0.4) this.addThought(p, 'permission_wait', p.mood.current);
+	}
+
+	/** Two agents had a conversation (idle interaction) */
+	onConversation(runtimeIdA: number, runtimeIdB: number): void {
+		const pA = this.getP(runtimeIdA);
+		const pB = this.getP(runtimeIdB);
+		if (pA) {
+			if (Math.random() < 0.3) this.addThought(pA, 'had_conversation', MoodType.RELAXED);
+		}
+		if (pB) {
+			if (Math.random() < 0.3) this.addThought(pB, 'had_conversation', MoodType.RELAXED);
+		}
+		// Build relationship
+		if (pA && pB) {
+			this.updateRelationship(pA, pB.agentKey, pB.name, 'conversation');
+			this.updateRelationship(pB, pA.agentKey, pA.name, 'conversation');
+		}
+	}
+
+	/** Agents attended a meeting together */
+	onMeeting(runtimeIds: number[]): void {
+		const participants = runtimeIds.map(id => this.getP(id)).filter((p): p is AgentPersonality => !!p);
+		for (const p of participants) {
+			if (Math.random() < 0.3) this.addThought(p, 'attended_meeting', MoodType.PRODUCTIVE);
+			// Build relationships with all other meeting participants
+			for (const other of participants) {
+				if (other === p) continue;
+				this.updateRelationship(p, other.agentKey, other.name, 'meeting');
+			}
+		}
+	}
+
+	/** Agent had a snack/ate (idle action) */
+	onEating(runtimeId: number): void {
+		const p = this.getP(runtimeId);
+		if (!p) return;
+		if (Math.random() < 0.2) this.addThought(p, 'had_snack', MoodType.RELAXED);
+	}
+
+	/** Agent visited furniture (idle action) */
+	onFurnitureVisit(runtimeId: number): void {
+		const p = this.getP(runtimeId);
+		if (!p) return;
+		if (Math.random() < 0.1) this.addThought(p, 'visited_furniture', MoodType.RELAXED);
 	}
 
 	/** Agent has been idle for a while */
@@ -550,6 +746,32 @@ export class PersonalityEngine {
 		if (p.thoughts.length > MAX_THOUGHTS) {
 			p.thoughts.pop();
 		}
+	}
+
+	private updateRelationship(p: AgentPersonality, otherKey: string, otherName: string, type: 'conversation' | 'meeting' | 'collaboration'): void {
+		let rel = p.relationships.find(r => r.agentId === otherKey);
+		if (!rel) {
+			rel = { agentId: otherKey, name: otherName, familiarity: 0, collaboration: 0, sentiment: 0 };
+			p.relationships.push(rel);
+		}
+		rel.name = otherName; // Keep name up to date
+		switch (type) {
+			case 'conversation':
+				rel.familiarity = Math.min(100, rel.familiarity + 2);
+				rel.sentiment = Math.min(50, rel.sentiment + 1);
+				break;
+			case 'meeting':
+				rel.familiarity = Math.min(100, rel.familiarity + 3);
+				rel.collaboration = Math.min(100, rel.collaboration + 5);
+				rel.sentiment = Math.min(50, rel.sentiment + 1);
+				break;
+			case 'collaboration':
+				rel.collaboration = Math.min(100, rel.collaboration + 8);
+				rel.familiarity = Math.min(100, rel.familiarity + 1);
+				rel.sentiment = Math.min(50, rel.sentiment + 2);
+				break;
+		}
+		this.scheduleSave();
 	}
 
 	private evolveTrait(p: AgentPersonality, trait: keyof PersonalityTraits, direction: 0 | 1): void {
@@ -751,5 +973,9 @@ function createDefaultPersonality(agentKey: string, name: string): AgentPersonal
 			activeTimeSec: 0,
 		},
 		moodHistory: [],
+		currentTurnTools: [],
+		currentTurnRetries: 0,
+		currentTurnFiles: [],
+		successStreak: 0,
 	};
 }

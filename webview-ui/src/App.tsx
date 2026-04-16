@@ -23,6 +23,7 @@ import { setWeather, getWeatherMode } from './office/engine/windowEffects.js'
 import { VacuumControlPanel } from './components/VacuumControlPanel.js'
 import { addBehaviourEntry } from './behaviourLog.js'
 import { WeatherClock } from './components/WeatherClock.js'
+import { PersonalityPanel } from './components/PersonalityPanel.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -31,6 +32,18 @@ const editorState = new EditorState()
 function getOfficeState(): OfficeState {
   if (!officeStateRef.current) {
     officeStateRef.current = new OfficeState()
+    // Wire idle interaction events to the backend personality engine
+    // Send personality keys (not numeric IDs) so the backend can match them
+    officeStateRef.current.onIdleEvent = (event) => {
+      const os = officeStateRef.current
+      if (!os) return
+      const keys = event.agentIds
+        .map(id => os.characters.get(id)?.definitionId)
+        .filter((k): k is string => !!k)
+      if (keys.length > 0) {
+        vscode.postMessage({ type: 'idleInteraction', interactionType: event.type, agentKeys: keys })
+      }
+    }
   }
   return officeStateRef.current
 }
@@ -130,7 +143,7 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, showNametags, setShowNametags, devLogs } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, showNametags, setShowNametags, devLogs, personalities } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
 
   // Report local character positions to the extension for cross-window sync
   useEffect(() => {
@@ -157,6 +170,7 @@ function App() {
     try { return localStorage.getItem('pixel-agents-debug') === 'true' } catch { return false }
   })
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false)
+  const [personalityPanelKey, setPersonalityPanelKey] = useState<string | null>(null)
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => {
     const next = !prev
@@ -523,6 +537,24 @@ function App() {
 
       <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />
 
+      {/* Personality panel open button */}
+      {Object.keys(personalities).length > 0 && personalityPanelKey === null && (
+        <button
+          onClick={() => setPersonalityPanelKey(Object.keys(personalities)[0])}
+          title="Agent personalities"
+          style={{
+            position: 'absolute', top: 8, right: 120,
+            zIndex: 50, background: 'var(--pixel-bg)',
+            border: '2px solid var(--pixel-border)', borderRadius: 0,
+            padding: '2px 6px', cursor: 'pointer',
+            fontSize: '18px', color: 'var(--pixel-text-dim)',
+            boxShadow: 'var(--pixel-shadow)',
+          }}
+        >
+          Agents
+        </button>
+      )}
+
       <ToolOverlay
         officeState={officeState}
         agentTools={agentTools}
@@ -533,6 +565,8 @@ function App() {
         panRef={editor.panRef}
         onShuffleAgent={handleShuffleAgent}
         alwaysShowActivities={viewOptions.alwaysShowActivities}
+        personalities={personalities}
+        onPersonalityClick={(agentKey) => setPersonalityPanelKey(agentKey)}
       />
 
       <BehaviourLog
@@ -541,6 +575,19 @@ function App() {
         currentWeatherMode={weatherMode}
         showWeather={viewOptions.showSunlight}
       />
+
+      {/* Personality panel — open via agent mood button or agent list */}
+      {personalityPanelKey !== null && (
+        <PersonalityPanel
+          personality={personalities[personalityPanelKey] ?? null}
+          allPersonalities={personalities}
+          selectedKey={personalityPanelKey}
+          onSelectAgent={(key) => setPersonalityPanelKey(key)}
+          onClose={() => setPersonalityPanelKey(null)}
+          officeState={officeState}
+          agentTools={agentTools}
+        />
+      )}
 
       {viewOptions.showVacuumPanel && (
         <VacuumControlPanel

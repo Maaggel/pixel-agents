@@ -106,9 +106,13 @@ export async function launchNewTerminal(
 		agents.set(id, agent);
 		const customName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
 		const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
+		// Build display name matching the webview nametag format
+		const displayProjectName = customName || projectName || 'Agent';
+		const agentCount = [...agents.values()].filter(a => a.id !== id).length;
+		const displayName = agentCount === 0 ? `${displayProjectName} Lead` : `${displayProjectName} #${agentCount + 1}`;
 		console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
 		webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
-		getPersonalityEngine()?.registerAgent(id, agent.agentDefinitionId || `agent-${id}`, folderName || projectName || `Agent ${id}`);
+		getPersonalityEngine()?.registerAgent(id, agent.agentDefinitionId || `agent-${id}`, folderName || displayName);
 	}
 
 	// Both id and agent are guaranteed non-null after the if/else above
@@ -302,7 +306,8 @@ export function restoreAgents(
 		knownJsonlFiles.add(p.jsonlFile);
 		restoredIds.add(p.id);
 		console.log(`[Pixel Agents] Restored agent ${p.id} → terminal "${terminal.name}"`);
-		getPersonalityEngine()?.registerAgent(p.id, p.agentDefinitionId || `agent-${p.id}`, p.folderName || `Agent ${p.id}`);
+		// Name will be corrected by writeSyncState — register with best available now
+		getPersonalityEngine()?.registerAgent(p.id, p.agentDefinitionId || `agent-${p.id}`, p.folderName || terminal.name || `Agent ${p.id}`);
 
 		if (p.id > maxId) maxId = p.id;
 		const match = p.terminalName.match(/#(\d+)$/);

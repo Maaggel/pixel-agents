@@ -459,6 +459,9 @@ window.acquireVsCodeApi = function() {
         currentLayout = msg.layout;
         sendToRelay({ type: 'saveLayout', layout: msg.layout });
       }
+      if (msg.type === 'idleInteraction') {
+        sendToRelay(msg);
+      }
       if (msg.type === 'exportLayout') {
         var data = msg.layout || currentLayout;
         if (data) {
@@ -547,6 +550,7 @@ function reconcileAgents(windows) {
         idleHint: agent.idleHint || null,
         workspaceName: win.workspaceName || '',
         workspaceFolder: win.workspaceFolder || '',
+        personalityKey: agent.personalityKey || null,
       });
     }
   }
@@ -565,6 +569,7 @@ function reconcileAgents(windows) {
         palette: hasExplicitPalette ? agent.palette : undefined,
         hueShift: hasExplicitPalette ? agent.hueShift : undefined,
         seatId: agent.seatId,
+        personalityKey: agent.personalityKey || undefined,
       };
       newFolderNames[id] = agent.name;
       newWorkspaceFolders[id] = agent.workspaceFolder;
@@ -581,6 +586,25 @@ function reconcileAgents(windows) {
       folderNames: newFolderNames,
       projectName: projectName,
     });
+  }
+
+  // Dispatch personality data from all windows
+  const allPersonalities = {};
+  for (const win of windows) {
+    if (win.personalities) {
+      for (const [key, data] of Object.entries(win.personalities)) {
+        allPersonalities[key] = data;
+      }
+    }
+  }
+  // Fix personality names to match actual agent display names
+  for (const [id, agent] of currentAgents) {
+    if (agent.personalityKey && allPersonalities[agent.personalityKey]) {
+      allPersonalities[agent.personalityKey].name = agent.name;
+    }
+  }
+  if (Object.keys(allPersonalities).length > 0) {
+    dispatch({ type: 'personalitiesUpdate', personalities: allPersonalities });
   }
 
   // Detect removed agents
@@ -1231,6 +1255,11 @@ wss.on('connection', (ws, req) => {
             if (other !== ws && other.readyState === 1) other.send(data)
           }
           console.log(`[Relay] Layout saved by viewer`)
+        }
+
+        // Forward idle interaction events to publishers (personality engine)
+        if (msg.type === 'idleInteraction') {
+          broadcastToPublishers(msg)
         }
 
         // Screenshot response for backup system

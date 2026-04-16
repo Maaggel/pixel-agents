@@ -349,6 +349,7 @@ function startSyncPolling() {
             idleHint: agent.idleHint || null,
             workspaceName: win.workspaceName || '',
             workspaceFolder: win.workspaceFolder || '',
+            personalityKey: agent.personalityKey || null,
           });
         }
       }
@@ -369,6 +370,7 @@ function startSyncPolling() {
             palette: hasExplicitPalette ? agent.palette : undefined,
             hueShift: hasExplicitPalette ? agent.hueShift : undefined,
             seatId: agent.seatId,
+            personalityKey: agent.personalityKey || undefined,
           };
           newFolderNames[id] = agent.name;
           newWorkspaceFolders[id] = agent.workspaceFolder;
@@ -385,6 +387,25 @@ function startSyncPolling() {
           folderNames: newFolderNames,
           projectName: projectName,
         });
+      }
+
+      // Dispatch personality data from all windows
+      const allPersonalities = {};
+      for (const win of windows) {
+        if (win.personalities) {
+          for (const [key, data] of Object.entries(win.personalities)) {
+            allPersonalities[key] = data;
+          }
+        }
+      }
+      // Fix personality names to match actual agent display names
+      for (const [id, agent] of currentAgents) {
+        if (agent.personalityKey && allPersonalities[agent.personalityKey]) {
+          allPersonalities[agent.personalityKey].name = agent.name;
+        }
+      }
+      if (Object.keys(allPersonalities).length > 0) {
+        dispatch({ type: 'personalitiesUpdate', personalities: allPersonalities });
       }
 
       // Detect removed agents — send agentClosed to despawn them

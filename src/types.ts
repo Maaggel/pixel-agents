@@ -67,6 +67,21 @@ export interface AgentState {
 	agentDefinitionId: string | null;
 	/** Workspace folder name (only set for multi-root workspaces) */
 	folderName?: string;
+	// ── Active skill tracking ──
+	/** Currently active Skill invocation. Persists until next user prompt, turn_duration, or replacement Skill. */
+	activeSkill: ActiveSkill | null;
+}
+
+/** Represents an active Skill tool invocation on an agent. */
+export interface ActiveSkill {
+	/** Full skill identifier (e.g. "flutter-craft:flutter-brainstorming" or "simplify") */
+	full: string;
+	/** Namespace portion (e.g. "flutter-craft") or null for bare skills */
+	namespace: string | null;
+	/** Skill name portion (e.g. "flutter-brainstorming") */
+	name: string;
+	/** Epoch ms when this skill was invoked */
+	startedAt: number;
 }
 
 /** Create a new AgentState with sensible defaults. Only id, projectDir, jsonlFile are required. */
@@ -102,6 +117,7 @@ export function createAgentState(opts: {
 		permissionSent: false,
 		agentDefinitionId: opts.agentDefinitionId ?? null,
 		folderName: opts.folderName,
+		activeSkill: null,
 	};
 }
 
@@ -150,6 +166,8 @@ export interface SyncAgentState {
 	visual?: SyncCharacterVisual;
 	/** Personality engine key for matching agent to personality data */
 	personalityKey?: string;
+	/** Currently active Skill, if any */
+	activeSkill?: ActiveSkill | null;
 }
 
 export interface SyncWindowState {

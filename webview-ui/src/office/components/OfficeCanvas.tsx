@@ -339,11 +339,18 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
   )
 
   const screenToTile = useCallback(
-    (clientX: number, clientY: number): { col: number; row: number } | null => {
+    (clientX: number, clientY: number, halfTileSnap?: boolean): { col: number; row: number } | null => {
       const pos = screenToWorld(clientX, clientY)
       if (!pos) return null
-      const col = Math.floor(pos.worldX / TILE_SIZE)
-      const row = Math.floor(pos.worldY / TILE_SIZE)
+      let col: number, row: number
+      if (halfTileSnap) {
+        // Snap to 0.5 increments (half-tile grid)
+        col = Math.round(pos.worldX / TILE_SIZE * 2) / 2
+        row = Math.round(pos.worldY / TILE_SIZE * 2) / 2
+      } else {
+        col = Math.floor(pos.worldX / TILE_SIZE)
+        row = Math.floor(pos.worldY / TILE_SIZE)
+      }
       const layout = officeState.getLayout()
       // In edit mode with floor/wall/erase tool, extend valid range by 1 for ghost border
       if (isEditMode && (editorState.activeTool === EditTool.TILE_PAINT || editorState.activeTool === EditTool.WALL_PAINT || editorState.activeTool === EditTool.ERASE || editorState.activeTool === EditTool.ZONE_PAINT)) {
@@ -389,7 +396,15 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       }
 
       if (isEditMode) {
-        const tile = screenToTile(e.clientX, e.clientY)
+        // Check if selected/dragged furniture supports half-tile placement
+        let halfTile = false
+        if (editorState.activeTool === EditTool.FURNITURE_PLACE) {
+          halfTile = !!getCatalogEntry(editorState.selectedFurnitureType)?.halfTilePlacement
+        } else if (editorState.dragUid) {
+          const draggedItem = officeState.getLayout().furniture.find(f => f.uid === editorState.dragUid)
+          if (draggedItem) halfTile = !!getCatalogEntry(draggedItem.type)?.halfTilePlacement
+        }
+        const tile = screenToTile(e.clientX, e.clientY, halfTile)
         if (tile) {
           editorState.ghostCol = tile.col
           editorState.ghostRow = tile.row
@@ -519,30 +534,41 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         return
       }
 
-      const tile = screenToTile(e.clientX, e.clientY)
+      // Use half-tile snapping if placing a half-tile item
+      const placeHalfTile = editorState.activeTool === EditTool.FURNITURE_PLACE
+        ? !!getCatalogEntry(editorState.selectedFurnitureType)?.halfTilePlacement
+        : false
+      const tile = screenToTile(e.clientX, e.clientY, placeHalfTile)
+      const worldPos = screenToWorld(e.clientX, e.clientY)
 
       // SELECT tool (or furniture tool with nothing selected): check for furniture hit to start drag
       const actAsSelect = editorState.activeTool === EditTool.SELECT ||
         (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.selectedFurnitureType === '')
-      if (actAsSelect && tile) {
+      if (actAsSelect && tile && worldPos) {
         const layout = officeState.getLayout()
-        // Find all furniture at clicked tile, prefer surface items (on top of desks)
+        // Use fractional world position for pixel-accurate hit detection (supports half-tile items)
+        const worldCol = worldPos.worldX / TILE_SIZE
+        const worldRow = worldPos.worldY / TILE_SIZE
+        // Find all furniture at clicked position, prefer surface items (on top of desks)
         let hitFurniture = null as typeof layout.furniture[0] | null
         for (const f of layout.furniture) {
           const entry = getCatalogEntry(f.type)
           if (!entry) continue
-          if (tile.col >= f.col && tile.col < f.col + entry.footprintW && tile.row >= f.row && tile.row < f.row + entry.footprintH) {
+          if (worldCol >= f.col && worldCol < f.col + entry.footprintW && worldRow >= f.row && worldRow < f.row + entry.footprintH) {
             if (!hitFurniture || entry.canPlaceOnSurfaces) hitFurniture = f
           }
         }
         if (hitFurniture) {
-          // Start drag — record offset from furniture's top-left
+          // Start drag — record fractional offset from furniture's top-left
+          const halfTile = !!getCatalogEntry(hitFurniture.type)?.halfTilePlacement
+          const snapCol = halfTile ? Math.round(worldCol * 2) / 2 : Math.floor(worldCol)
+          const snapRow = halfTile ? Math.round(worldRow * 2) / 2 : Math.floor(worldRow)
           editorState.startDrag(
             hitFurniture.uid,
-            tile.col,
-            tile.row,
-            tile.col - hitFurniture.col,
-            tile.row - hitFurniture.row,
+            snapCol,
+            snapRow,
+            snapCol - hitFurniture.col,
+            snapRow - hitFurniture.row,
           )
           return
         } else {

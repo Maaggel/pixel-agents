@@ -4,6 +4,7 @@ import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
 import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
+import { renderSkillAura, renderSkillBubble } from './skillAura.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
 import { computeLampLights, renderLampLights } from './lampLight.js'
@@ -236,6 +237,17 @@ export function renderScene(
         },
       })
       continue
+    }
+
+    // Skill aura — soft glow behind the character (before outline, behind character sprite)
+    if (ch.activeSkill) {
+      const auraCh = ch
+      drawables.push({
+        zY: charZY - OUTLINE_Z_SORT_OFFSET * 2, // behind outline and character
+        draw: (c) => {
+          renderSkillAura(c, auraCh, offsetX, offsetY, zoom, performance.now())
+        },
+      })
     }
 
     // White outline: full opacity for selected, 50% for hover
@@ -587,6 +599,12 @@ export function renderBubbles(
     if (alpha < 1.0) ctx.globalAlpha = alpha
     ctx.drawImage(cached, bubbleX, bubbleY)
     ctx.restore()
+  }
+  // Skill badges — small secondary bubbles shown above/beside the main bubble
+  for (const ch of characters) {
+    if (ch.activeSkill) {
+      renderSkillBubble(ctx, ch, offsetX, offsetY, zoom, BUBBLE_VERTICAL_OFFSET_PX)
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import type * as vscode from 'vscode';
-import type { AgentState } from './types.js';
+import type { AgentState, ActiveSkill } from './types.js';
 import {
 	cancelPermissionTimer,
 	startPermissionTimer,
@@ -99,6 +99,21 @@ export function clearMissingBubbleSpriteTools(): void {
 	saveToDisk();
 }
 
+/** Parse a skill identifier like "flutter-craft:flutter-brainstorming" into parts. */
+export function parseSkillIdentifier(full: string): ActiveSkill {
+	const trimmed = full.trim();
+	const colonIdx = trimmed.indexOf(':');
+	if (colonIdx > 0 && colonIdx < trimmed.length - 1) {
+		return {
+			full: trimmed,
+			namespace: trimmed.slice(0, colonIdx),
+			name: trimmed.slice(colonIdx + 1),
+			startedAt: Date.now(),
+		};
+	}
+	return { full: trimmed, namespace: null, name: trimmed, startedAt: Date.now() };
+}
+
 /** Refine Bash tool name based on the command being run */
 export function refineBashToolName(command: string): string {
 	const cmd = command.trim().toLowerCase();
@@ -170,6 +185,22 @@ export function processTranscriptLine(
 				for (const block of blocks) {
 					if (block.type === 'tool_use' && block.id) {
 						const rawToolName = block.name || '';
+						// Skill tool_use → activate a skill on this agent (no bubble/permission tracking)
+						if (rawToolName === 'Skill') {
+							const skillId = typeof block.input?.skill === 'string' ? block.input.skill : '';
+							if (skillId) {
+								agent.activeSkill = parseSkillIdentifier(skillId);
+								console.log(`[Pixel Agents] Agent ${agentId} skill activated: ${skillId}`);
+								webview?.postMessage({
+									type: 'agentSkillActivated',
+									id: agentId,
+									skill: agent.activeSkill,
+								});
+								sendAgentStateUpdate(agentId, agents, webview);
+							}
+							// Skip regular tool tracking — skill activation is its own event
+							continue;
+						}
 						const status = formatToolStatus(rawToolName, block.input || {});
 						// Refine Bash into subcategories (build, test, git, install)
 						const toolName = rawToolName === 'Bash'
@@ -285,6 +316,10 @@ export function processTranscriptLine(
 					agent.activeToolNames.clear();
 					agent.activeSubagentToolIds.clear();
 					agent.activeSubagentToolNames.clear();
+					if (agent.activeSkill) {
+						agent.activeSkill = null;
+						webview?.postMessage({ type: 'agentSkillCleared', id: agentId });
+					}
 					webview?.postMessage({ type: 'agentToolsClear', id: agentId });
 					webview?.postMessage({ type: 'agentStatus', id: agentId, status: 'active' });
 					sendAgentStateUpdate(agentId, agents, webview);

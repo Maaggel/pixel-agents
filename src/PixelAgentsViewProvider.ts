@@ -539,6 +539,7 @@ export class PixelAgentsBackend {
 				folderName: agent.folderName,
 				visual: this.characterVisuals.get(agent.id),
 				personalityKey: agent.agentDefinitionId || `agent-${agent.id}`,
+				activeSkill: agent.activeSkill,
 			});
 		}
 

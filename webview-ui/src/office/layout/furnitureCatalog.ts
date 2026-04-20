@@ -36,6 +36,7 @@ export interface LoadedAssetData {
     lightRadius?: number
     lightColor?: [number, number, number]
     isCeiling?: boolean
+    halfTilePlacement?: boolean
     lampRandomToggle?: boolean
     /** Resolved sprite ID for lamp overlay (rendered on top when lit) */
     lampOverlay?: string
@@ -193,6 +194,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.lightRadius !== undefined ? { lightRadius: asset.lightRadius } : {}),
       ...(asset.lightColor ? { lightColor: asset.lightColor } : {}),
       ...(asset.isCeiling ? { isCeiling: true } : {}),
+      ...(asset.halfTilePlacement ? { halfTilePlacement: true } : {}),
       ...(asset.lampRandomToggle ? { lampRandomToggle: true } : {}),
       ...(asset.lampOverlay && assets.sprites[asset.lampOverlay] ? { lampOverlaySprite: assets.sprites[asset.lampOverlay] } : {}),
       ...(meetingCycleSprites ? { meetingCycleSprites } : {}),

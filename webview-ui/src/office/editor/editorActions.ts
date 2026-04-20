@@ -122,14 +122,18 @@ export function canPlaceFurniture(
   const entry = getCatalogEntry(type)
   if (!entry) return false
 
+  // For half-tile items, use floored position for tile checks
+  const tileCol = Math.floor(col)
+  const tileRow = Math.floor(row)
+
   // Check bounds — wall items may extend above the map (top rows hang above the wall)
   if (entry.canPlaceOnWalls) {
-    const bottomRow = row + entry.footprintH - 1
-    if (col < 0 || col + entry.footprintW > layout.cols || bottomRow < 0 || bottomRow >= layout.rows) {
+    const bottomRow = tileRow + entry.footprintH - 1
+    if (tileCol < 0 || tileCol + entry.footprintW > layout.cols || bottomRow < 0 || bottomRow >= layout.rows) {
       return false
     }
   } else {
-    if (col < 0 || row < 0 || col + entry.footprintW > layout.cols || row + entry.footprintH > layout.rows) {
+    if (tileCol < 0 || tileRow < 0 || tileCol + entry.footprintW > layout.cols || tileRow + entry.footprintH > layout.rows) {
       return false
     }
   }
@@ -138,11 +142,11 @@ export function canPlaceFurniture(
   // For items with both canPlaceOnWalls + canPlaceOnSurfaces, check if bottom row is on walls
   let placingOnWall = false
   if (entry.canPlaceOnWalls) {
-    const bottomRow = row + entry.footprintH - 1
+    const bottomRow = tileRow + entry.footprintH - 1
     if (bottomRow >= 0 && bottomRow < layout.rows) {
       placingOnWall = true
       for (let dc = 0; dc < entry.footprintW; dc++) {
-        const idx = bottomRow * layout.cols + (col + dc)
+        const idx = bottomRow * layout.cols + (tileCol + dc)
         if (layout.tiles[idx] !== TileType.WALL) { placingOnWall = false; break }
       }
     }
@@ -154,11 +158,11 @@ export function canPlaceFurniture(
   const bgRows = entry.backgroundTiles || 0
   for (let dr = 0; dr < entry.footprintH; dr++) {
     if (dr < bgRows) continue
-    if (row + dr < 0) continue // row above map (wall items extending upward)
+    if (tileRow + dr < 0) continue // row above map (wall items extending upward)
     // Wall placement: only the bottom row must be on wall tiles; upper rows can overlap VOID/anything
     if (placingOnWall && dr < entry.footprintH - 1) continue
     for (let dc = 0; dc < entry.footprintW; dc++) {
-      const idx = (row + dr) * layout.cols + (col + dc)
+      const idx = (tileRow + dr) * layout.cols + (tileCol + dc)
       const tileVal = layout.tiles[idx]
       if (placingOnWall) {
         if (tileVal !== TileType.WALL) return false

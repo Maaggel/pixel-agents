@@ -46,6 +46,7 @@ export interface FurnitureAsset {
   lightRadius?: number
   lightColor?: [number, number, number]
   isCeiling?: boolean
+  halfTilePlacement?: boolean
   lampRandomToggle?: boolean
   lampOverlay?: string
   orientation?: string

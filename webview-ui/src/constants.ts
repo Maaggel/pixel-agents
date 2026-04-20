@@ -356,3 +356,35 @@ export const INTERACTION_CYCLE_INTERVAL_OFFSET_SEC = 2.0
 export const IDLE_CYCLE_DEFAULT_INTERVAL_SEC = 3.0
 /** Offset applied when only one bound (min or max) is defined for idle cycle interval */
 export const IDLE_CYCLE_INTERVAL_OFFSET_SEC = 2.0
+
+// ── Skill Aura / Overlay ────────────────────────────────────
+/** Per-namespace visual theming for active skills. Used by aura, bubble, overlay. */
+export interface SkillNamespaceTheme {
+  /** RGB aura color at peak alpha */
+  aura: [number, number, number]
+  /** CSS color for the overlay label + bubble tint */
+  label: string
+  /** Friendly label shown above the skill name (e.g. "Flutter Craft") */
+  displayName: string
+}
+export const SKILL_NAMESPACE_THEMES: Record<string, SkillNamespaceTheme> = {
+  'flutter-craft':          { aura: [80, 170, 240],  label: '#5aaef0', displayName: 'Flutter Craft' },
+  'flutter-mobile-design':  { aura: [240, 110, 190], label: '#f06ebe', displayName: 'Flutter Mobile Design' },
+  'superpowers':            { aura: [190, 130, 240], label: '#be82f0', displayName: 'Superpowers' },
+  'everything-claude-code': { aura: [240, 160, 80],  label: '#f0a050', displayName: 'Everything Claude Code' },
+  'flutter-craft-x':        { aura: [80, 200, 160],  label: '#50c8a0', displayName: 'Flutter Craft X' },
+}
+/** Theme for bare skills (no namespace) */
+export const SKILL_DEFAULT_THEME: SkillNamespaceTheme = {
+  aura: [220, 220, 220], label: '#e0e0e0', displayName: 'Skill',
+}
+/** Aura pulse period in seconds (full ebb-and-flow cycle) */
+export const SKILL_AURA_PULSE_PERIOD_SEC = 2.4
+/** Peak aura opacity at the center of the pulse */
+export const SKILL_AURA_PEAK_ALPHA = 0.45
+/** Minimum aura opacity (trough of pulse) */
+export const SKILL_AURA_MIN_ALPHA = 0.18
+/** Aura radius in sprite pixels (before zoom) */
+export const SKILL_AURA_RADIUS_PX = 22
+/** Extra vertical center offset for aura (negative = raise toward character chest) */
+export const SKILL_AURA_CENTER_OFFSET_Y = -10

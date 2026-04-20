@@ -80,10 +80,20 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
 
     // Surface items render in front of the desk they sit on
     if (entry.canPlaceOnSurfaces) {
-      for (let dr = 0; dr < entry.footprintH; dr++) {
-        for (let dc = 0; dc < entry.footprintW; dc++) {
-          const deskZ = deskZByTile.get(`${item.col + dc},${item.row + dr}`)
-          if (deskZ !== undefined && deskZ + 0.5 > zY) zY = deskZ + 0.5
+      // Floor col/row for desk tile lookup (half-tile items straddle tiles)
+      const baseCol = Math.floor(item.col)
+      const baseRow = Math.floor(item.row)
+      // Check both the base tile and the next tile (item may straddle two tiles)
+      const colsToCheck = item.col % 1 !== 0 ? [baseCol, baseCol + 1] : [baseCol]
+      const rowsToCheck = item.row % 1 !== 0 ? [baseRow, baseRow + 1] : [baseRow]
+      for (const checkRow of rowsToCheck) {
+        for (const checkCol of colsToCheck) {
+          for (let dr = 0; dr < entry.footprintH; dr++) {
+            for (let dc = 0; dc < entry.footprintW; dc++) {
+              const deskZ = deskZByTile.get(`${checkCol + dc},${checkRow + dr}`)
+              if (deskZ !== undefined && deskZ + 0.5 > zY) zY = deskZ + 0.5
+            }
+          }
         }
       }
     }

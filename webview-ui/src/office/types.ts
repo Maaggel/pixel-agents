@@ -20,6 +20,18 @@ export const TileType = {
 } as const
 export type TileType = (typeof TileType)[keyof typeof TileType]
 
+/** Active Claude Code Skill tracking on a character */
+export interface ActiveSkillInfo {
+  /** Full skill identifier (e.g. "flutter-craft:flutter-brainstorming") */
+  full: string
+  /** Namespace portion (e.g. "flutter-craft") or null for bare skills */
+  namespace: string | null
+  /** Skill name portion (e.g. "flutter-brainstorming") */
+  name: string
+  /** Epoch ms when this skill was invoked */
+  startedAt: number
+}
+
 /** Per-tile color settings for floor pattern colorization */
 export interface FloorColor {
   /** Hue: 0-360 in colorize mode, -180 to +180 in adjust mode */
@@ -245,6 +257,8 @@ export interface FurnitureCatalogEntry {
   lightColor?: [number, number, number]
   /** Whether this is a ceiling-mounted item (renders on top of everything except walls) */
   isCeiling?: boolean
+  /** Whether this item can be placed on half-tile boundaries (0.5 grid snap) */
+  halfTilePlacement?: boolean
   /** Whether this lamp toggles with a random delay (simulates human behavior) */
   lampRandomToggle?: boolean
   /** Resolved overlay sprite rendered on top of lamp when lit */
@@ -396,6 +410,8 @@ export interface Character {
   remoteToolStatus?: string | null
   /** Hint from backend: 'thinking' (fresh prompt) vs 'between-turns' (grace period) */
   idleHint?: 'thinking' | 'between-turns' | null
+  /** Currently active Claude Code Skill — aura, bubble, and overlay visuals key off this */
+  activeSkill?: ActiveSkillInfo | null
   /** Target state from the source window — remote characters animate locally using synced path */
   syncTarget?: {
     x: number

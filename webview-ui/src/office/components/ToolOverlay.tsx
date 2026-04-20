@@ -4,7 +4,7 @@ import type { OfficeState } from '../engine/officeState.js'
 import type { SubagentCharacter, PersonalitySnapshot } from '../../hooks/useExtensionMessages.js'
 import { TILE_SIZE, IdleActionType } from '../types.js'
 import { isSittingState } from '../engine/characters.js'
-import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
+import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX, SKILL_NAMESPACE_THEMES, SKILL_DEFAULT_THEME } from '../../constants.js'
 
 interface ToolOverlayProps {
   officeState: OfficeState
@@ -260,6 +260,30 @@ export function ToolOverlay({
                 />
               )}
               <div style={{ overflow: 'hidden' }}>
+                {ch.activeSkill && !isSub && (() => {
+                  const theme = ch.activeSkill.namespace
+                    ? (SKILL_NAMESPACE_THEMES[ch.activeSkill.namespace] ?? SKILL_DEFAULT_THEME)
+                    : SKILL_DEFAULT_THEME
+                  return (
+                    <span
+                      style={{
+                        fontSize: '16px',
+                        color: theme.label,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: 'block',
+                        fontWeight: 'bold',
+                        letterSpacing: 0.3,
+                      }}
+                      title={ch.activeSkill.full}
+                    >
+                      {'\u2726 '}{ch.activeSkill.name}
+                      <span style={{ fontWeight: 'normal', opacity: 0.7, marginLeft: 4 }}>
+                        {theme.displayName}
+                      </span>
+                    </span>
+                  )
+                })()}
                 <span
                   style={{
                     fontSize: isSub ? '20px' : '22px',

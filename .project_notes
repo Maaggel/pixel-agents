@@ -1,4 +1,7 @@
- - Remember and restore avatar palette/hueShift on respawn - some fchanges were made, but it doesn't work.
-
- - Add toilet stuff, and toilet zone (if needed)
- - Fix eating bouble sprite
+- Add toilet stuff, and toilet zone (if needed)
+- Fix eating bouble sprite
+- Furniture management tool
+- Pixel Agents Lead has itself in relations
+- "Stretching their legs" even when sitting etc.
+- Relationship isn't added after chatting
+- Orchestrator setup still doesn't seem to work as intended

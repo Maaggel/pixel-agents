@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import type { OfficeState } from '../office/engine/officeState.js'
-import type { OfficeLayout, ToolActivity } from '../office/types.js'
+import type { OfficeLayout, ToolActivity, ActiveSkillInfo } from '../office/types.js'
 import { extractToolName } from '../office/toolUtils.js'
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js'
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js'
@@ -522,6 +522,16 @@ export function useExtensionMessages(
           addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'finished — waiting for input', type: 'status' })
         }
         // Character FSM is now driven by agentStateUpdate — agentStatus only updates React state
+      } else if (msg.type === 'agentSkillActivated') {
+        const id = msg.id as number
+        const skill = msg.skill as ActiveSkillInfo
+        const ch = os.characters.get(id)
+        if (ch) ch.activeSkill = skill
+        addBehaviourEntry({ agentId: id, agentName: agentName(id), message: `activated skill ${skill.name}`, type: 'status' })
+      } else if (msg.type === 'agentSkillCleared') {
+        const id = msg.id as number
+        const ch = os.characters.get(id)
+        if (ch) ch.activeSkill = null
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number
         addBehaviourEntry({ agentId: id, agentName: agentName(id), message: 'needs permission to continue', type: 'status' })
@@ -785,6 +795,7 @@ export function useExtensionMessages(
           workspaceName: string
           workspaceFolder: string
           personalityKey?: string | null
+          activeSkill?: ActiveSkillInfo | null
           visual?: { x: number; y: number; tileCol: number; tileRow: number; state: string; dir: number; frame: number; moveProgress: number; path?: Array<{ col: number; row: number }> }
         }>
         const remoteIds = new Set(remoteList.map((a) => a.id))
@@ -809,6 +820,7 @@ export function useExtensionMessages(
             existing.idleHint = ra.idleHint ?? null
             existing.isActive = ra.isActive
             existing.isWaiting = ra.isWaiting
+            existing.activeSkill = ra.activeSkill ?? null
             // Update seat reservation if it changed
             if (existing.seatId !== ra.seatId) {
               // Release old seat
@@ -863,6 +875,7 @@ export function useExtensionMessages(
               ch.remoteToolStatus = ra.currentToolStatus
               ch.isActive = ra.isActive
               ch.isWaiting = ra.isWaiting
+              ch.activeSkill = ra.activeSkill ?? null
               // Snap to initial position on first appearance
               if (ra.visual) {
                 ch.x = ra.visual.x

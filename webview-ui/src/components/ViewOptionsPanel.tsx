@@ -10,6 +10,8 @@ export interface ViewOptions {
   autoFollowOnFocus: boolean
   showWeatherClock: boolean
   debugLampLights: boolean
+  /** Display mode: hide every overlay except the restore button */
+  hideUi: boolean
 }
 
 interface ViewOptionsPanelProps {
@@ -41,6 +43,36 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
   const toggle = useCallback((key: keyof ViewOptions) => {
     onChange({ ...options, [key]: !options[key] })
   }, [options, onChange])
+
+  // Display mode: this button is the only UI left on screen
+  if (options.hideUi) {
+    return (
+      <button
+        onClick={() => toggle('hideUi')}
+        title="Show UI"
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          zIndex: 50,
+          background: 'var(--pixel-bg)',
+          border: '2px solid var(--pixel-border)',
+          borderRadius: 0,
+          padding: '2px 6px',
+          cursor: 'pointer',
+          fontSize: '18px',
+          color: 'var(--pixel-text-dim)',
+          boxShadow: 'var(--pixel-shadow)',
+          opacity: isHovered ? 1 : 0.15,
+          transition: 'opacity 0.3s',
+        }}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        Show UI
+      </button>
+    )
+  }
 
   return (
     <div
@@ -91,6 +123,10 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
             transition: 'opacity 0.3s',
           }}
         >
+          <label style={{ ...labelStyle, marginBottom: 4, borderBottom: '1px solid var(--pixel-border)', paddingBottom: 4 }}>
+            <input type="checkbox" checked={options.hideUi} onChange={() => toggle('hideUi')} style={checkboxStyle} />
+            Hide all UI
+          </label>
           <label style={labelStyle}>
             <input type="checkbox" checked={options.showZoom} onChange={() => toggle('showZoom')} style={checkboxStyle} />
             Zoom controls

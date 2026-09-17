@@ -187,7 +187,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -197,13 +197,15 @@ function App() {
   const handleViewOptionsChange = useCallback((opts: ViewOptions) => {
     setViewOptions(opts)
     try { localStorage.setItem('pixel-agents-view-options', JSON.stringify(opts)) } catch { /* ignore */ }
+    // Hiding the UI while editing would strand the editor with no toolbar — leave edit mode first
+    if (opts.hideUi && editor.isEditMode) editor.handleToggleEditMode()
     // Sync nametags toggle with existing setting
     if (opts.showNametags !== showNametags) {
       setShowNametags(opts.showNametags)
       try { localStorage.setItem('pixel-agents-show-nametags', String(opts.showNametags)) } catch { /* ignore */ }
       vscode.postMessage({ type: 'setShowNametags', enabled: opts.showNametags })
     }
-  }, [showNametags, setShowNametags])
+  }, [showNametags, setShowNametags, editor])
 
   // Keep viewOptions.showNametags in sync with the extension-level setting
   useEffect(() => {
@@ -387,6 +389,9 @@ function App() {
     )
   }
 
+  // Display mode: only the canvas, in-world labels, and the "Show UI" button remain
+  const hideUi = viewOptions.hideUi
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
       <style>{`
@@ -418,14 +423,14 @@ function App() {
         autoFollowOnFocus={viewOptions.autoFollowOnFocus}
       />
 
-      {viewOptions.showZoom && (
+      {!hideUi && viewOptions.showZoom && (
         <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
       )}
 
-      <WeatherClock visible={viewOptions.showWeatherClock} />
+      <WeatherClock visible={!hideUi && viewOptions.showWeatherClock} />
 
       {/* Dev Console toggle button */}
-      <button
+      {!hideUi && <button
         onClick={handleToggleDevConsole}
         title="Toggle Dev Console"
         style={{
@@ -445,9 +450,9 @@ function App() {
         }}
       >
         DEV
-      </button>
+      </button>}
 
-      {isDevConsoleOpen && (
+      {!hideUi && isDevConsoleOpen && (
         <DevConsole
           logs={devLogs}
           version={devLogs.find(l => l.includes('] CONN'))?.match(/v[\d.]+ build \d+/)?.[0] ?? ''}
@@ -466,7 +471,7 @@ function App() {
         }}
       />
 
-      {viewOptions.showBottomBar && (
+      {!hideUi && viewOptions.showBottomBar && (
         <BottomToolbar
           isEditMode={editor.isEditMode}
           onToggleEditMode={editor.handleToggleEditMode}
@@ -478,11 +483,11 @@ function App() {
         />
       )}
 
-      {editor.isEditMode && editor.isDirty && (
+      {!hideUi && editor.isEditMode && editor.isDirty && (
         <EditActionBar editor={editor} editorState={editorState} />
       )}
 
-      {showRotateHint && (
+      {!hideUi && showRotateHint && (
         <div
           style={{
             position: 'absolute',
@@ -505,7 +510,7 @@ function App() {
         </div>
       )}
 
-      {editor.isEditMode && (() => {
+      {!hideUi && editor.isEditMode && (() => {
         // Compute selected furniture color from current layout
         const selUid = editorState.selectedFurnitureUid
         const selColor = selUid
@@ -538,7 +543,7 @@ function App() {
       <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />
 
       {/* Personality panel open button */}
-      {Object.keys(personalities).length > 0 && personalityPanelKey === null && (
+      {!hideUi && Object.keys(personalities).length > 0 && personalityPanelKey === null && (
         <button
           onClick={() => setPersonalityPanelKey(Object.keys(personalities)[0])}
           title="Agent personalities"
@@ -569,15 +574,17 @@ function App() {
         onPersonalityClick={(agentKey) => setPersonalityPanelKey(agentKey)}
       />
 
-      <BehaviourLog
-        onTriggerMeeting={handleTriggerMeeting}
-        onSetWeather={handleSetWeather}
-        currentWeatherMode={weatherMode}
-        showWeather={viewOptions.showSunlight}
-      />
+      {!hideUi && (
+        <BehaviourLog
+          onTriggerMeeting={handleTriggerMeeting}
+          onSetWeather={handleSetWeather}
+          currentWeatherMode={weatherMode}
+          showWeather={viewOptions.showSunlight}
+        />
+      )}
 
       {/* Personality panel — open via agent mood button or agent list */}
-      {personalityPanelKey !== null && (
+      {!hideUi && personalityPanelKey !== null && (
         <PersonalityPanel
           personality={personalities[personalityPanelKey] ?? null}
           allPersonalities={personalities}
@@ -589,7 +596,7 @@ function App() {
         />
       )}
 
-      {viewOptions.showVacuumPanel && (
+      {!hideUi && viewOptions.showVacuumPanel && (
         <VacuumControlPanel
           getVacuumDetails={getVacuumDetails}
           onStart={handleStartVacuum}
@@ -600,7 +607,7 @@ function App() {
         />
       )}
 
-      {isDebugMode && (
+      {!hideUi && isDebugMode && (
         <DebugView
           agents={agents}
           selectedAgent={selectedAgent}

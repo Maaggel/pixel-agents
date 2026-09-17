@@ -266,6 +266,8 @@ export interface FurnitureCatalogEntry {
   utensilDisposal?: string
   /** 'drink': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
   utensilUse?: 'drink' | 'food'
+  /** Side characters stand on to use/visit this item. Default: 'front' (below), or the rotation `orientation`. */
+  useSide?: 'front' | 'back' | 'left' | 'right'
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
   /** Whether this furniture casts sunlight beams (e.g. windows) */

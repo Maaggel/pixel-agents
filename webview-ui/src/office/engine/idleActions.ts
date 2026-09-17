@@ -139,7 +139,7 @@ function walkToFurniture(ch: Character, target: PlacedFurniture, ctx: IdleAction
   const footprint = ctx.getFurnitureFootprint(target.type)
   const fw = footprint ? footprint.w : 1
   const fh = footprint ? footprint.h : 1
-  const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles)
+  const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles, useSideFor(target.type))
   if (!adj) return false
   const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
   if (path.length === 0 && (ch.tileCol !== adj.col || ch.tileRow !== adj.row)) return false
@@ -178,14 +178,31 @@ function isCharacterInZone(ch: Character, zoneType: string, ctx: IdleActionConte
 }
 
 /** Find a walkable tile adjacent to the given furniture piece */
+type UseSide = 'front' | 'back' | 'left' | 'right'
+
+/** Which side of a furniture item characters should stand on: explicit `useSide`, else its rotation orientation, else front. */
+function useSideFor(type: string): UseSide {
+  const entry = getCatalogEntry(type)
+  if (entry?.useSide) return entry.useSide
+  const o = entry?.orientation
+  if (o === 'back' || o === 'left' || o === 'right') return o
+  return 'front'
+}
+
+/**
+ * Pick a walkable tile next to `furniture`. Tiles on `preferredSide` win when any is
+ * free; otherwise any free side (so a coffee machine against a wall still works).
+ * 'front' = below the footprint (sprites are drawn facing the viewer).
+ */
 function findAdjacentWalkableTile(
   furniture: PlacedFurniture,
   footprintW: number,
   footprintH: number,
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
+  preferredSide: UseSide = 'front',
 ): { col: number; row: number; facingDir: Direction } | null {
-  const candidates: Array<{ col: number; row: number; facingDir: Direction }> = []
+  const candidates: Array<{ col: number; row: number; facingDir: Direction; side: UseSide }> = []
   const rows = tileMap.length
   const cols = rows > 0 ? tileMap[0].length : 0
 
@@ -196,7 +213,7 @@ function findAdjacentWalkableTile(
     const belowCol = furniture.col + dc
     if (belowRow >= 0 && belowRow < rows && belowCol >= 0 && belowCol < cols) {
       if (!blockedTiles.has(`${belowCol},${belowRow}`) && tileMap[belowRow][belowCol] > 0 && tileMap[belowRow][belowCol] !== 8) {
-        candidates.push({ col: belowCol, row: belowRow, facingDir: Direction.UP })
+        candidates.push({ col: belowCol, row: belowRow, facingDir: Direction.UP, side: 'front' })
       }
     }
     // Above furniture
@@ -204,7 +221,7 @@ function findAdjacentWalkableTile(
     const aboveCol = furniture.col + dc
     if (aboveRow >= 0 && aboveRow < rows && aboveCol >= 0 && aboveCol < cols) {
       if (!blockedTiles.has(`${aboveCol},${aboveRow}`) && tileMap[aboveRow][aboveCol] > 0 && tileMap[aboveRow][aboveCol] !== 8) {
-        candidates.push({ col: aboveCol, row: aboveRow, facingDir: Direction.DOWN })
+        candidates.push({ col: aboveCol, row: aboveRow, facingDir: Direction.DOWN, side: 'back' })
       }
     }
   }
@@ -214,7 +231,7 @@ function findAdjacentWalkableTile(
     const leftRow = furniture.row + dr
     if (leftRow >= 0 && leftRow < rows && leftCol >= 0 && leftCol < cols) {
       if (!blockedTiles.has(`${leftCol},${leftRow}`) && tileMap[leftRow][leftCol] > 0 && tileMap[leftRow][leftCol] !== 8) {
-        candidates.push({ col: leftCol, row: leftRow, facingDir: Direction.RIGHT })
+        candidates.push({ col: leftCol, row: leftRow, facingDir: Direction.RIGHT, side: 'left' })
       }
     }
     // Right of furniture
@@ -222,13 +239,16 @@ function findAdjacentWalkableTile(
     const rightRow = furniture.row + dr
     if (rightRow >= 0 && rightRow < rows && rightCol >= 0 && rightCol < cols) {
       if (!blockedTiles.has(`${rightCol},${rightRow}`) && tileMap[rightRow][rightCol] > 0 && tileMap[rightRow][rightCol] !== 8) {
-        candidates.push({ col: rightCol, row: rightRow, facingDir: Direction.LEFT })
+        candidates.push({ col: rightCol, row: rightRow, facingDir: Direction.LEFT, side: 'right' })
       }
     }
   }
 
   if (candidates.length === 0) return null
-  return candidates[Math.floor(Math.random() * candidates.length)]
+  const preferred = candidates.filter(c => c.side === preferredSide)
+  const pool = preferred.length > 0 ? preferred : candidates
+  const pick = pool[Math.floor(Math.random() * pool.length)]
+  return { col: pick.col, row: pick.row, facingDir: pick.facingDir }
 }
 
 /** Find two adjacent walkable tiles for a conversation meeting point */
@@ -514,7 +534,7 @@ export function initIdleAction(
         const fw = footprint ? footprint.w : 1
         const fh = footprint ? footprint.h : 1
 
-        const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles)
+        const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles, useSideFor(target.type))
         if (!adj) continue
 
         const path = ctx.findPathUnblocked(ch, adj.col, adj.row)

@@ -44,6 +44,7 @@ interface Asset {
   utensilOrigin?: string
   utensilDisposal?: string
   utensilUse?: string
+  useSide?: string
 }
 
 interface CatalogEntry {
@@ -72,6 +73,8 @@ interface CatalogEntry {
   utensilDisposal?: string
   /** 'drink' (fetched on coffee breaks) or 'food' (fetched before eating in the kitchen) */
   utensilUse?: string
+  /** Side characters stand on to use/visit this item: 'front' (below), 'back' (above), 'left', 'right'. Default: front, or the rotation orientation. */
+  useSide?: string
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -222,6 +225,11 @@ for (const asset of assets) {
     // Background tiles
     if (asset.backgroundTiles && asset.backgroundTiles > 0) {
       entry.backgroundTiles = asset.backgroundTiles
+    }
+
+    // Side to stand on when using/visiting
+    if (asset.useSide && asset.useSide !== 'auto') {
+      entry.useSide = asset.useSide
     }
 
     // Utensil (dynamic item carried by characters)

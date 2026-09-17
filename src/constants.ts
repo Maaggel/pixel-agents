@@ -76,3 +76,18 @@ export const WORKSPACE_KEY_AGENTS = 'pixel-agents.agents';
 export const WORKSPACE_KEY_AGENT_SEATS = 'pixel-agents.agentSeats';
 export const WORKSPACE_KEY_LAYOUT = 'pixel-agents.layout';
 export const TERMINAL_NAME_PREFIX = 'Claude Code';
+
+// ── Headless Daemon ─────────────────────────────────────────
+export const DAEMON_CONFIG_FILE = 'daemon.json';
+export const DAEMON_STATE_DIR = 'daemon-state';
+export const DAEMON_STATE_WRITE_DEBOUNCE_MS = 500;
+export const DAEMON_REGISTRY_POLL_MS = 2000;
+/** Keep a project's backend (and its idle characters) alive this long after its last session exits. */
+export const DAEMON_PROJECT_LINGER_MS = 5 * 60 * 1000;
+
+// ── Claude Code Session Registry (~/.claude/sessions/<pid>.json) ──
+export const CLAUDE_DIR = '.claude';
+export const CLAUDE_SESSIONS_DIR = 'sessions';
+export const CLAUDE_PROJECTS_DIR = 'projects';
+/** Bytes read from the tail of a JSONL file when matching a process to a session by cwd (fallback mode). */
+export const SESSION_MATCH_TAIL_BYTES = 8192;

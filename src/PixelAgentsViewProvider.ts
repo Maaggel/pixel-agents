@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
+import type { Host, MessageSink, TerminalHandle } from './host.js';
 import { createAgentState } from './types.js';
 import type { AgentState, DetectedAgentDefinition, SyncAgentState, SyncWindowState } from './types.js';
 import { createSyncManager } from './syncManager.js';
@@ -13,7 +13,8 @@ import {
 	getProjectDirPath,
 } from './agentManager.js';
 import { ensureProjectScan, autoAdoptActiveConversations, startFileWatching, readNewLines } from './fileWatcher.js';
-import { WORKSPACE_KEY_AGENT_SEATS, JSONL_POLL_INTERVAL_MS, REMOTE_ID_BASE, SYNC_WRITE_DEBOUNCE_MS } from './constants.js';
+import type { LiveClaudeSession } from './claudeSessions.js';
+import { WORKSPACE_KEY_AGENT_SEATS, SYNC_WRITE_DEBOUNCE_MS, JSONL_POLL_INTERVAL_MS } from './constants.js';
 import { writeLayoutToFile, readLayoutFromFile, watchLayoutFile } from './layoutPersistence.js';
 import type { LayoutWatcher } from './layoutPersistence.js';
 import { detectAgents, ensurePixelAgentsConfig, watchAgentDefinitions, readPixelAgentsConfig, readSessionMarker } from './agentDetector.js';
@@ -25,8 +26,12 @@ import type { RelayClient } from './relayClient.js';
 
 /**
  * Backend-only agent manager. Tracks terminals, watches JSONL files,
- * writes sync files for the standalone viewer to read.
- * No longer a WebviewViewProvider — the standalone server is the sole UI.
+ * writes sync files for the standalone viewer to read and pushes state
+ * to the remote relay when configured.
+ *
+ * Environment access (workspace folders, terminals, settings, persistence)
+ * goes through the injected Host so the same class runs inside VS Code
+ * (vscodeHost.ts) and as a headless Linux service (daemon.ts).
  */
 export class PixelAgentsBackend {
 	nextAgentId = { current: 1 };
@@ -54,7 +59,7 @@ export class PixelAgentsBackend {
 	// Cross-window sync
 	private syncManager: SyncManager | null = null;
 	private relayClient: RelayClient | null = null;
-	private readonly windowId = PixelAgentsBackend.workspaceSyncId();
+	private readonly windowId: string;
 	private syncWriteTimer: ReturnType<typeof setTimeout> | null = null;
 	private stateTickInterval: ReturnType<typeof setInterval> | null = null;
 	private characterVisuals = new Map<number, import('./types.js').SyncCharacterVisual>();
@@ -62,8 +67,6 @@ export class PixelAgentsBackend {
 	// Personality engine
 	private personalityEngine: PersonalityEngine | null = null;
 
-	// Output channel — always visible in VS Code Output tab
-	private readonly outputChannel = vscode.window.createOutputChannel('Pixel Agents');
 
 	/**
 	 * No-op webview proxy. Functions that take a webview parameter call
@@ -71,7 +74,7 @@ export class PixelAgentsBackend {
 	 * sync file writes (so the standalone viewer sees the update) and
 	 * emit dev logs. No actual webview receives these messages.
 	 */
-	private readonly webviewProxy: vscode.Webview = {
+	private readonly webviewProxy: MessageSink = {
 		postMessage: (msg: unknown) => {
 			const m = msg as { type?: string };
 			if (m.type === 'agentStateUpdate') {
@@ -80,15 +83,20 @@ export class PixelAgentsBackend {
 			if (m.type === 'agentBound' || m.type === 'agentUnbound' || m.type === 'agentCreated' || m.type === 'agentClosed' || m.type === 'agentStatus') {
 				this.emitDevLog(msg as Record<string, unknown>);
 			}
-			return Promise.resolve(false);
 		},
-	} as unknown as vscode.Webview;
+	};
 
-	constructor(private readonly context: vscode.ExtensionContext) {}
+	constructor(private readonly host: Host) {
+		this.windowId = PixelAgentsBackend.workspaceSyncId(host);
+	}
+
+	private log(msg: string): void {
+		this.host.log(msg);
+	}
 
 	/** Deterministic sync ID from workspace folder path. Same workspace = same file. */
-	private static workspaceSyncId(): string {
-		const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'unknown';
+	private static workspaceSyncId(host: Host): string {
+		const folder = host.workspaceFolders()[0]?.path ?? 'unknown';
 		let hash = 0;
 		for (let i = 0; i < folder.length; i++) {
 			hash = ((hash << 5) - hash + folder.charCodeAt(i)) | 0;
@@ -99,7 +107,7 @@ export class PixelAgentsBackend {
 	}
 
 	private persistAgents = (): void => {
-		persistAgents(this.agents, this.context);
+		persistAgents(this.agents, this.host.workspaceState);
 		this.scheduleSyncWrite();
 	};
 
@@ -110,19 +118,17 @@ export class PixelAgentsBackend {
 	 * Called from activate(). No webview needed.
 	 */
 	init(): void {
-		const log = (msg: string) => this.outputChannel.appendLine(msg);
+		const log = (msg: string) => this.log(msg);
 		log(`[Init] Window ID: ${this.windowId}`);
-		log(`[Init] Workspace folders: ${(vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath).join(', ') || '(none)'}`);
+		log(`[Init] Workspace folders: ${this.host.workspaceFolders().map(f => f.path).join(', ') || '(none)'}`);
 
 		// Initialize personality engine (uses workspace sync ID as project hash)
 		this.personalityEngine = new PersonalityEngine(this.windowId);
 		setPersonalityEngine(this.personalityEngine);
 		log(`[Init] Personality engine initialized`);
 
-		this.registerTerminalEvents();
-
 		restoreAgents(
-			this.context,
+			this.host.workspaceState,
 			this.nextAgentId, this.nextTerminalIndex,
 			this.agents, this.knownJsonlFiles,
 			this.fileWatchers, this.pollingTimers, this.permissionTimers,
@@ -133,11 +139,13 @@ export class PixelAgentsBackend {
 
 		this.detectAgents();
 
-		// Scan all workspace folders for active JSONL files (multi-root support)
+		// Scan all workspace folders for active JSONL files (multi-root support).
+		// In registry mode the host feeds exact sessions via applyLiveSessions() instead.
 		const scannedDirs = new Set<string>();
-		const folders = vscode.workspace.workspaceFolders ?? [];
+		const folders = this.host.discovery() === 'registry' ? [] : this.host.workspaceFolders();
+		if (this.host.discovery() === 'registry') log('[Init] Discovery: session registry (heuristic JSONL scan disabled)');
 		for (const folder of folders) {
-			const projectDir = getProjectDirPath(folder.uri.fsPath);
+			const projectDir = getProjectDirPath(folder.path);
 			log(`[Init] Folder "${folder.name}" → projectDir: ${projectDir ?? '(null)'}`);
 			if (!projectDir || scannedDirs.has(projectDir)) continue;
 			scannedDirs.add(projectDir);
@@ -167,60 +175,185 @@ export class PixelAgentsBackend {
 		}
 	}
 
-	// ── Terminal lifecycle ────────────────────────────────────────
+	// ── Terminal lifecycle (called by the VS Code host; unused headless) ──
 
-	private terminalEventsRegistered = false;
-	private registerTerminalEvents(): void {
-		if (this.terminalEventsRegistered) return;
-		this.terminalEventsRegistered = true;
-
-		vscode.window.onDidChangeActiveTerminal((terminal) => {
-			this.activeAgentId.current = null;
-			if (!terminal) return;
-			for (const [id, agent] of this.agents) {
-				if (agent.terminalRef && agent.terminalRef === terminal) {
-					this.activeAgentId.current = id;
-					break;
-				}
+	/** The focused terminal changed. Pass null when no terminal is focused. */
+	onActiveTerminalChanged(terminal: TerminalHandle | null): void {
+		this.activeAgentId.current = null;
+		if (!terminal) return;
+		for (const [id, agent] of this.agents) {
+			if (agent.terminalRef && agent.terminalRef === terminal) {
+				this.activeAgentId.current = id;
+				break;
 			}
-		});
+		}
+	}
 
-		vscode.window.onDidCloseTerminal((closed) => {
-			for (const [id, agent] of this.agents) {
-				if (agent.terminalRef && agent.terminalRef === closed) {
-					if (this.activeAgentId.current === id) {
-						this.activeAgentId.current = null;
-					}
-					if (agent.agentDefinitionId) {
-						unbindAgent(
-							id, this.agents,
-							this.fileWatchers, this.pollingTimers, this.permissionTimers,
-							this.jsonlPollTimers,
-						);
-						this.webviewProxy.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
-					} else {
-						removeAgent(
-							id, this.agents,
-							this.fileWatchers, this.pollingTimers, this.permissionTimers,
-							this.jsonlPollTimers, this.persistAgents,
-						);
-						this.webviewProxy.postMessage({ type: 'agentClosed', id });
-					}
-					this.scheduleSyncWrite();
+	/** A terminal was closed — unbind definition agents, remove ad-hoc ones. */
+	onTerminalClosed(closed: TerminalHandle): void {
+		for (const [id, agent] of this.agents) {
+			if (agent.terminalRef && agent.terminalRef === closed) {
+				if (this.activeAgentId.current === id) {
+					this.activeAgentId.current = null;
 				}
+				if (agent.agentDefinitionId) {
+					unbindAgent(
+						id, this.agents,
+						this.fileWatchers, this.pollingTimers, this.permissionTimers,
+						this.jsonlPollTimers,
+					);
+					this.webviewProxy.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
+				} else {
+					removeAgent(
+						id, this.agents,
+						this.fileWatchers, this.pollingTimers, this.permissionTimers,
+						this.jsonlPollTimers, this.persistAgents,
+					);
+					this.webviewProxy.postMessage({ type: 'agentClosed', id });
+				}
+				this.scheduleSyncWrite();
 			}
-		});
+		}
+	}
+
+	// ── Registry-driven discovery (headless daemon) ──────────────
+
+	/**
+	 * Reconcile tracked agents with the exact set of live Claude Code sessions
+	 * for this backend's folder. Idempotent — call on every registry poll.
+	 *
+	 *  - A session already tracked: refresh pid/name only.
+	 *  - A new session: bind the unbound 'main' definition (Lead) first, then any
+	 *    single unbound definition, otherwise create an ad-hoc agent.
+	 *  - A tracked file whose session is gone: definition agents unbind (character
+	 *    goes idle), ad-hoc agents are removed.
+	 */
+	applyLiveSessions(sessions: LiveClaudeSession[]): void {
+		const folder = this.host.workspaceFolders()[0];
+		if (!folder) return;
+		const projectDir = getProjectDirPath(folder.path);
+		if (!projectDir) return;
+
+		const live = new Map<string, LiveClaudeSession>();
+		for (const s of sessions) {
+			if (path.resolve(s.cwd) === path.resolve(folder.path)) live.set(s.jsonlFile, s);
+		}
+		let changed = false;
+
+		// 1. Drop agents whose session has exited
+		for (const [id, agent] of [...this.agents]) {
+			if (!agent.jsonlFile || live.has(agent.jsonlFile)) continue;
+			if (agent.pid === null) continue; // not registry-bound (e.g. placeholder) — leave alone
+			this.log(`[Registry] Session ended: pid ${agent.pid} ${path.basename(agent.jsonlFile, '.jsonl').slice(0, 8)} → agent #${id}`);
+			if (this.activeAgentId.current === id) this.activeAgentId.current = null;
+			if (agent.agentDefinitionId) {
+				unbindAgent(id, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.jsonlPollTimers);
+				agent.pid = null;
+				agent.sessionName = null;
+				this.webviewProxy.postMessage({ type: 'agentUnbound', id, definitionId: agent.agentDefinitionId });
+			} else {
+				removeAgent(id, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.jsonlPollTimers, this.persistAgents);
+				this.webviewProxy.postMessage({ type: 'agentClosed', id });
+			}
+			changed = true;
+		}
+
+		// 2. Bind or refresh live sessions
+		for (const session of live.values()) {
+			const tracked = [...this.agents.values()].find(a => a.jsonlFile === session.jsonlFile);
+			if (tracked) {
+				const name = session.nameSource === 'user' ? session.name : null;
+				if (tracked.pid !== session.pid || tracked.sessionName !== name) {
+					tracked.pid = session.pid;
+					tracked.sessionName = name;
+					tracked.terminalRef = { name: `claude:${session.pid}` };
+					changed = true;
+				}
+				continue;
+			}
+			this.bindSession(session, projectDir);
+			changed = true;
+		}
+
+		if (changed) {
+			this.knownJsonlFiles.clear();
+			for (const f of live.keys()) this.knownJsonlFiles.add(f);
+			this.persistAgents();
+		}
+	}
+
+	private bindSession(session: LiveClaudeSession, projectDir: string): void {
+		const unbound = [...this.agents.values()].filter(a =>
+			a.agentDefinitionId && a.projectDir === projectDir && !a.jsonlFile && a.pid === null);
+		let agent: AgentState | undefined = unbound.find(a => a.agentDefinitionId === 'main');
+		if (!agent) {
+			// Session marker (written by VS Code launches) can name a specific definition
+			const marker = readSessionMarker(session.sessionId);
+			if (marker) agent = unbound.find(a => a.agentDefinitionId === marker.definitionId);
+		}
+		if (!agent && unbound.length === 1) agent = unbound[0];
+
+		// Start at the end of the transcript so history isn't replayed;
+		// lastDataAt from mtime so the display state reflects recent activity.
+		let fileOffset = 0;
+		let lastDataAt = Date.now();
+		try {
+			const stat = fs.statSync(session.jsonlFile);
+			fileOffset = stat.size;
+			lastDataAt = stat.mtimeMs;
+		} catch { /* transcript not written yet — poll below */ }
+
+		if (agent) {
+			agent.jsonlFile = session.jsonlFile;
+			agent.fileOffset = fileOffset;
+			agent.lineBuffer = '';
+		} else {
+			const id = this.nextAgentId.current++;
+			agent = createAgentState({ id, projectDir, jsonlFile: session.jsonlFile, fileOffset });
+			this.agents.set(id, agent);
+			this.webviewProxy.postMessage({ type: 'agentCreated', id, projectName: this.getProjectName() });
+		}
+		agent.pid = session.pid;
+		agent.sessionName = session.nameSource === 'user' ? session.name : null;
+		agent.terminalRef = { name: `claude:${session.pid}` };
+		agent.lastDataAt = lastDataAt;
+		this.activeAgentId.current = agent.id;
+
+		const shortId = session.sessionId.slice(0, 8);
+		this.log(`[Registry] Bound pid ${session.pid} session ${shortId} (${session.source}) → agent #${agent.id}${agent.agentDefinitionId ? ` "${agent.agentDefinitionId}"` : ''}${agent.sessionName ? ` name="${agent.sessionName}"` : ''}`);
+		if (agent.agentDefinitionId) {
+			this.webviewProxy.postMessage({ type: 'agentBound', id: agent.id, definitionId: agent.agentDefinitionId });
+		}
+
+		const agentId = agent.id;
+		if (fs.existsSync(session.jsonlFile)) {
+			startFileWatching(agentId, session.jsonlFile, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.webviewProxy);
+			readNewLines(agentId, this.agents, this.permissionTimers, this.webviewProxy);
+		} else {
+			// Brand-new session: transcript appears after the first prompt
+			const pollTimer = setInterval(() => {
+				const a = this.agents.get(agentId);
+				if (!a || a.jsonlFile !== session.jsonlFile) { clearInterval(pollTimer); this.jsonlPollTimers.delete(agentId); return; }
+				if (!fs.existsSync(session.jsonlFile)) return;
+				clearInterval(pollTimer);
+				this.jsonlPollTimers.delete(agentId);
+				this.log(`[Registry] Transcript appeared for pid ${session.pid} → agent #${agentId}`);
+				startFileWatching(agentId, session.jsonlFile, this.agents, this.fileWatchers, this.pollingTimers, this.permissionTimers, this.webviewProxy);
+				readNewLines(agentId, this.agents, this.permissionTimers, this.webviewProxy);
+			}, JSONL_POLL_INTERVAL_MS);
+			this.jsonlPollTimers.set(agentId, pollTimer);
+		}
 	}
 
 	// ── Agent detection ──────────────────────────────────────────
 
 	private detectAgents(): void {
-		const folders = vscode.workspace.workspaceFolders;
-		if (!folders) return;
+		const folders = this.host.workspaceFolders();
+		if (folders.length === 0) return;
 
 		const allDefinitions: DetectedAgentDefinition[] = [];
 		for (const folder of folders) {
-			const defs = detectAgents(folder.uri.fsPath);
+			const defs = detectAgents(folder.path);
 			allDefinitions.push(...defs);
 		}
 		this.detectedDefinitions = allDefinitions;
@@ -238,10 +371,10 @@ export class PixelAgentsBackend {
 		for (const id of this.agents.keys()) usedIds.add(id);
 
 		for (const folder of folders) {
-			const folderDefs = allDefinitions.filter(d => d.workspaceFolder === folder.uri.fsPath);
+			const folderDefs = allDefinitions.filter(d => d.workspaceFolder === folder.path);
 			if (folderDefs.length === 0) continue;
 
-			const config = ensurePixelAgentsConfig(folder.uri.fsPath, folderDefs, pickPalette);
+			const config = ensurePixelAgentsConfig(folder.path, folderDefs, pickPalette);
 
 			for (const def of folderDefs) {
 				const agentConfig = config.agents[def.definitionId];
@@ -287,12 +420,11 @@ export class PixelAgentsBackend {
 
 	private bindActiveAgentsToDefinitions(): void {
 		const unboundDefinitions = new Map<string, { definitionId: string; configId: number; projectDir: string }>();
+		const folders = this.host.workspaceFolders();
 		for (const def of this.detectedDefinitions) {
-			const folders = vscode.workspace.workspaceFolders;
-			if (!folders) continue;
 			for (const folder of folders) {
-				if (def.workspaceFolder !== folder.uri.fsPath) continue;
-					const config = readPixelAgentsConfig(folder.uri.fsPath);
+				if (def.workspaceFolder !== folder.path) continue;
+				const config = readPixelAgentsConfig(folder.path);
 				if (config?.agents[def.definitionId]) {
 					const configId = config.agents[def.definitionId].id;
 					const defProjectDir = getProjectDirPath(def.workspaceFolder);
@@ -367,10 +499,10 @@ export class PixelAgentsBackend {
 
 	private startAgentDefinitionWatchers(): void {
 		this.agentDefinitionWatcher?.dispose();
-		const folders = vscode.workspace.workspaceFolders;
-		if (!folders || folders.length === 0) return;
+		const folders = this.host.workspaceFolders();
+		if (folders.length === 0) return;
 		const folder = folders[0];
-		this.agentDefinitionWatcher = watchAgentDefinitions(folder.uri.fsPath, () => {
+		this.agentDefinitionWatcher = watchAgentDefinitions(folder.path, () => {
 			this.detectAgents();
 		});
 	}
@@ -391,21 +523,20 @@ export class PixelAgentsBackend {
 		this.scheduleSyncWrite();
 	}
 
-	exportDefaultLayout(): void {
+	/** Returns the written path. Throws when there is no saved layout or no workspace folder. */
+	exportDefaultLayout(): string {
 		const layout = readLayoutFromFile();
 		if (!layout) {
-			vscode.window.showWarningMessage('Pixel Agents: No saved layout found.');
-			return;
+			throw new Error('No saved layout found.');
 		}
-		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		const workspaceRoot = this.host.workspaceFolders()[0]?.path;
 		if (!workspaceRoot) {
-			vscode.window.showErrorMessage('Pixel Agents: No workspace folder found.');
-			return;
+			throw new Error('No workspace folder found.');
 		}
 		const targetPath = path.join(workspaceRoot, 'webview-ui', 'public', 'assets', 'default-layout.json');
 		const json = JSON.stringify(layout, null, 2);
 		fs.writeFileSync(targetPath, json, 'utf-8');
-		vscode.window.showInformationMessage(`Pixel Agents: Default layout exported to ${targetPath}`);
+		return targetPath;
 	}
 
 	// ── Cross-window sync ────────────────────────────────────────
@@ -416,13 +547,12 @@ export class PixelAgentsBackend {
 			// Remote window changes — standalone viewer reads sync files directly
 		});
 		// Initialize remote relay if configured
-		const relayUrl = vscode.workspace.getConfiguration('pixel-agents').get<string>('relayUrl', '');
-		const relayToken = vscode.workspace.getConfiguration('pixel-agents').get<string>('relayToken', '');
+		const { url: relayUrl, token: relayToken } = this.host.relaySettings();
 		if (relayUrl && relayToken) {
 			this.relayClient = createRelayClient(relayUrl, relayToken, (layout) => {
 				this.layoutWatcher?.markOwnWrite();
 				writeLayoutToFile(layout);
-			}, (msg) => this.outputChannel.appendLine(msg), (msg) => {
+			}, (msg) => this.log(msg), (msg) => {
 				// Route idle interaction events from the online viewer to the personality engine
 				// msg.agentKeys contains personality keys (not browser runtime IDs)
 				if (this.personalityEngine) {
@@ -463,18 +593,18 @@ export class PixelAgentsBackend {
 	}
 
 	private getProjectName(): string {
-		const custom = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
+		const custom = this.host.customProjectName();
 		if (custom) return custom;
-		return vscode.workspace.workspaceFolders?.[0]?.name ?? 'Project';
+		return this.host.workspaceFolders()[0]?.name ?? 'Project';
 	}
 
 	private writeSyncState(): void {
 		if (!this.syncManager) return;
-		const folder = vscode.workspace.workspaceFolders?.[0];
+		const folder = this.host.workspaceFolders()[0];
 		if (!folder) return;
 
-		const agentSeats = this.context.workspaceState.get<Record<string, { palette?: number; hueShift?: number; seatId?: string }>>(WORKSPACE_KEY_AGENT_SEATS, {});
-		const config = readPixelAgentsConfig(folder.uri.fsPath);
+		const agentSeats = this.host.workspaceState.get<Record<string, { palette?: number; hueShift?: number; seatId?: string }>>(WORKSPACE_KEY_AGENT_SEATS, {});
+		const config = readPixelAgentsConfig(folder.path);
 
 		const agents: SyncAgentState[] = [];
 		const coveredDefinitions = new Set<string>();
@@ -506,9 +636,10 @@ export class PixelAgentsBackend {
 				palette = ac.palette;
 				hueShift = ac.hueShift;
 				seatId = ac.seatId;
-				name = `${agentProjectName} ${ac.name}`;
+				name = agent.sessionName ?? `${agentProjectName} ${ac.name}`;
 				coveredDefinitions.add(agent.agentDefinitionId);
 			} else {
+				if (agent.sessionName) name = agent.sessionName;
 				unnamedCounts.set(agentProjectName, unnamedIdx + 1);
 				const meta = agentSeats[String(agent.id)];
 				if (meta) {
@@ -592,7 +723,7 @@ export class PixelAgentsBackend {
 		const state: SyncWindowState = {
 			windowId: this.windowId,
 			workspaceName: this.getProjectName(),
-			workspaceFolder: folder.uri.fsPath,
+			workspaceFolder: folder.path,
 			pid: process.pid,
 			agents,
 			updatedAt: Date.now(),
@@ -600,7 +731,7 @@ export class PixelAgentsBackend {
 		};
 		// Debug: log specialist activations
 		if (activeSpecialists.size > 0) {
-			this.outputChannel.appendLine(`[Sync] Active specialists: ${[...activeSpecialists].join(', ')}`);
+			this.log(`[Sync] Active specialists: ${[...activeSpecialists].join(', ')}`);
 		}
 		this.syncManager.writeState(state);
 		this.relayClient?.pushState(state);
@@ -625,8 +756,7 @@ export class PixelAgentsBackend {
 		}
 
 		if (!event) return;
-		const entry = `[${ts}] ${event.padEnd(6)} ${detail}`;
-		this.outputChannel.appendLine(entry);
+		this.log(`[${ts}] ${event.padEnd(6)} ${detail}`);
 	}
 
 	// ── Cleanup ──────────────────────────────────────────────────
@@ -660,6 +790,5 @@ export class PixelAgentsBackend {
 			clearInterval(timer);
 		}
 		this.projectScanTimers.clear();
-		this.outputChannel.dispose();
 	}
 }

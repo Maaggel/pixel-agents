@@ -1,4 +1,4 @@
-import type * as vscode from 'vscode';
+import type { MessageSink } from './host.js';
 import type { AgentState } from './types.js';
 import { PERMISSION_TIMER_DELAY_MS } from './constants.js';
 import { sendAgentStateUpdate } from './agentDisplayState.js';
@@ -19,7 +19,7 @@ export function startPermissionTimer(
 	agents: Map<number, AgentState>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
 	permissionExemptTools: Set<string>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	cancelPermissionTimer(agentId, permissionTimers);
 	const timer = setTimeout(() => {

@@ -4,6 +4,7 @@ const path = require("path");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const daemonOnly = process.argv.includes('--daemon-only');
 
 /**
  * Copy assets folder to dist/assets
@@ -54,6 +55,30 @@ async function bundleStandalone() {
 }
 
 /**
+ * Bundle the headless daemon into dist/pixel-agents-daemon.cjs.
+ * 'vscode' is deliberately NOT external here — if any backend module
+ * imports it, this build fails, which is the guard we want.
+ * 'ws' IS bundled so the file is fully self-contained on Node 18/20
+ * (Node 22+ uses the global WebSocket and never touches it).
+ */
+async function bundleDaemon() {
+	await esbuild.build({
+		entryPoints: ['src/daemon.ts'],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'node',
+		outfile: 'dist/pixel-agents-daemon.cjs',
+		logLevel: 'silent',
+		banner: { js: '#!/usr/bin/env node' },
+	});
+	fs.chmodSync('dist/pixel-agents-daemon.cjs', 0o755);
+	console.log('✓ Bundled src/daemon.ts → dist/pixel-agents-daemon.cjs');
+}
+
+/**
  * @type {import('esbuild').Plugin}
  */
 const esbuildProblemMatcherPlugin = {
@@ -74,6 +99,10 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
+	if (daemonOnly) {
+		await bundleDaemon();
+		return;
+	}
 	const ctx = await esbuild.context({
 		entryPoints: [
 			'src/extension.ts'
@@ -85,7 +114,7 @@ async function main() {
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode'],
+		external: ['vscode', 'ws'],
 		logLevel: 'silent',
 		plugins: [
 			/* add to the end of plugins array */
@@ -97,8 +126,9 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
-		// Bundle standalone server + copy assets after extension build
+		// Bundle standalone server + daemon, copy assets after extension build
 		await bundleStandalone();
+		await bundleDaemon();
 		copyAssets();
 	}
 }

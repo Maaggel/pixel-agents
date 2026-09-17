@@ -7,17 +7,22 @@ VS Code extension with embedded React webview: pixel art office where AI agents 
 ## Architecture
 
 ```
-src/                          — Extension backend (Node.js, VS Code API)
-  constants.ts                — All backend magic numbers/strings (timing, truncation, asset parsing, VS Code IDs)
-  extension.ts                — Entry: activate(), deactivate()
-  PixelAgentsViewProvider.ts   — WebviewViewProvider, message dispatch, asset loading
+src/                          — Backend (Node.js). Only extension.ts + vscodeHost.ts may import 'vscode'
+  constants.ts                — All backend magic numbers/strings (timing, truncation, asset parsing, VS Code IDs, daemon)
+  extension.ts                — VS Code entry: activate(), deactivate() — builds a Host, starts PixelAgentsBackend
+  daemon.ts                   — Headless entry (Linux service): ProjectManager polls the session registry, one backend per live project cwd → relay
+  claudeSessions.ts           — Live `claude` process discovery: ~/.claude/sessions/<pid>.json (+procStart pid-reuse guard), /proc fallback
+  host.ts                     — Host interface: discovery mode, workspace folders, settings, terminals, KeyValueStore, log. MessageSink/TerminalHandle types
+  vscodeHost.ts               — Host implementation over the VS Code API + terminal event wiring
+  PixelAgentsViewProvider.ts   — PixelAgentsBackend: agent tracking, sync writes, relay push (takes a Host; no vscode)
   assetLoader.ts              — PNG parsing, sprite conversion, catalog building, default layout loading
-  agentManager.ts             — Terminal lifecycle: launch, remove, restore, persist
+  agentManager.ts             — Agent lifecycle: unbind, remove, restore, persist; getProjectDirPath (cwd → ~/.claude/projects hash)
   layoutPersistence.ts        — User-level layout file I/O (~/.pixel-agents/layout.json), migration, cross-window watching
   fileWatcher.ts              — fs.watch + polling, readNewLines, /clear detection, terminal adoption
   transcriptParser.ts         — JSONL parsing: tool_use/tool_result → webview messages
   timerManager.ts             — Waiting/permission timer logic
   types.ts                    — Shared interfaces (AgentState, PersistedAgent)
+  relayClient.ts              — WebSocket publisher → relay (global WebSocket, falls back to `ws` package)
 
 webview-ui/src/               — React + TypeScript (Vite)
   constants.ts                — All webview magic numbers/strings (grid, animation, rendering, camera, zoom, editor, game logic, notification sound)
@@ -70,6 +75,10 @@ scripts/                      — 7-stage asset extraction pipeline
   generate-walls.js           — Generate walls.png (4×4 grid of 16×32 auto-tile pieces)
   wall-tile-editor.html       — Browser UI for editing wall tile appearance
 ```
+
+**Headless daemon**: `npm run build` also emits `dist/pixel-agents-daemon.cjs` (bundled WITHOUT `vscode` external — a `vscode` import anywhere in the backend fails the build). `npm run package:daemon` builds only the daemon (no webview) and tars it with `daemon/install.sh` into `build/pixel-agents-daemon-<ver>.tar.gz` (~60 KB, `ws` bundled so Node 18+ suffices). On the Claude Code server, as the user running `claude`: `./install.sh --relay-url … --relay-token …` → copies to `~/.local/share/pixel-agents-daemon/`, writes `~/.pixel-agents/daemon.json`, installs+starts a user systemd unit, enables linger (may need `sudo loginctl enable-linger`); `--system` for a system unit, `--uninstall` to remove. No folder list needed. Persists to `~/.pixel-agents/daemon-state/`. Full guide: `daemon/README.md`.
+
+**Session discovery** (`Host.discovery()`): `'terminals'` (VS Code) keeps the terminal + JSONL-mtime heuristics in `fileWatcher.ts`. `'registry'` (daemon) disables those and instead `claudeSessions.ts` reads `~/.claude/sessions/<pid>.json` (pid, sessionId, cwd, name, procStart) every 2s + on `fs.watch`; an entry counts only if the pid is alive AND `/proc/<pid>/stat` starttime == `procStart` (pid-reuse guard); duplicates collapse on sessionId. Fallback when the registry dir is missing: `/proc` scan for `claude` cmdlines → cwd → newest non-ended JSONL whose tail contains `"cwd":<cwd>`. `PixelAgentsBackend.applyLiveSessions()` reconciles: new session → bind unbound `main` definition, else marker/single unbound definition, else ad-hoc agent (offset = file size, `lastDataAt` = mtime, polls if the JSONL doesn't exist yet); vanished session → definition agents unbind (idle), ad-hoc removed. Registry-bound agents get `pid`, `sessionName` (user-set names win on nametags) and a synthetic `terminalRef` `{name:'claude:<pid>'}` so terminal-aware logic (orchestrator detection, dedup) treats them as live. `ProjectManager` in `daemon.ts` creates a backend per cwd on first sighting and disposes it `DAEMON_PROJECT_LINGER_MS` (5 min) after its last session exits; `--folder` pins, `--include`/`--exclude` filter by cwd prefix; `SIGUSR1` logs a tracking summary.
 
 ## Core Concepts
 

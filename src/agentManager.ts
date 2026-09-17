@@ -1,19 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as vscode from 'vscode';
+import { getHost } from './host.js';
+import type { KeyValueStore, MessageSink } from './host.js';
 import { createAgentState } from './types.js';
 import type { AgentState, PersistedAgent } from './types.js';
 import { cancelPermissionTimer } from './timerManager.js';
-import { startFileWatching, readNewLines, ensureProjectScan } from './fileWatcher.js';
-import { writeSessionMarker } from './agentDetector.js';
-import { JSONL_POLL_INTERVAL_MS, TERMINAL_NAME_PREFIX, WORKSPACE_KEY_AGENTS, WORKSPACE_KEY_AGENT_SEATS } from './constants.js';
+import { startFileWatching, ensureProjectScan } from './fileWatcher.js';
+import { JSONL_POLL_INTERVAL_MS, WORKSPACE_KEY_AGENTS } from './constants.js';
 import { getPersonalityEngine } from './personalityEngine.js';
-import { migrateAndLoadLayout } from './layoutPersistence.js';
-import { computeAgentDisplayState, sendAgentStateUpdate } from './agentDisplayState.js';
 
 export function getProjectDirPath(cwd?: string): string | null {
-	const workspacePath = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	const workspacePath = cwd || getHost().workspaceFolders()[0]?.path;
 	if (!workspacePath) return null;
 	// Match Claude Code's hashing: replace : \ / and spaces with -
 	const dirName = workspacePath.replace(/[:\\\/ ]/g, '-');
@@ -33,114 +31,7 @@ export function getProjectDirPath(cwd?: string): string | null {
 			}
 		} catch { /* parent doesn't exist */ }
 	}
-	console.log(`[Pixel Agents] Project dir: ${workspacePath} → ${dirName}`);
 	return projectDir;
-}
-
-export async function launchNewTerminal(
-	nextAgentIdRef: { current: number },
-	nextTerminalIndexRef: { current: number },
-	agents: Map<number, AgentState>,
-	activeAgentIdRef: { current: number | null },
-	knownJsonlFiles: Set<string>,
-	fileWatchers: Map<number, fs.FSWatcher>,
-	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
-	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	jsonlPollTimers: Map<number, ReturnType<typeof setInterval>>,
-	projectScanTimers: Map<string, ReturnType<typeof setInterval>>,
-	webview: vscode.Webview | undefined,
-	persistAgents: () => void,
-	folderPath?: string,
-): Promise<void> {
-	const folders = vscode.workspace.workspaceFolders;
-	const cwd = folderPath || folders?.[0]?.uri.fsPath;
-	const isMultiRoot = !!(folders && folders.length > 1);
-	const idx = nextTerminalIndexRef.current++;
-	const terminal = vscode.window.createTerminal({
-		name: `${TERMINAL_NAME_PREFIX} #${idx}`,
-		cwd,
-	});
-	terminal.show();
-
-	const sessionId = crypto.randomUUID();
-	terminal.sendText(`claude --session-id ${sessionId}`);
-
-	const projectDir = getProjectDirPath(cwd);
-	if (!projectDir) {
-		console.log(`[Pixel Agents] No project dir, cannot track agent`);
-		return;
-	}
-
-	// Pre-register expected JSONL file so project scan won't treat it as a /clear file
-	const expectedFile = path.join(projectDir, `${sessionId}.jsonl`);
-	knownJsonlFiles.add(expectedFile);
-
-	// Try to bind to an existing unbound detected agent in this project (has agentDefinitionId but no terminal/JSONL)
-	let id: number | null = null;
-	let agent: AgentState | null = null;
-	for (const [existingId, existingAgent] of agents) {
-		if (existingAgent.agentDefinitionId && !existingAgent.terminalRef && !existingAgent.jsonlFile
-			&& existingAgent.projectDir === projectDir) {
-			// Found unbound detected agent — bind terminal to it
-			existingAgent.terminalRef = terminal;
-			existingAgent.jsonlFile = expectedFile;
-			existingAgent.fileOffset = 0;
-			existingAgent.lineBuffer = '';
-			id = existingId;
-			agent = existingAgent;
-			console.log(`[Pixel Agents] Agent ${id}: bound new terminal to detected agent "${existingAgent.agentDefinitionId}"`);
-			webview?.postMessage({ type: 'agentBound', id, definitionId: existingAgent.agentDefinitionId });
-			sendAgentStateUpdate(id, agents, webview);
-			// Write session marker so rebinding works after reload
-			const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-			if (wsFolder) writeSessionMarker(sessionId, existingAgent.agentDefinitionId, wsFolder);
-			break;
-		}
-	}
-
-	if (!agent) {
-		// No detected agent to bind to — create a new ad-hoc agent
-		id = nextAgentIdRef.current++;
-		const folderName = isMultiRoot && cwd ? path.basename(cwd) : undefined;
-		agent = createAgentState({ id, projectDir, jsonlFile: expectedFile, terminalRef: terminal, folderName });
-		agents.set(id, agent);
-		const customName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
-		const projectName = folderPath ? path.basename(folderPath) : (customName || folders?.[0]?.name) || undefined;
-		// Build display name matching the webview nametag format
-		const displayProjectName = customName || projectName || 'Agent';
-		const agentCount = [...agents.values()].filter(a => a.id !== id).length;
-		const displayName = agentCount === 0 ? `${displayProjectName} Lead` : `${displayProjectName} #${agentCount + 1}`;
-		console.log(`[Pixel Agents] Agent ${id}: created for terminal ${terminal.name}`);
-		webview?.postMessage({ type: 'agentCreated', id, folderName, projectName });
-		getPersonalityEngine()?.registerAgent(id, agent.agentDefinitionId || `agent-${id}`, folderName || displayName);
-	}
-
-	// Both id and agent are guaranteed non-null after the if/else above
-	const agentId = id!;
-	const boundAgent = agent!;
-
-	activeAgentIdRef.current = agentId;
-	persistAgents();
-
-	ensureProjectScan(
-		projectDir, knownJsonlFiles, projectScanTimers, activeAgentIdRef,
-		nextAgentIdRef, agents, fileWatchers, pollingTimers, permissionTimers,
-		webview, persistAgents,
-	);
-
-	// Poll for the specific JSONL file to appear
-	const pollTimer = setInterval(() => {
-		try {
-			if (fs.existsSync(boundAgent.jsonlFile)) {
-				console.log(`[Pixel Agents] Agent ${agentId}: found JSONL file ${path.basename(boundAgent.jsonlFile)}`);
-				clearInterval(pollTimer);
-				jsonlPollTimers.delete(agentId);
-				startFileWatching(agentId, boundAgent.jsonlFile, agents, fileWatchers, pollingTimers, permissionTimers, webview);
-				readNewLines(agentId, agents, permissionTimers, webview);
-			}
-		} catch { /* file may not exist yet */ }
-	}, JSONL_POLL_INTERVAL_MS);
-	jsonlPollTimers.set(agentId, pollTimer);
 }
 
 /**
@@ -229,7 +120,7 @@ export function removeAgent(
 
 export function persistAgents(
 	agents: Map<number, AgentState>,
-	context: vscode.ExtensionContext,
+	store: KeyValueStore,
 ): void {
 	const persisted: PersistedAgent[] = [];
 	for (const agent of agents.values()) {
@@ -242,11 +133,11 @@ export function persistAgents(
 			folderName: agent.folderName,
 		});
 	}
-	context.workspaceState.update(WORKSPACE_KEY_AGENTS, persisted);
+	store.update(WORKSPACE_KEY_AGENTS, persisted);
 }
 
 export function restoreAgents(
-	context: vscode.ExtensionContext,
+	store: KeyValueStore,
 	nextAgentIdRef: { current: number },
 	nextTerminalIndexRef: { current: number },
 	agents: Map<number, AgentState>,
@@ -257,13 +148,13 @@ export function restoreAgents(
 	jsonlPollTimers: Map<number, ReturnType<typeof setInterval>>,
 	projectScanTimers: Map<string, ReturnType<typeof setInterval>>,
 	activeAgentIdRef: { current: number | null },
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	doPersist: () => void,
 ): void {
-	const rawPersisted = context.workspaceState.get<PersistedAgent[]>(WORKSPACE_KEY_AGENTS, []);
+	const rawPersisted = store.get<PersistedAgent[]>(WORKSPACE_KEY_AGENTS, []);
 	if (rawPersisted.length === 0) return;
 
-	const liveTerminals = vscode.window.terminals;
+	const liveTerminals = getHost().terminals();
 	console.log(`[Pixel Agents] restoreAgents: ${rawPersisted.length} persisted, ${liveTerminals.length} live terminals`);
 
 	// ── Only restore agents that have a matching live terminal. ──
@@ -344,7 +235,7 @@ export function restoreAgents(
 
 	// Immediately persist only the restored agents — wipes any accumulated phantoms.
 	// This runs synchronously before any async state update from dispose() could interfere.
-	context.workspaceState.update(WORKSPACE_KEY_AGENTS,
+	store.update(WORKSPACE_KEY_AGENTS,
 		rawPersisted.filter(p => restoredIds.has(p.id)).map(p => ({
 			id: p.id, terminalName: p.terminalName,
 			jsonlFile: p.jsonlFile, projectDir: p.projectDir,
@@ -370,83 +261,4 @@ export function restoreAgents(
 			webview, doPersist,
 		);
 	}
-}
-
-export function sendExistingAgents(
-	agents: Map<number, AgentState>,
-	context: vscode.ExtensionContext,
-	webview: vscode.Webview | undefined,
-): void {
-	if (!webview) return;
-	const agentIds: number[] = [];
-	for (const id of agents.keys()) {
-		agentIds.push(id);
-	}
-	agentIds.sort((a, b) => a - b);
-
-	// Include persisted palette/seatId from separate key
-	const agentMeta = context.workspaceState.get<Record<string, { palette?: number; seatId?: string }>>(WORKSPACE_KEY_AGENT_SEATS, {});
-
-	// Include folderName per agent
-	const folderNames: Record<number, string> = {};
-	for (const [id, agent] of agents) {
-		if (agent.folderName) {
-			folderNames[id] = agent.folderName;
-		}
-	}
-	const customProjectName = vscode.workspace.getConfiguration('pixel-agents').get<string>('projectName', '');
-	const projectName = customProjectName || vscode.workspace.workspaceFolders?.[0]?.name;
-	console.log(`[Pixel Agents] sendExistingAgents: agents=${JSON.stringify(agentIds)}, meta=${JSON.stringify(agentMeta)}`);
-
-	webview.postMessage({
-		type: 'existingAgents',
-		agents: agentIds,
-		agentMeta,
-		folderNames,
-		projectName,
-	});
-
-	sendCurrentAgentStatuses(agents, webview);
-}
-
-export function sendCurrentAgentStatuses(
-	agents: Map<number, AgentState>,
-	webview: vscode.Webview | undefined,
-): void {
-	if (!webview) return;
-	for (const [agentId, agent] of agents) {
-		// Re-send active tools (for React UI tool list)
-		for (const [toolId, status] of agent.activeToolStatuses) {
-			webview.postMessage({
-				type: 'agentToolStart',
-				id: agentId,
-				toolId,
-				status,
-			});
-		}
-		// Re-send idle status (for React UI status display)
-		const state = computeAgentDisplayState(agent);
-		if (!state.isActive) {
-			webview.postMessage({
-				type: 'agentStatus',
-				id: agentId,
-				status: 'waiting',
-			});
-		}
-		// Send consolidated display state (drives character FSM)
-		sendAgentStateUpdate(agentId, agents, webview);
-	}
-}
-
-export function sendLayout(
-	context: vscode.ExtensionContext,
-	webview: vscode.Webview | undefined,
-	defaultLayout?: Record<string, unknown> | null,
-): void {
-	if (!webview) return;
-	const layout = migrateAndLoadLayout(context, defaultLayout);
-	webview.postMessage({
-		type: 'layoutLoaded',
-		layout,
-	});
 }

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import type * as vscode from 'vscode';
+import type { MessageSink } from './host.js';
 import type { AgentState, ActiveSkill } from './types.js';
 import {
 	cancelPermissionTimer,
@@ -160,7 +160,7 @@ export function processTranscriptLine(
 	line: string,
 	agents: Map<number, AgentState>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;
@@ -370,7 +370,7 @@ function processProgressRecord(
 	record: Record<string, unknown>,
 	agents: Map<number, AgentState>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;

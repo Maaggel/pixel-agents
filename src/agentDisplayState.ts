@@ -1,4 +1,4 @@
-import type * as vscode from 'vscode';
+import type { MessageSink } from './host.js';
 import type { AgentState } from './types.js';
 import { TEXT_IDLE_DELAY_MS, THINKING_GRACE_MS, TOOL_ICON_HOLD_MS, MID_TURN_THINKING_GRACE_MS } from './constants.js';
 
@@ -163,7 +163,7 @@ export function registerDisplayStateCallback(cb: () => void): void {
 export function sendAgentStateUpdate(
 	agentId: number,
 	agents: Map<number, AgentState>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;
@@ -185,7 +185,7 @@ let lastStates = new Map<number, string>();
 
 export function tickAllAgents(
 	agents: Map<number, AgentState>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	const now = Date.now();
 	const totalAgents = agents.size;

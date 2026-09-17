@@ -1,0 +1,7 @@
+{
+  "relayUrl": "wss://yourserver.com/pixelagents/ws",
+  "relayToken": "your-secret-key-here",
+  "include": ["/home/you/projects"],
+  "exclude": [],
+  "folders": []
+}

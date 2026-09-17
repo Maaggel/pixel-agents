@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
+import { getHost } from './host.js';
+import type { MessageSink, TerminalHandle } from './host.js';
 import { createAgentState } from './types.js';
 import type { AgentState } from './types.js';
 import { cancelPermissionTimer } from './timerManager.js';
@@ -16,7 +17,7 @@ export function startFileWatching(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	// Primary: fs.watch (unreliable on macOS — may miss events)
 	try {
@@ -53,7 +54,7 @@ export function readNewLines(
 	agentId: number,
 	agents: Map<number, AgentState>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 ): void {
 	const agent = agents.get(agentId);
 	if (!agent) return;
@@ -146,7 +147,7 @@ export function autoAdoptActiveConversations(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 ): void {
 	const trackedFiles = new Set<string>();
@@ -178,12 +179,15 @@ export function autoAdoptActiveConversations(
 		candidates.sort((a, b) => a.ageMs - b.ageMs);
 
 		// Count live Claude terminals to limit adoption.
-		// If no terminals are found (headless startup), adopt at most 1 (most recent).
+		// If no terminals are found (headless startup), adopt at most N (most recent),
+		// where N comes from the host (default 1).
 		// Also count unbound definition agents — they should always be adoptable since
 		// they represent configured agents that just need a JSONL file to track.
-		const liveTerminalCount = vscode.window.terminals.filter(t =>
+		const host = getHost();
+		const liveTerminalCount = host.terminals().filter(t =>
 			t.name.startsWith('Claude') || t.name.startsWith('claude')
 		).length;
+		const headlessLimit = host.headlessAdoptLimit() ?? 1;
 		let unboundDefinitionCount = 0;
 		for (const agent of agents.values()) {
 			if (agent.agentDefinitionId && !agent.jsonlFile && !agent.terminalRef) {
@@ -192,7 +196,7 @@ export function autoAdoptActiveConversations(
 		}
 		const maxAdopt = Math.max(
 			liveTerminalCount - trackedFiles.size,
-			liveTerminalCount === 0 ? 1 : 0,
+			liveTerminalCount === 0 ? headlessLimit : 0,
 			unboundDefinitionCount,
 		);
 
@@ -301,7 +305,7 @@ export function ensureProjectScan(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 ): void {
 	if (projectScanTimers.has(projectDir)) {
@@ -346,7 +350,7 @@ function scanForNewJsonlFiles(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 ): void {
 	let files: string[];
@@ -372,7 +376,7 @@ function scanForNewJsonlFiles(
 				);
 			} else {
 				// No active agent → try to adopt the focused terminal, or create a terminal-less agent
-				const activeTerminal = vscode.window.activeTerminal;
+				const activeTerminal = getHost().activeTerminal();
 				let adopted = false;
 				if (activeTerminal) {
 					let owned = false;
@@ -491,7 +495,7 @@ function scanForNewJsonlFiles(
 }
 
 function adoptTerminalForFile(
-	terminal: vscode.Terminal,
+	terminal: TerminalHandle,
 	jsonlFile: string,
 	projectDir: string,
 	nextAgentIdRef: { current: number },
@@ -500,7 +504,7 @@ function adoptTerminalForFile(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 ): void {
 	// Check for session marker to bind to a detected agent
@@ -585,7 +589,7 @@ function adoptTerminalForFile(
 	activeAgentIdRef.current = id;
 	persistAgents();
 
-	const projectName = vscode.workspace.workspaceFolders?.[0]?.name;
+	const projectName = getHost().workspaceFolders()[0]?.name;
 	console.log(`[Pixel Agents] Agent ${id}: adopted terminal "${terminal.name}" for ${path.basename(jsonlFile)}`);
 	webview?.postMessage({ type: 'agentCreated', id, projectName });
 
@@ -602,7 +606,7 @@ function adoptFileWithoutTerminal(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 	skipToEnd?: boolean,
 ): void {
@@ -698,7 +702,7 @@ function adoptFileWithoutTerminal(
 	activeAgentIdRef.current = id;
 	persistAgents();
 
-	const projectName = vscode.workspace.workspaceFolders?.[0]?.name;
+	const projectName = getHost().workspaceFolders()[0]?.name;
 	console.log(`[Pixel Agents] Agent ${id}: adopted file ${path.basename(jsonlFile)} (no terminal, offset=${fileOffset})`);
 	webview?.postMessage({ type: 'agentCreated', id, projectName });
 
@@ -713,7 +717,7 @@ export function reassignAgentToFile(
 	fileWatchers: Map<number, fs.FSWatcher>,
 	pollingTimers: Map<number, ReturnType<typeof setInterval>>,
 	permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
-	webview: vscode.Webview | undefined,
+	webview: MessageSink | undefined,
 	persistAgents: () => void,
 ): void {
 	const agent = agents.get(agentId);

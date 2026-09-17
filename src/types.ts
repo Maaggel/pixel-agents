@@ -1,4 +1,4 @@
-import type * as vscode from 'vscode';
+import type { TerminalHandle } from './host.js';
 
 // ── Agent Detection ────────────────────────────────────────────
 
@@ -33,7 +33,7 @@ export interface PixelAgentsConfigFile {
 
 export interface AgentState {
 	id: number;
-	terminalRef: vscode.Terminal | null;
+	terminalRef: TerminalHandle | null;
 	projectDir: string;
 	jsonlFile: string;
 	fileOffset: number;
@@ -67,6 +67,11 @@ export interface AgentState {
 	agentDefinitionId: string | null;
 	/** Workspace folder name (only set for multi-root workspaces) */
 	folderName?: string;
+	// ── Headless discovery (registry mode) ──
+	/** OS pid of the `claude` process owning this session (registry mode only) */
+	pid: number | null;
+	/** User-chosen session name from ~/.claude/sessions (registry mode only) */
+	sessionName: string | null;
 	// ── Active skill tracking ──
 	/** Currently active Skill invocation. Persists until next user prompt, turn_duration, or replacement Skill. */
 	activeSkill: ActiveSkill | null;
@@ -89,7 +94,7 @@ export function createAgentState(opts: {
 	id: number;
 	projectDir: string;
 	jsonlFile: string;
-	terminalRef?: vscode.Terminal | null;
+	terminalRef?: TerminalHandle | null;
 	fileOffset?: number;
 	agentDefinitionId?: string | null;
 	folderName?: string;
@@ -117,6 +122,8 @@ export function createAgentState(opts: {
 		permissionSent: false,
 		agentDefinitionId: opts.agentDefinitionId ?? null,
 		folderName: opts.folderName,
+		pid: null,
+		sessionName: null,
 		activeSkill: null,
 	};
 }

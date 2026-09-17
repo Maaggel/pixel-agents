@@ -4,6 +4,16 @@ This document captures future feature ideas, organized by priority and complexit
 
 ---
 
+## DONE: Headless daemon (no VS Code)
+
+The backend (`PixelAgentsBackend`) now runs without VS Code via `src/daemon.ts`. It discovers `claude` processes from `~/.claude/sessions/` and publishes to the relay. Packaged with `npm run package:daemon`, installed with `daemon/install.sh` as a systemd user service. See `daemon/README.md`. The VS Code extension path is unchanged (`vscodeHost.ts`).
+
+Open follow-ups:
+- One WebSocket per project backend → the relay logs N connections. A single multiplexed publisher connection would need the relay to track multiple `windowId`s per socket (it currently clears only one on disconnect).
+- The daemon's `folderName` is unused; multi-project naming is handled by one backend per cwd instead.
+
+---
+
 ## FUTURE: Standalone-only architecture
 
 **Current situation**: The extension ships both a VS Code webview panel *and* a `standalone/server.mjs` that serves the same React UI in a browser. This creates duplication:
@@ -24,7 +34,7 @@ This document captures future feature ideas, organized by priority and complexit
 
 ## KNOWN ISSUE: Standalone browser requires webview panel open
 
-**Status**: Partially fixed — `initHeadless()` now runs in `activate()` to restore agents, detect agent definitions, adopt active conversations, and start the sync manager without the webview. However, the **character visual positions** (`characterVisualStates`) are only reported by the webview's game loop, so the sync file won't have `visual` data until the panel is opened at least once. This means agents show in the browser but may lack position/animation data.
+**Status**: Partially fixed (and moot for the headless daemon, where the relay viewer runs the game loop itself) — `initHeadless()` now runs in `activate()` to restore agents, detect agent definitions, adopt active conversations, and start the sync manager without the webview. However, the **character visual positions** (`characterVisualStates`) are only reported by the webview's game loop, so the sync file won't have `visual` data until the panel is opened at least once. This means agents show in the browser but may lack position/animation data.
 
 **Root cause**: The extension architecture ties agent visual state to the webview's canvas rendering. Without the webview running, there's no game loop computing character positions.
 

@@ -2,6 +2,8 @@
 
 Share agents across multiple VS Code windows in the same pixel agent environment, with positions, actions, appearance etc. synced in real-time.
 
+> Also used headless: the daemon (`src/daemon.ts`) runs one backend per project folder, each writing its own sync file and publishing under its own `windowId`, so "window" below means "backend instance" there.
+
 ## Approach: Shared Agent State File
 
 Extends the existing layout sync pattern (`~/.pixel-agents/layout.json` with file watching) to agent state.

@@ -193,7 +193,7 @@ This starts a local server at `http://localhost:7600` that shows your office wit
 Want to watch your pixel office from a tablet, phone, or another machine? The relay server bridges VS Code agent state over WebSocket to any browser.
 
 ```
-VS Code  --(WebSocket)-->  Relay Server  <--(Browser)--  Tablet/Phone
+VS Code or headless daemon  --(WebSocket)-->  Relay Server  <--(Browser)--  Tablet/Phone
 ```
 
 ### Quick start
@@ -215,6 +215,32 @@ Open `http://localhost:7601` in a browser and enter the token.
 ```
 
 For full deployment instructions (systemd, Apache reverse proxy, authentication), see [relay/README.md](relay/README.md).
+
+### No VS Code? Headless daemon
+
+If Claude Code runs on a Linux server (no VS Code), run the daemon there instead of the extension. It finds every running `claude` process via Claude Code's session registry and publishes to the relay:
+
+```bash
+npm run package:daemon                                  # dev machine → build/pixel-agents-daemon-<ver>.tar.gz
+scp build/pixel-agents-daemon-*.tar.gz you@server:~     # upload (~60 KB)
+ssh you@server 'tar xzf pixel-agents-daemon-*.tar.gz && cd pixel-agents-daemon-*/ && ./install.sh --relay-url wss://yourserver.com/pixelagents/ws --relay-token your-secret-key-here'
+```
+
+That installs a systemd service that starts on boot. Step-by-step guide: [daemon/README.md](daemon/README.md).
+
+## Without VS Code (Headless Daemon)
+
+If Claude Code runs on a Linux server (or you just don't use VS Code), run the daemon there instead of the extension. It watches Claude Code's transcripts and publishes to the relay — no editor involved.
+
+```bash
+npm run build
+node dist/pixel-agents-daemon.cjs \
+  --folder /path/to/project \
+  --relay-url wss://yourserver.com/pixelagents/ws \
+  --relay-token your-secret-key-here
+```
+
+A systemd unit and config-file format are in [daemon/README.md](daemon/README.md).
 
 ## How It Works
 

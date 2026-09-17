@@ -7,7 +7,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import * as vscode from 'vscode'
+import type { MessageSink } from './host.js'
 import { PNG } from 'pngjs'
 import {
   PNG_ALPHA_THRESHOLD,
@@ -448,7 +448,7 @@ export async function loadWallTiles(
  * Send wall tiles to webview
  */
 export function sendWallTilesToWebview(
-  webview: vscode.Webview,
+  webview: MessageSink,
   wallTiles: LoadedWallTiles,
 ): void {
   webview.postMessage({
@@ -513,7 +513,7 @@ export async function loadFloorTiles(
  * Send floor tiles to webview
  */
 export function sendFloorTilesToWebview(
-  webview: vscode.Webview,
+  webview: MessageSink,
   floorTiles: LoadedFloorTiles,
 ): void {
   webview.postMessage({
@@ -604,7 +604,7 @@ export async function loadCharacterSprites(
  * Send character sprites to webview
  */
 export function sendCharacterSpritesToWebview(
-  webview: vscode.Webview,
+  webview: MessageSink,
   charSprites: LoadedCharacterSprites,
 ): void {
   webview.postMessage({
@@ -618,7 +618,7 @@ export function sendCharacterSpritesToWebview(
  * Send loaded assets to webview
  */
 export function sendAssetsToWebview(
-  webview: vscode.Webview,
+  webview: MessageSink,
   assets: LoadedAssets,
 ): void {
   if (!assets) {

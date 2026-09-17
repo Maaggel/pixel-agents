@@ -82,7 +82,10 @@
     "lint": "eslint src",
     "import-tileset": "tsx scripts/0-import-tileset.ts",
     "standalone": "node standalone/server.mjs",
-    "relay": "node relay/server.mjs"
+    "relay": "node relay/server.mjs",
+    "daemon": "node dist/pixel-agents-daemon.cjs",
+    "build:daemon": "npm run check-types && node esbuild.js --daemon-only",
+    "package:daemon": "npm run build:daemon && bash daemon/package.sh"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -95,6 +98,7 @@
     "pngjs": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0"
+    "typescript-eslint": "^8.54.0",
+    "ws": "^8.21.3"
   }
 }

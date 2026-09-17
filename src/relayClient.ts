@@ -3,6 +3,22 @@ import { RELAY_RECONNECT_BASE_MS, RELAY_RECONNECT_MAX_MS } from './constants.js'
 
 type LayoutData = Record<string, unknown>;
 
+type WebSocketCtor = typeof WebSocket;
+
+/**
+ * Node ≥ 22 and the VS Code extension host expose a global WebSocket.
+ * On older Node (headless daemon) fall back to the `ws` package if installed.
+ */
+function resolveWebSocket(): WebSocketCtor {
+	if (typeof globalThis.WebSocket === 'function') return globalThis.WebSocket;
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		return require('ws') as WebSocketCtor;
+	} catch {
+		throw new Error('No WebSocket implementation: use Node 22+ or `npm install ws`');
+	}
+}
+
 export interface RelayClient {
 	pushState(state: SyncWindowState): void;
 	pushLayout(layout: LayoutData): void;
@@ -16,6 +32,7 @@ export function createRelayClient(
 	log: (msg: string) => void,
 	onIdleInteraction?: (msg: { type: string; interactionType: string; agentKeys: string[] }) => void,
 ): RelayClient {
+	const WebSocketImpl = resolveWebSocket();
 	let ws: WebSocket | null = null;
 	let disposed = false;
 	let reconnectDelay = RELAY_RECONNECT_BASE_MS;
@@ -31,7 +48,7 @@ export function createRelayClient(
 		const wsUrl = `${url}${separator}role=publisher&token=${encodeURIComponent(token)}`;
 
 		try {
-			ws = new WebSocket(wsUrl);
+			ws = new WebSocketImpl(wsUrl);
 		} catch (err) {
 			log(`[Relay] WebSocket creation failed: ${err}`);
 			scheduleReconnect();
@@ -88,7 +105,7 @@ export function createRelayClient(
 	}
 
 	function send(msg: object): void {
-		if (ws && ws.readyState === WebSocket.OPEN) {
+		if (ws && ws.readyState === WebSocketImpl.OPEN) {
 			ws.send(JSON.stringify(msg));
 		}
 	}

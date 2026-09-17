@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { PixelAgentsBackend } from './PixelAgentsViewProvider.js';
+import { setHost } from './host.js';
+import { createVsCodeHost, wireTerminalEvents } from './vscodeHost.js';
 import { startStandaloneServer, stopStandaloneServer, restartStandaloneServer, getStandalonePort } from './standaloneServer.js';
 import { COMMAND_EXPORT_DEFAULT_LAYOUT, COMMAND_OPEN_IN_TAB, COMMAND_SET_PROJECT_NAME, COMMAND_SHOW_MISSING_SPRITES, COMMAND_RESTART_STANDALONE, STANDALONE_DEFAULT_PORT } from './constants.js';
 import { getMissingBubbleSpriteTools, clearMissingBubbleSpriteTools } from './transcriptParser.js';
@@ -8,7 +10,12 @@ let backend: PixelAgentsBackend | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
 	// Start backend (agent tracking, file watching, sync file writing)
-	backend = new PixelAgentsBackend(context);
+	const backendChannel = vscode.window.createOutputChannel('Pixel Agents');
+	context.subscriptions.push(backendChannel);
+	const host = createVsCodeHost(context, backendChannel);
+	setHost(host);
+	backend = new PixelAgentsBackend(host);
+	context.subscriptions.push(...wireTerminalEvents(backend));
 	backend.init();
 
 	const outputChannel = vscode.window.createOutputChannel('Pixel Agents — Standalone');
@@ -53,7 +60,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Command: Export layout as default (dev utility)
 	context.subscriptions.push(
 		vscode.commands.registerCommand(COMMAND_EXPORT_DEFAULT_LAYOUT, () => {
-			backend?.exportDefaultLayout();
+			try {
+				const targetPath = backend?.exportDefaultLayout();
+				if (targetPath) vscode.window.showInformationMessage(`Pixel Agents: Default layout exported to ${targetPath}`);
+			} catch (err) {
+				vscode.window.showWarningMessage(`Pixel Agents: ${err instanceof Error ? err.message : err}`);
+			}
 		})
 	);
 

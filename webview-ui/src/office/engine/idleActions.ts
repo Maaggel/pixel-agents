@@ -7,6 +7,8 @@ import {
   ITEM_DISPOSE_SEC,
   ITEM_BUBBLE_MAX_SEC,
   ITEM_COLOR_VARIANTS,
+  TIDY_NEAR_DISTANCE_TILES,
+  TIDY_NEAR_WEIGHT,
   PROP_MIN_AGE_SEC,
   MAX_PROPS,
   CONVERSATION_MIN_DURATION_SEC,
@@ -127,14 +129,31 @@ function findDisposalFor(type: string, ch: Character, ctx: IdleActionContext): P
     .sort((a, b) => (Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)) - (Math.abs(b.col - ch.tileCol) + Math.abs(b.row - ch.tileRow)))
 }
 
-/** Props old enough to be tidied and not currently targeted by someone else */
+/** A prop is "in use" while someone sits right next to it (eating in front of a plate, a mug by a seated agent). */
+function isPropInUse(prop: PlacedProp, ctx: IdleActionContext): boolean {
+  for (const other of ctx.characters.values()) {
+    if (!isSittingState(other.state)) continue
+    if (Math.abs(other.tileCol - prop.col) + Math.abs(other.tileRow - prop.row) <= 1) return true
+  }
+  return false
+}
+
+/** Props old enough to be tidied, not in use, and not currently targeted by someone else */
 function findStaleProps(ctx: IdleActionContext): PlacedProp[] {
   const now = performance.now()
   const targeted = new Set<string>()
   for (const other of ctx.characters.values()) {
     if (other.itemTargetUid) targeted.add(other.itemTargetUid)
   }
-  return ctx.props.filter(p => !targeted.has(p.uid) && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC && !!getCatalogEntry(p.kind)?.utensilDisposal)
+  return ctx.props.filter(p => !targeted.has(p.uid)
+    && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC
+    && !!getCatalogEntry(p.kind)?.utensilDisposal
+    && !isPropInUse(p, ctx))
+}
+
+/** Is any stale, unused prop within TIDY_NEAR_DISTANCE_TILES of the character? */
+function hasStalePropNearby(ch: Character, ctx: IdleActionContext): boolean {
+  return findStaleProps(ctx).some(p => Math.abs(p.col - ch.tileCol) + Math.abs(p.row - ch.tileRow) <= TIDY_NEAR_DISTANCE_TILES)
 }
 
 /** Walk to a tile adjacent to `target` (footprint from the catalog, or 1×1). Returns false if unreachable. */
@@ -412,8 +431,8 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
   // Check if interesting furniture exists
   const hasInterestingFurniture = ctx.furniture.some(f => isInterestingFurniture(f.type))
 
-  // Filter eligible actions
-  const eligible: IdleActionEntry[] = []
+  // Filter eligible actions (weight may be boosted situationally)
+  const eligible: Array<{ type: IdleActionType; weight: number }> = []
   for (const entry of IDLE_ACTION_REGISTRY) {
     if (entry.needsPartner && idlePartnerCount === 0) continue
     if (entry.needsFurniture && !hasInterestingFurniture) continue
@@ -421,9 +440,13 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsDynamicItems) {
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
       if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'drink').length === 0)) continue
-      if (entry.type === IdleActionType.TIDY_UP && findStaleProps(ctx).length === 0) continue
+      if (entry.type === IdleActionType.TIDY_UP) {
+        if (findStaleProps(ctx).length === 0) continue
+        // Walking past a stray mug/plate: much more likely to grab it
+        if (hasStalePropNearby(ch, ctx)) { eligible.push({ type: entry.type, weight: TIDY_NEAR_WEIGHT }); continue }
+      }
     }
-    eligible.push(entry)
+    eligible.push({ type: entry.type, weight: entry.weight })
   }
 
   if (eligible.length === 0) return IdleActionType.WANDER
@@ -671,7 +694,8 @@ export function initIdleAction(
     case IdleActionType.TIDY_UP: {
       // Pick up a stray item and carry it to a sink
       const stale = findStaleProps(ctx)
-      const prop = pickRandom(stale)
+        .sort((a, b) => (Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)) - (Math.abs(b.col - ch.tileCol) + Math.abs(b.row - ch.tileRow)))
+      const prop = stale[0] ?? null
       if (!prop) return false
       const propAsFurniture: PlacedFurniture = { uid: prop.uid, type: '', col: prop.col, row: prop.row }
       if (!walkToFurniture(ch, propAsFurniture, ctx)) return false

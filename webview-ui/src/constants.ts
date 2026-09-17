@@ -335,6 +335,10 @@ export const ITEM_FETCH_SEC = 2.5
 export const ITEM_DISPOSE_SEC = 1.0
 /** A prop must lie around at least this long before someone tidies it away */
 export const PROP_MIN_AGE_SEC = 90
+/** Tidy-up is much more likely when a stale, unused prop lies within this many tiles (Manhattan) of the agent */
+export const TIDY_NEAR_DISTANCE_TILES = 6
+/** TIDY_UP weight when such a prop is near (registry weight applies otherwise) */
+export const TIDY_NEAR_WEIGHT = 70
 /** Hard cap on props in the office — beyond it, carried items are simply "finished" */
 export const MAX_PROPS = 12
 /** Props are drawn this many sprite px above the tile bottom so they sit on the tabletop, not its front edge */

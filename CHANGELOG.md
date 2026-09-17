@@ -6,6 +6,7 @@
 - Settings modal renders above activity labels.
 - Catalog `useSide` (asset-manager "Use side"): characters stand in front of the coffee machine/sink instead of a random side.
 - Fetched mugs/food come in random colour variants; three placeholder foods (plate, salad bowl, sandwich) picked at random.
+- Tidying is smarter: items someone is sitting next to are left alone; a stray item nearby makes an idle agent far more likely to grab it (nearest first).
 - Action bubbles: the item being fetched shows in a bubble on the way to get it; a broom bubble while tidying.
 - Placeholder `PLATE_FOOD` sprite on the relay so food fetching is testable (Behaviour bar: Coffee / Food / Tidy).
 

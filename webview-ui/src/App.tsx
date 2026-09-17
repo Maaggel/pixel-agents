@@ -315,8 +315,18 @@ function App() {
   )
 
   // "F" key: toggle camera follow for currently selected agent/vacuum
+  // Esc leaves display mode (the Show-UI button is deliberately faint)
+  const viewOptionsRef = useRef(viewOptions)
+  viewOptionsRef.current = viewOptions
+  const handleViewOptionsChangeRef = useRef(handleViewOptionsChange)
+  handleViewOptionsChangeRef.current = handleViewOptionsChange
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && viewOptionsRef.current.hideUi) {
+        handleViewOptionsChangeRef.current({ ...viewOptionsRef.current, hideUi: false })
+        return
+      }
       if (e.key === 'f' || e.key === 'F') {
         // Don't trigger in text inputs
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return

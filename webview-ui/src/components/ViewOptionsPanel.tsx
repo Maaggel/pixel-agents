@@ -49,7 +49,7 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
     return (
       <button
         onClick={() => toggle('hideUi')}
-        title="Show UI"
+        title="Show UI (Esc)"
         style={{
           position: 'absolute',
           top: 8,

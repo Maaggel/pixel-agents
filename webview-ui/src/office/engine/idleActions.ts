@@ -43,7 +43,7 @@ interface IdleActionEntry {
 }
 
 const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
-  { type: IdleActionType.WANDER, weight: 20 },
+  { type: IdleActionType.WANDER, weight: 10 },
   { type: IdleActionType.CONVERSATION, weight: 35, needsPartner: true },
   { type: IdleActionType.VISIT_FURNITURE, weight: 35, needsFurniture: true },
   { type: IdleActionType.STAND_AND_THINK, weight: 10 },

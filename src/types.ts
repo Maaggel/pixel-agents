@@ -21,6 +21,8 @@ export interface PixelAgentConfig {
 	palette: number;
 	hueShift: number;
 	seatId: string | null;
+	/** Set once the user has picked a look (updateAgentConfig); auto-assigned looks are not authoritative */
+	lookSetByUser?: boolean;
 }
 
 export interface PixelAgentsConfigFile {
@@ -175,6 +177,8 @@ export interface SyncAgentState {
 	personalityKey?: string;
 	/** Currently active Skill, if any */
 	activeSkill?: ActiveSkill | null;
+	/** True when palette/hueShift were chosen by the user; false → viewer derives the look from the name */
+	lookExplicit?: boolean;
 }
 
 export interface SyncWindowState {

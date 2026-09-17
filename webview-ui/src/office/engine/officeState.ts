@@ -1,5 +1,6 @@
 import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, ZoneType as ZoneTypeValues } from '../types.js'
 import type { ZoneType } from '../types.js'
+import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
   PALETTE_COUNT,
   HUE_SHIFT_MIN_DEG,
@@ -877,22 +878,37 @@ export class OfficeState {
   addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string, isRemote?: boolean, projectName?: string): void {
     if (this.characters.has(id)) return
 
+    // Nametag first: without an explicit look the character's appearance is
+    // derived from its name, so it is the same on every device and every spawn.
+    let nametag: string
+    if (folderName) {
+      nametag = folderName
+    } else {
+      const prefix = projectName || 'Agent'
+      let mainCount = 0
+      for (const c of this.characters.values()) {
+        if (!c.isSubagent && !c.isRemote) mainCount++
+      }
+      nametag = mainCount === 0 ? `${prefix} Main` : `${prefix} #${mainCount + 1}`
+    }
+
     let palette: number
     let hueShift: number
     if (preferredPalette !== undefined) {
       palette = preferredPalette
       hueShift = preferredHueShift ?? 0
     } else {
-      const pick = this.pickDiversePalette()
-      palette = pick.palette
-      hueShift = pick.hueShift
+      const look = resolveLook(nametag)
+      palette = look.palette
+      hueShift = look.hueShift
     }
 
     // Remote agents: position controlled by source window via sync
     if (isRemote) {
       const ch = createCharacter(id, palette, null, null, hueShift)
       ch.isRemote = true
-      if (folderName) { ch.nametag = folderName; ch.folderName = folderName }
+      ch.nametag = nametag
+      if (folderName) ch.folderName = folderName
       if (projectName) ch.projectName = projectName
       // Claim the source window's seat so local agents don't sit there
       let assignedSeatId: string | null = null
@@ -966,17 +982,7 @@ export class OfficeState {
     }
 
     if (projectName) ch.projectName = projectName
-    if (folderName) {
-      ch.nametag = folderName
-    } else {
-      // Name based on project: first agent is "Lead", rest are numbered
-      const prefix = projectName || 'Agent'
-      let mainCount = 0
-      for (const c of this.characters.values()) {
-        if (!c.isSubagent && !c.isRemote) mainCount++
-      }
-      ch.nametag = mainCount === 0 ? `${prefix} Main` : `${prefix} #${mainCount + 1}`
-    }
+    ch.nametag = nametag
     if (folderName) {
       ch.folderName = folderName
     }
@@ -1266,6 +1272,8 @@ export class OfficeState {
     const { palette, hueShift } = this.pickDiversePalette()
     ch.palette = palette
     ch.hueShift = hueShift
+    // Remember the chosen look for this name so it survives respawns and reloads
+    if (ch.nametag) setLookOverride(ch.nametag, { palette, hueShift })
   }
 
   setAgentActive(id: number, active: boolean): void {

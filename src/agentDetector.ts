@@ -238,6 +238,7 @@ export function updateAgentConfig(
 	const agent = config.agents[definitionId];
 	if (updates.palette !== undefined) agent.palette = updates.palette;
 	if (updates.hueShift !== undefined) agent.hueShift = updates.hueShift;
+	if (updates.palette !== undefined || updates.hueShift !== undefined) agent.lookSetByUser = true;
 	if (updates.seatId !== undefined) agent.seatId = updates.seatId;
 	if (updates.name !== undefined) agent.name = updates.name;
 

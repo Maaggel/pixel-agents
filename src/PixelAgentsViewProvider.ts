@@ -628,6 +628,7 @@ export class PixelAgentsBackend {
 			let palette = 0;
 			let hueShift = 0;
 			let seatId: string | null = null;
+			let lookExplicit = false;
 			const unnamedIdx = unnamedCounts.get(agentProjectName) ?? 0;
 			let name = unnamedIdx === 0 ? `${agentProjectName} Lead` : `${agentProjectName} #${unnamedIdx + 1}`;
 
@@ -636,6 +637,7 @@ export class PixelAgentsBackend {
 				palette = ac.palette;
 				hueShift = ac.hueShift;
 				seatId = ac.seatId;
+				lookExplicit = ac.lookSetByUser === true;
 				name = agent.sessionName ?? `${agentProjectName} ${ac.name}`;
 				coveredDefinitions.add(agent.agentDefinitionId);
 			} else {
@@ -646,6 +648,7 @@ export class PixelAgentsBackend {
 					palette = meta.palette ?? 0;
 					hueShift = meta.hueShift ?? 0;
 					seatId = meta.seatId ?? null;
+					lookExplicit = meta.palette !== undefined;
 				}
 			}
 
@@ -671,6 +674,7 @@ export class PixelAgentsBackend {
 				visual: this.characterVisuals.get(agent.id),
 				personalityKey: agent.agentDefinitionId || `agent-${agent.id}`,
 				activeSkill: agent.activeSkill,
+				lookExplicit,
 			});
 		}
 

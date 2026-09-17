@@ -350,6 +350,7 @@ function startSyncPolling() {
             workspaceName: win.workspaceName || '',
             workspaceFolder: win.workspaceFolder || '',
             personalityKey: agent.personalityKey || null,
+            lookExplicit: agent.lookExplicit,
           });
         }
       }
@@ -365,7 +366,8 @@ function startSyncPolling() {
           newAgentIds.push(id);
           // Only pass palette/hueShift if explicitly set (non-default) —
           // otherwise let the webview's pickDiversePalette() assign diverse skins
-          const hasExplicitPalette = agent.palette > 0 || agent.hueShift > 0;
+          // Publishers ≥1.6.14 say whether the look was user-chosen; older ones: guess from non-zero values
+          const hasExplicitPalette = agent.lookExplicit !== undefined ? agent.lookExplicit === true : (agent.palette > 0 || agent.hueShift > 0);
           newAgentMeta[id] = {
             palette: hasExplicitPalette ? agent.palette : undefined,
             hueShift: hasExplicitPalette ? agent.hueShift : undefined,

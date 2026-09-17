@@ -174,7 +174,21 @@ source). The relay sends its current build id in every WebSocket `init` and in
 `index.html` is served with `Cache-Control: no-cache` so a proxy can't hand out a
 stale page, and a viewer won't reload more than once per 30 s (loop guard).
 
-**Web UI only** (most deploys) — no restart needed:
+**Scripted (FTP)** — `relay/deploy.sh` uploads `dist/assets` + `dist/webview` in a
+safe order (bundles first, `index.html` last), deletes stale content-hashed bundles,
+stages `relay/server.mjs` + `package.json`, and POSTs `/api/reload`:
+
+```bash
+# once: FTP credentials, mode 600
+printf 'machine ftp.host login USER password PASS\n' > ~/.pixel-agents/relay-ftp.netrc && chmod 600 ~/.pixel-agents/relay-ftp.netrc
+npm run build
+PIXEL_AGENTS_RELAY_HTTP=https://yourserver.com/pixelagents PIXEL_AGENTS_RELAY_TOKEN=… relay/deploy.sh [--ui-only] [--dry-run]
+```
+
+It never touches `data/`. A file it can't overwrite (owned by another user) is skipped
+only if the remote copy is identical; otherwise it aborts before `index.html` goes live.
+
+**Web UI only, by hand** — no restart needed:
 
 ```bash
 # Dev machine

@@ -9,7 +9,7 @@
  */
 
 import { createServer } from 'http'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, readdirSync, unlinkSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, readdirSync, unlinkSync, statSync } from 'fs'
 import { createHash } from 'crypto'
 import { join, extname, resolve } from 'path'
 import { PNG } from 'pngjs'
@@ -310,6 +310,29 @@ function checkApiAuth(req, res) {
   return true
 }
 
+// ── Build identity (drives viewer auto-reload) ─────────────
+// dist/webview/index.html references the content-hashed JS/CSS bundles, so its
+// hash changes on every webview build. Mixed with the relay's own source hash
+// so a relay-only update also counts. Recomputed lazily when index.html changes
+// on disk, so uploading a new dist/ (no restart) is enough for POST /api/reload.
+const SERVER_HASH = createHash('sha256').update(readFileSync(new URL(import.meta.url))).digest('hex').slice(0, 8)
+let buildIdCache = { key: '', id: '' }
+function currentBuildId() {
+  const indexPath = join(WEBVIEW_DIST, 'index.html')
+  let key = 'missing'
+  try {
+    const st = statSync(indexPath)
+    key = `${st.mtimeMs}:${st.size}`
+  } catch { /* not built */ }
+  if (buildIdCache.key !== key) {
+    let html = ''
+    try { html = readFileSync(indexPath, 'utf-8') } catch { /* ignore */ }
+    const id = createHash('sha256').update(html).update(SERVER_HASH).update(VERSION).digest('hex').slice(0, 12)
+    buildIdCache = { key, id }
+  }
+  return buildIdCache.id
+}
+
 // ── Pre-load assets at startup ──────────────────────────────
 console.log('Loading assets...')
 const cachedCharacters = loadCharacterSprites()
@@ -510,6 +533,26 @@ let reconnectDelay = 1000;
 const RECONNECT_MAX = 30000;
 var currentLayout = null;
 
+// Auto-reload after a deploy: the relay sends its build id in every init and
+// in explicit 'reload' broadcasts (POST /api/reload). If it differs from the
+// build this page was served with, reload. Guarded so a misconfigured proxy
+// serving a stale index.html can't put the browser in a reload loop.
+const LOADED_BUILD = ${JSON.stringify(currentBuildId())};
+const RELOAD_GUARD_MS = 30000;
+function reloadForBuild(buildId, reason) {
+  if (!buildId || buildId === LOADED_BUILD) return false;
+  var last = 0;
+  try { last = parseInt(sessionStorage.getItem('pa-last-reload') || '0', 10); } catch (e) {}
+  if (Date.now() - last < RELOAD_GUARD_MS) {
+    devLog('BUILD  ' + buildId + ' differs from loaded ' + LOADED_BUILD + ' but reloaded ' + Math.round((Date.now() - last) / 1000) + 's ago — skipping (stale index.html from a cache?)');
+    return false;
+  }
+  try { sessionStorage.setItem('pa-last-reload', String(Date.now())); } catch (e) {}
+  devLog('BUILD  ' + reason + ' → reloading for build ' + buildId);
+  setTimeout(function () { location.reload(); }, 150);
+  return true;
+}
+
 function dispatch(data) {
   window.postMessage(data, '*');
 }
@@ -683,6 +726,7 @@ function connectRelay() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'init') {
+        if (reloadForBuild(msg.buildId, 'relay has build ' + msg.buildId)) return;
         if (msg.characters) dispatch({ type: 'characterSpritesLoaded', characters: msg.characters });
         if (msg.floors) dispatch({ type: 'floorTilesLoaded', sprites: msg.floors });
         if (msg.walls) dispatch({ type: 'wallTilesLoaded', sprites: msg.walls });
@@ -699,6 +743,8 @@ function connectRelay() {
         dispatch({ type: 'layoutLoaded', layout: msg.layout });
       } else if (msg.type === 'screenshotRequest') {
         dispatch({ type: 'screenshotRequest', requestId: msg.requestId });
+      } else if (msg.type === 'reload') {
+        reloadForBuild(msg.buildId, 'reload requested');
       } else if (msg.type === 'authError') {
         // Bad token — clear stored token and show prompt again
         localStorage.removeItem('pa-relay-token');
@@ -1016,6 +1062,23 @@ const server = createServer((req, res) => {
   }
 
   // ── Backup API endpoints ──────────────────────────────────
+  // Deploy helpers: what build is live, and tell every viewer to reload.
+  // Flow after uploading a new dist/: curl -X POST -H 'Authorization: Bearer $TOKEN' …/api/reload
+  if (pathname === '/api/build' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+    res.end(JSON.stringify({ version: VERSION, buildId: currentBuildId(), viewers: viewers.size, publishers: publishers.size }))
+    return
+  }
+  if (pathname === '/api/reload' && req.method === 'POST') {
+    if (!checkApiAuth(req, res)) return
+    const buildId = currentBuildId()
+    broadcastToViewers({ type: 'reload', buildId })
+    console.log(`[Relay] Reload broadcast → ${viewers.size} viewer(s), build ${buildId}`)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ ok: true, buildId, viewers: viewers.size }))
+    return
+  }
+
   if (pathname === '/api/backups' && req.method === 'GET') {
     if (!checkApiAuth(req, res)) return
     res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -1128,7 +1191,8 @@ const server = createServer((req, res) => {
     html = html.replace('<meta name="viewport"', pwaMeta + '\n    <meta name="viewport"')
     html = html.replace('<script type="module"', getBridgeScript() + '\n    <script type="module"')
     html = html.replace(/\s+crossorigin/g, '')
-    res.writeHead(200, { 'Content-Type': 'text/html' })
+    // The bridge embeds the build id — never let a proxy/browser serve a stale copy
+    res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' })
     res.end(html)
     return
   }
@@ -1224,6 +1288,7 @@ wss.on('connection', (ws, req) => {
     // Send init payload with all assets + current state
     const initPayload = {
       type: 'init',
+      buildId: currentBuildId(),
       characters: cachedCharacters,
       floors: cachedFloors,
       walls: cachedWalls,

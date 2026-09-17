@@ -166,18 +166,40 @@ Returns:
 
 ## Updating
 
-When you update the extension:
+Viewers reload themselves after a deploy — no one has to hard-refresh a tablet.
+Every page embeds the **build id** it was served with (a hash of
+`dist/webview/index.html`, which names the content-hashed bundles, plus the relay
+source). The relay sends its current build id in every WebSocket `init` and in
+`reload` broadcasts; a viewer whose id differs calls `location.reload()`.
+`index.html` is served with `Cache-Control: no-cache` so a proxy can't hand out a
+stale page, and a viewer won't reload more than once per 30 s (loop guard).
+
+**Web UI only** (most deploys) — no restart needed:
 
 ```bash
-# On your dev machine
+# Dev machine
 npm run build
-
-# Copy updated files to server
-scp -r dist/ relay/ user@yourserver:~/pixel-agents/
-
-# Restart the relay
-ssh user@yourserver sudo systemctl restart pixel-agents-relay
+scp -r dist/webview dist/assets user@yourserver:~/pixel-agents/dist/   # or FTP
+# Tell every open viewer to reload
+curl -X POST -H "Authorization: Bearer $RELAY_TOKEN" https://yourserver.com/pixelagents/api/reload
 ```
+
+**Relay code changed** (`relay/server.mjs`, `package.json`):
+
+```bash
+scp -r dist/ relay/ user@yourserver:~/pixel-agents/
+ssh user@yourserver sudo systemctl restart pixel-agents-relay
+# viewers reconnect, see the new build id in `init`, and reload on their own
+```
+
+Check what is live:
+
+```bash
+curl https://yourserver.com/pixelagents/api/build
+# {"version":"1.6.12","buildId":"12db3339a601","viewers":2,"publishers":11}
+```
+
+`api/build` is unauthenticated (no secrets in it); `api/reload` requires the token.
 
 ## Environment variables
 

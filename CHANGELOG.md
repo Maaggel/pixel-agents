@@ -5,6 +5,7 @@
 - **Dynamic items** — agents fetch a coffee mug at the coffee machine, carry it back (drawn in hand), put it on their desk, and now and then pick up stray mugs and take them to the sink. Data-driven: any catalog asset marked `utensil` with `utensilOrigin`/`utensilDisposal` works (fridge → food → sink next, once the sprites exist). Toggle: View → "Dynamic items". Utensils have a `utensilUse`: `drink` (coffee breaks) or `food` — eating in the kitchen now fetches a food item from its origin first, when one exists.
 - Settings modal renders above activity labels.
 - Catalog `useSide` (asset-manager "Use side"): characters stand in front of the coffee machine/sink instead of a random side.
+- Action bubbles: the item being fetched shows in a bubble on the way to get it; a broom bubble while tidying.
 - Placeholder `PLATE_FOOD` sprite on the relay so food fetching is testable (Behaviour bar: Coffee / Food / Tidy).
 
 ## v1.6.14

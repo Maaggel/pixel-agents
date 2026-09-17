@@ -339,6 +339,8 @@ export const PROP_MIN_AGE_SEC = 90
 export const MAX_PROPS = 12
 /** Props are drawn this many sprite px above the tile bottom so they sit on the tabletop, not its front edge */
 export const PROP_SURFACE_LIFT_PX = 5
+/** Safety timeout for fetch/tidy bubbles — the action clears them earlier when it finishes */
+export const ITEM_BUBBLE_MAX_SEC = 60
 /** Held-item anchor per facing direction, in sprite px relative to the character's bottom-centre.
  *  UP draws the item behind the body (z-sorted just before the character). */
 export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind: boolean }> = {

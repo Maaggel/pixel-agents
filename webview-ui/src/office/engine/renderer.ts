@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE, BUBBLE_IDLE_TIDY_SPRITE, getItemBubbleSprite } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { renderSkillAura, renderSkillBubble } from './skillAura.js'
@@ -121,6 +121,22 @@ interface ZDrawable {
 
 let _overlayLogged = false
 
+// Held items: a utensil sprite trimmed to its opaque bounds, so it can sit in the hand
+const croppedSpriteCache = new WeakMap<SpriteData, SpriteData>()
+function getCroppedSprite(sprite: SpriteData): SpriteData {
+  const hit = croppedSpriteCache.get(sprite)
+  if (hit) return hit
+  let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1
+  for (let y = 0; y < sprite.length; y++) {
+    for (let x = 0; x < sprite[y].length; x++) {
+      if (sprite[y][x]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y) }
+    }
+  }
+  const cropped = maxX < 0 ? sprite : sprite.slice(minY, maxY + 1).map(row => row.slice(minX, maxX + 1))
+  croppedSpriteCache.set(sprite, cropped)
+  return cropped
+}
+
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   furniture: FurnitureInstance[],
@@ -210,23 +226,7 @@ export function renderScene(
     }
   }
 
-  // Held items: a utensil sprite trimmed to its opaque bounds, so it can sit in the hand
-const croppedSpriteCache = new WeakMap<SpriteData, SpriteData>()
-function getCroppedSprite(sprite: SpriteData): SpriteData {
-  const hit = croppedSpriteCache.get(sprite)
-  if (hit) return hit
-  let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1
-  for (let y = 0; y < sprite.length; y++) {
-    for (let x = 0; x < sprite[y].length; x++) {
-      if (sprite[y][x]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y) }
-    }
-  }
-  const cropped = maxX < 0 ? sprite : sprite.slice(minY, maxY + 1).map(row => row.slice(minX, maxX + 1))
-  croppedSpriteCache.set(sprite, cropped)
-  return cropped
-}
-
-  // Characters
+    // Characters
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift)
     const spriteData = getCharacterSprite(ch, sprites)
@@ -583,7 +583,7 @@ export function renderBubbles(
 
     // Compute opacity: permission = full, talking/waiting/idle = fade in last 0.5s
     let alpha = 1.0
-    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if ((ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat' || ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
@@ -617,6 +617,11 @@ export function renderBubbles(
       sprite = BUBBLE_IDLE_THINK_SPRITE
     } else if (ch.bubbleType === 'idle_eat') {
       sprite = BUBBLE_IDLE_EAT_SPRITE
+    } else if (ch.bubbleType === 'idle_tidy') {
+      sprite = BUBBLE_IDLE_TIDY_SPRITE
+    } else if (ch.bubbleType === 'idle_item') {
+      const itemSprite = ch.bubbleItemType ? getCatalogEntry(ch.bubbleItemType)?.sprite : undefined
+      sprite = itemSprite ? getItemBubbleSprite(getCroppedSprite(itemSprite)) : BUBBLE_IDLE_THINK_SPRITE
     } else if (ch.bubbleType === 'talking') {
       // Active with no specific tool — show working bubble (not thinking cloud)
       sprite = BUBBLE_WORKING_SPRITE

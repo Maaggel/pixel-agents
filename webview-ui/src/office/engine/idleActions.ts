@@ -5,6 +5,7 @@ import { addBehaviourEntry } from '../../behaviourLog.js'
 import {
   ITEM_FETCH_SEC,
   ITEM_DISPOSE_SEC,
+  ITEM_BUBBLE_MAX_SEC,
   PROP_MIN_AGE_SEC,
   MAX_PROPS,
   CONVERSATION_MIN_DURATION_SEC,
@@ -162,6 +163,25 @@ function arrivedAtFurniture(ch: Character): boolean {
   ch.state = CharacterState.IDLE
   ch.frame = 0
   return true
+}
+
+function showItemBubble(ch: Character, itemType: string): void {
+  ch.bubbleType = 'idle_item'
+  ch.bubbleItemType = itemType
+  ch.bubbleTimer = ITEM_BUBBLE_MAX_SEC
+}
+
+function showTidyBubble(ch: Character): void {
+  ch.bubbleType = 'idle_tidy'
+  ch.bubbleTimer = ITEM_BUBBLE_MAX_SEC
+}
+
+function clearItemBubble(ch: Character): void {
+  if (ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') {
+    ch.bubbleType = null
+    ch.bubbleTimer = 0
+  }
+  ch.bubbleItemType = null
 }
 
 function pickRandom<T>(list: T[]): T | null {
@@ -599,6 +619,7 @@ export function initIdleAction(
         const food = pickRandom(findFetchableUtensils(ctx, 'food'))
         if (food && startFetch(ch, food, ctx)) {
           ch.conversationPhase = 'leaving'
+          showItemBubble(ch, food.type)
           logIdle(ch, `going to get some ${food.label.toLowerCase()}`)
           ctx.onIdleEvent?.('eating', [ch.id])
           return true
@@ -640,6 +661,7 @@ export function initIdleAction(
       const choice = pickRandom(findFetchableUtensils(ctx, 'drink'))
       if (!choice || !startFetch(ch, choice, ctx)) return false
       ch.conversationPhase = 'approaching'
+      showItemBubble(ch, choice.type)
       logIdle(ch, `going to get a ${choice.label.toLowerCase()}`)
       return true
     }
@@ -653,6 +675,7 @@ export function initIdleAction(
       if (!walkToFurniture(ch, propAsFurniture, ctx)) return false
       ch.itemTargetUid = prop.uid
       ch.conversationPhase = 'approaching'
+      showTidyBubble(ch)
       logIdle(ch, `going to pick up a stray ${utensilLabel(prop.kind)}`)
       return true
     }
@@ -694,7 +717,7 @@ export function updateIdleAction(
 // ── Dynamic items: update loops ────────────────────────────────
 
 function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boolean {
-  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearIdleAction(ch); return false }
+  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
   if (ch.conversationPhase === 'approaching') {
     if (arrivedAtFurniture(ch)) ch.conversationPhase = 'talking' // waiting at the origin (brewing…)
     return true
@@ -704,6 +727,7 @@ function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boo
     if (ch.idleActionTimer <= 0) {
       ch.heldItem = ch.itemTargetUid
       ch.itemTargetUid = null
+      clearItemBubble(ch)
       logIdle(ch, `got a ${utensilLabel(ch.heldItem)}`)
       clearIdleAction(ch)
       return false // back to seat, carrying the item
@@ -714,12 +738,12 @@ function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boo
 }
 
 function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolean {
-  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearIdleAction(ch); return false }
+  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
   if (ch.conversationPhase === 'approaching') {
     if (!arrivedAtFurniture(ch)) return true
     const prop = ch.itemTargetUid ? ctx.takeProp(ch.itemTargetUid) : null
     ch.itemTargetUid = null
-    if (!prop) { clearIdleAction(ch); return false } // someone else took it
+    if (!prop) { clearItemBubble(ch); clearIdleAction(ch); return false } // someone else took it
     ch.heldItem = prop.kind
     // Carry it to the nearest reachable disposal furniture (from the utensil's catalog entry)
     for (const target of findDisposalFor(prop.kind, ch, ctx)) {
@@ -731,6 +755,7 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
       }
     }
     // Nothing reachable — keep the item; it gets placed on the desk when seated
+    clearItemBubble(ch)
     clearIdleAction(ch)
     return false
   }
@@ -740,6 +765,7 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
     if (ch.idleActionTimer <= 0) {
       logIdle(ch, `disposed of the ${utensilLabel(ch.heldItem)}`)
       ch.heldItem = null
+      clearItemBubble(ch)
       clearIdleAction(ch)
       return false
     }
@@ -973,6 +999,7 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
     if (ch.idleActionTimer > 0) return true
     ch.heldItem = ch.itemTargetUid
     ch.itemTargetUid = null
+    clearItemBubble(ch)
     logIdle(ch, `got some ${utensilLabel(ch.heldItem)}`)
     const seat = ch.seatId ? ctx.seats.get(ch.seatId) : null
     if (!seat) { clearIdleAction(ch); return false }

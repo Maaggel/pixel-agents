@@ -1478,6 +1478,8 @@ export class OfficeState {
       for (const ch of this.characters.values()) {
         ch.heldItem = null
         ch.itemTargetUid = null
+        if (ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') { ch.bubbleType = null; ch.bubbleTimer = 0 }
+        ch.bubbleItemType = null
       }
     }
     this.rebuildFurnitureInstances()
@@ -1567,6 +1569,7 @@ export class OfficeState {
     ch.heldItem = null
     ch.bubbleType = null
     ch.bubbleTimer = 0
+    ch.bubbleItemType = null
     ch.path = []
     ch.seatTimer = 0
     ch.wanderTimer = 0
@@ -1727,7 +1730,7 @@ export class OfficeState {
     if (ch.bubbleType === 'permission') {
       ch.bubbleType = null
       ch.bubbleTimer = 0
-    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
+    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat' || ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') {
       // Trigger immediate fade (0.3s remaining)
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC)
     }
@@ -1849,7 +1852,7 @@ export class OfficeState {
           }
         }
         // Tick bubble timers
-        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
+        if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat' || ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') {
           ch.bubbleTimer -= dt
           if (ch.bubbleTimer <= 0) { ch.bubbleType = null; ch.bubbleTimer = 0 }
         }
@@ -1959,7 +1962,7 @@ export class OfficeState {
       }
 
       // Tick bubble timer for waiting/talking/idle bubbles
-      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat') {
+      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'talking' || ch.bubbleType === 'idle_chat' || ch.bubbleType === 'idle_think' || ch.bubbleType === 'idle_eat' || ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') {
         // Active sub-agents: keep talking bubble alive (no agentStateUpdate to refresh it)
         if (ch.isSubagent && ch.isActive && ch.bubbleType === 'talking') {
           ch.bubbleTimer = TALKING_BUBBLE_DURATION_SEC

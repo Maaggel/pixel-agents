@@ -99,6 +99,7 @@ export function createCharacter(
     seatId,
     bubbleType: null,
     bubbleTimer: 0,
+    bubbleItemType: null,
     seatTimer: 0,
     idleZoneTimer: 0,
     idleAction: null,

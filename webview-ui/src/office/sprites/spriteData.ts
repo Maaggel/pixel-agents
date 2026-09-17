@@ -1038,6 +1038,67 @@ export const BUBBLE_IDLE_EAT_SPRITE: SpriteData = (() => {
   ]
 })()
 
+/** Idle tidy bubble: broom (11x13) — cool tint */
+export const BUBBLE_IDLE_TIDY_SPRITE: SpriteData = (() => {
+  const B = '#556688' // cool border
+  const F = '#EEF3FF' // cool fill
+  const H = '#A0703C' // handle
+  const S = '#D8B04A' // bristles
+  return [
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [B, F, F, F, F, F, F, F, H, F, B],
+    [B, F, F, F, F, F, F, H, F, F, B],
+    [B, F, F, F, F, F, H, F, F, F, B],
+    [B, F, F, F, F, H, F, F, F, F, B],
+    [B, F, F, F, H, F, F, F, F, F, B],
+    [B, F, F, S, S, S, F, F, F, F, B],
+    [B, F, S, S, S, S, S, F, F, F, B],
+    [B, F, S, S, S, S, S, F, F, F, B],
+    [_, B, B, B, B, B, B, B, B, B, _],
+    [_, _, _, _, B, B, B, _, _, _, _],
+    [_, _, _, _, _, B, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/**
+ * Bubble showing an arbitrary (cropped) item sprite — used while a character
+ * is off to fetch a utensil. Frame grows with the item; cached per item sprite.
+ */
+const itemBubbleCache = new WeakMap<SpriteData, SpriteData>()
+export function getItemBubbleSprite(item: SpriteData): SpriteData {
+  const hit = itemBubbleCache.get(item)
+  if (hit) return hit
+  const B = '#556688'
+  const F = '#EEF3FF'
+  const ih = item.length
+  const iw = ih > 0 ? item[0].length : 0
+  const w = iw + 4 // 1px border + 1px padding each side
+  const h = ih + 4
+  const out: SpriteData = []
+  for (let y = 0; y < h; y++) {
+    const row: string[] = []
+    for (let x = 0; x < w; x++) {
+      const edge = y === 0 || y === h - 1 || x === 0 || x === w - 1
+      const corner = (y === 0 || y === h - 1) && (x === 0 || x === w - 1)
+      if (corner) row.push(_)
+      else if (edge) row.push(B)
+      else {
+        const px = item[y - 2]?.[x - 2]
+        row.push(px ? px : F)
+      }
+    }
+    out.push(row)
+  }
+  // Tail: 3px then 1px, centred
+  const cx = Math.floor(w / 2)
+  const tail1: string[] = Array.from({ length: w }, (_v, x) => (x >= cx - 1 && x <= cx + 1 ? B : _))
+  const tail2: string[] = Array.from({ length: w }, (_v, x) => (x === cx ? B : _))
+  out.push(tail1, tail2, Array.from({ length: w }, () => _))
+  itemBubbleCache.set(item, out)
+  return out
+}
+
 // ── Character Sprites ───────────────────────────────────────────
 // 16x24 characters with palette substitution
 

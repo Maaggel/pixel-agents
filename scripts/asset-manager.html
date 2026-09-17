@@ -350,6 +350,13 @@
         <label for="f-utensil-disposal">Disposal (asset name prefix, e.g. SINK, BIN)</label>
         <input id="f-utensil-disposal" type="text" placeholder="SINK">
       </div>
+      <div class="form-row">
+        <label for="f-utensil-use">Use</label>
+        <select id="f-utensil-use">
+          <option value="drink">Drink — fetched on breaks, carried back to the desk</option>
+          <option value="food">Food — fetched before eating at a kitchen seat</option>
+        </select>
+      </div>
 
       <!-- Rotation Group -->
       <div class="section-title">Rotation Group</div>
@@ -741,6 +748,7 @@ function loadForm(idx) {
   document.getElementById('f-utensil').checked = !!a.utensil
   document.getElementById('f-utensil-origin').value = a.utensilOrigin || ''
   document.getElementById('f-utensil-disposal').value = a.utensilDisposal || ''
+  document.getElementById('f-utensil-use').value = a.utensilUse || 'drink'
   document.getElementById('f-grouped').checked = !!a.partOfGroup
   document.getElementById('f-group-id').value = a.groupId || ''
   document.getElementById('f-orientation').value = a.orientation || 'front'
@@ -826,6 +834,7 @@ document.getElementById('btn-save').onclick = () => {
   a.utensil = document.getElementById('f-utensil').checked
   a.utensilOrigin = document.getElementById('f-utensil-origin').value.trim() || undefined
   a.utensilDisposal = document.getElementById('f-utensil-disposal').value.trim() || undefined
+  a.utensilUse = a.utensil ? document.getElementById('f-utensil-use').value : undefined
   // Rotation
   a.partOfGroup = document.getElementById('f-grouped').checked
   a.groupId = document.getElementById('f-group-id').value.trim() || null

@@ -82,15 +82,33 @@ function findFurnitureByAssetName(ctx: IdleActionContext, namePrefix: string): P
   return ctx.furniture.filter(f => types.has(f.type))
 }
 
-/** Utensils whose origin furniture exists in the layout, paired with those origins. */
-function findFetchableUtensils(ctx: IdleActionContext): Array<{ type: string; label: string; origins: PlacedFurniture[] }> {
-  const out: Array<{ type: string; label: string; origins: PlacedFurniture[] }> = []
+interface FetchableUtensil { type: string; label: string; use: 'drink' | 'food'; origins: PlacedFurniture[] }
+
+/** Utensils of the given use whose origin furniture exists in the layout, paired with those origins. */
+function findFetchableUtensils(ctx: IdleActionContext, use: 'drink' | 'food'): FetchableUtensil[] {
+  const out: FetchableUtensil[] = []
   for (const entry of getUtensilEntries()) {
-    if (!entry.utensilOrigin) continue
+    if (!entry.utensilOrigin || (entry.utensilUse ?? 'drink') !== use) continue
     const origins = findFurnitureByAssetName(ctx, entry.utensilOrigin)
-    if (origins.length > 0) out.push({ type: entry.type, label: entry.label, origins })
+    if (origins.length > 0) out.push({ type: entry.type, label: entry.label, use, origins })
   }
   return out
+}
+
+/** Start walking to a random origin of `utensil`; on arrival the caller waits ITEM_FETCH_SEC and receives it. */
+function startFetch(ch: Character, utensil: FetchableUtensil, ctx: IdleActionContext): boolean {
+  const origins = [...utensil.origins]
+  for (let i = origins.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [origins[i], origins[j]] = [origins[j], origins[i]]
+  }
+  for (const origin of origins) {
+    if (!walkToFurniture(ch, origin, ctx)) continue
+    ch.itemTargetUid = utensil.type // utensil type to receive on arrival
+    ch.idleActionTimer = ITEM_FETCH_SEC
+    return true
+  }
+  return false
 }
 
 function utensilLabel(type: string | null): string {
@@ -360,7 +378,7 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsZone && !isCharacterInZone(ch, entry.needsZone, ctx)) continue
     if (entry.needsDynamicItems) {
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
-      if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx).length === 0)) continue
+      if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'drink').length === 0)) continue
       if (entry.type === IdleActionType.TIDY_UP && findStaleProps(ctx).length === 0) continue
     }
     eligible.push(entry)
@@ -555,6 +573,18 @@ export function initIdleAction(
       const seat = ctx.seats.get(ch.seatId)
       if (!seat) return false
 
+      // Dynamic items: fetch food (a plate from the fridge…) first, then come back and eat it.
+      // 'leaving' marks the fetch leg; updateEating switches to 'approaching' once the food is in hand.
+      if (ctx.dynamicItems && ch.heldItem === null && ctx.props.length < MAX_PROPS) {
+        const food = pickRandom(findFetchableUtensils(ctx, 'food'))
+        if (food && startFetch(ch, food, ctx)) {
+          ch.conversationPhase = 'leaving'
+          logIdle(ch, `going to get some ${food.label.toLowerCase()}`)
+          ctx.onIdleEvent?.('eating', [ch.id])
+          return true
+        }
+      }
+
       ch.idleActionTimer = randomRange(EAT_MIN_DURATION_SEC, EAT_MAX_DURATION_SEC)
 
       // Check if already at seat
@@ -586,23 +616,12 @@ export function initIdleAction(
     }
 
     case IdleActionType.FETCH_ITEM: {
-      // Walk to a utensil's origin (coffee machine, fridge…), wait, walk away carrying it
-      const choice = pickRandom(findFetchableUtensils(ctx))
-      if (!choice) return false
-      const origins = [...choice.origins]
-      for (let i = origins.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [origins[i], origins[j]] = [origins[j], origins[i]]
-      }
-      for (const origin of origins) {
-        if (!walkToFurniture(ch, origin, ctx)) continue
-        ch.itemTargetUid = choice.type // utensil type to receive on arrival
-        ch.conversationPhase = 'approaching'
-        ch.idleActionTimer = ITEM_FETCH_SEC
-        logIdle(ch, `going to get a ${choice.label.toLowerCase()}`)
-        return true
-      }
-      return false
+      // Walk to a drink's origin (coffee machine…), wait, walk away carrying it
+      const choice = pickRandom(findFetchableUtensils(ctx, 'drink'))
+      if (!choice || !startFetch(ch, choice, ctx)) return false
+      ch.conversationPhase = 'approaching'
+      logIdle(ch, `going to get a ${choice.label.toLowerCase()}`)
+      return true
     }
 
     case IdleActionType.TIDY_UP: {
@@ -642,7 +661,7 @@ export function updateIdleAction(
     case IdleActionType.MEETING:
       return updateMeeting(ch, dt, ctx)
     case IdleActionType.EATING:
-      return updateEating(ch, dt)
+      return updateEating(ch, dt, ctx)
     case IdleActionType.FETCH_ITEM:
       return updateFetchItem(ch, dt, ctx)
     case IdleActionType.TIDY_UP:
@@ -926,7 +945,31 @@ function updateStandAndThink(ch: Character, dt: number): boolean {
   return false
 }
 
-function updateEating(ch: Character, dt: number): boolean {
+function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolean {
+  if (ch.conversationPhase === 'leaving') {
+    // Fetch leg: wait at the origin, receive the food, then head back to the kitchen seat
+    if (!arrivedAtFurniture(ch)) return true
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer > 0) return true
+    ch.heldItem = ch.itemTargetUid
+    ch.itemTargetUid = null
+    logIdle(ch, `got some ${utensilLabel(ch.heldItem)}`)
+    const seat = ch.seatId ? ctx.seats.get(ch.seatId) : null
+    if (!seat) { clearIdleAction(ch); return false }
+    ch.idleActionTimer = randomRange(EAT_MIN_DURATION_SEC, EAT_MAX_DURATION_SEC)
+    ch.conversationPhase = 'approaching'
+    if (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow) {
+      const path = ctx.findPathUnblocked(ch, seat.seatCol, seat.seatRow)
+      if (path.length === 0) { clearIdleAction(ch); return false } // seat unreachable — keep the plate, place it wherever we sit
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+    }
+    return true
+  }
+
   if (ch.conversationPhase === 'approaching') {
     // Wait for walk to seat
     if (ch.state !== CharacterState.WALK && ch.path.length === 0) {

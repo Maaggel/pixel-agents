@@ -43,6 +43,7 @@ interface Asset {
   utensil?: boolean
   utensilOrigin?: string
   utensilDisposal?: string
+  utensilUse?: string
 }
 
 interface CatalogEntry {
@@ -69,6 +70,8 @@ interface CatalogEntry {
   utensil?: boolean
   utensilOrigin?: string
   utensilDisposal?: string
+  /** 'drink' (fetched on coffee breaks) or 'food' (fetched before eating in the kitchen) */
+  utensilUse?: string
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -226,6 +229,7 @@ for (const asset of assets) {
       entry.utensil = true
       if (asset.utensilOrigin) entry.utensilOrigin = asset.utensilOrigin
       if (asset.utensilDisposal) entry.utensilDisposal = asset.utensilDisposal
+      if (asset.utensilUse) entry.utensilUse = asset.utensilUse
     }
 
     // Lamp lighting

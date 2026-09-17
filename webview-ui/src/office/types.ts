@@ -264,6 +264,8 @@ export interface FurnitureCatalogEntry {
   utensilOrigin?: string
   /** Asset-name prefix of the furniture it is disposed of at (e.g. SINK) */
   utensilDisposal?: string
+  /** 'drink': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
+  utensilUse?: 'drink' | 'food'
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
   /** Whether this furniture casts sunlight beams (e.g. windows) */

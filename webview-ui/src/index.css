@@ -50,6 +50,10 @@
   --pixel-overlay-z: 100;
   --pixel-overlay-selected-z: 110;
   --pixel-controls-z: 50;
+  /* Side panels sit above in-world labels; modals above everything */
+  --pixel-panel-z: 120;
+  --pixel-modal-backdrop-z: 299;
+  --pixel-modal-z: 300;
 }
 
 html, body, #root {

@@ -116,7 +116,7 @@ export function PersonalityPanel({ personality, allPersonalities, selectedKey, o
       border: '2px solid var(--pixel-border)',
       borderRadius: 0,
       boxShadow: 'var(--pixel-shadow)',
-      zIndex: 100,
+      zIndex: 'var(--pixel-panel-z)',
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',

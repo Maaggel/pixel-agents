@@ -2,6 +2,7 @@ import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, ZoneType 
 import type { ZoneType } from '../types.js'
 import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
+  MAX_PROPS,
   PALETTE_COUNT,
   HUE_SHIFT_MIN_DEG,
   HUE_SHIFT_RANGE_DEG,
@@ -44,7 +45,7 @@ import {
   LAMP_ON_INTENSITY_THRESHOLD,
   LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC,
 } from '../../constants.js'
-import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
+import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
 import { getSunState } from './sunlight.js'
@@ -81,6 +82,11 @@ export class OfficeState {
   seats: Map<string, Seat>
   blockedTiles: Set<string>
   furniture: FurnitureInstance[]
+  // ── Dynamic items (runtime-only props; never part of the saved layout) ──
+  /** Feature toggle from View options. Off → no fetch/tidy actions, no props, no held items. */
+  dynamicItemsEnabled = true
+  props = new Map<string, PlacedProp>()
+  private propCounter = 0
   walkableTiles: Array<{ col: number; row: number }>
   /** Walkable tiles grouped by zone type (only includes tiles with a zone designation) */
   zoneTiles: Map<string, Array<{ col: number; row: number }>> = new Map()
@@ -310,6 +316,9 @@ export class OfficeState {
           findPath(ch.tileCol, ch.tileRow, toCol, toRow, this.tileMap, this.blockedTiles)
         )
       },
+      dynamicItems: this.dynamicItemsEnabled,
+      props: [...this.props.values()],
+      takeProp: (uid: string) => this.takeProp(uid),
       onIdleEvent: (type: string, agentIds: number[]) => {
         this.onIdleEvent?.({ type: type as IdleEventType, agentIds })
       },
@@ -1457,6 +1466,83 @@ export class OfficeState {
   }
 
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON, lamps toggle by sun cycle) */
+  // ── Dynamic items ────────────────────────────────────────────
+
+  setDynamicItems(enabled: boolean): void {
+    if (this.dynamicItemsEnabled === enabled) return
+    this.dynamicItemsEnabled = enabled
+    if (!enabled) {
+      this.props.clear()
+      for (const ch of this.characters.values()) {
+        ch.heldItem = null
+        ch.itemTargetUid = null
+      }
+    }
+    this.rebuildFurnitureInstances()
+  }
+
+  addProp(kind: string, col: number, row: number, ownerId: number): PlacedProp {
+    const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: performance.now(), ownerId }
+    this.props.set(prop.uid, prop)
+    this.rebuildFurnitureInstances()
+    return prop
+  }
+
+  takeProp(uid: string): PlacedProp | null {
+    const prop = this.props.get(uid)
+    if (!prop) return null
+    this.props.delete(uid)
+    this.rebuildFurnitureInstances()
+    return prop
+  }
+
+  private hasPropAt(col: number, row: number): boolean {
+    for (const p of this.props.values()) if (p.col === col && p.row === row) return true
+    return false
+  }
+
+  /** Is this tile covered by desk-like furniture (somewhere a cup can stand)? */
+  private isDeskTile(col: number, row: number): boolean {
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type)
+      if (!entry?.isDesk) continue
+      if (col >= item.col && col < item.col + entry.footprintW && row >= item.row && row < item.row + entry.footprintH) return true
+    }
+    return false
+  }
+
+  /** A seated character puts its held item down on the desk in front of it (or beside it). */
+  private placeHeldItem(ch: Character): void {
+    if (!ch.heldItem || !ch.seatId) return
+    const seat = this.seats.get(ch.seatId)
+    if (!seat) return
+    const kind = ch.heldItem
+    ch.heldItem = null
+    const name = ch.nametag || `Agent ${ch.id}`
+    const label = (getCatalogEntry(kind)?.label ?? 'item').toLowerCase()
+    const f = seat.facingDir
+    const front = { col: seat.seatCol + (f === Direction.RIGHT ? 1 : f === Direction.LEFT ? -1 : 0), row: seat.seatRow + (f === Direction.DOWN ? 1 : f === Direction.UP ? -1 : 0) }
+    const sides = f === Direction.LEFT || f === Direction.RIGHT
+      ? [{ col: seat.seatCol, row: seat.seatRow - 1 }, { col: seat.seatCol, row: seat.seatRow + 1 }]
+      : [{ col: seat.seatCol - 1, row: seat.seatRow }, { col: seat.seatCol + 1, row: seat.seatRow }]
+    const behind = { col: seat.seatCol - (front.col - seat.seatCol), row: seat.seatRow - (front.row - seat.seatRow) }
+    const spot = [front, ...sides, behind].find(t => this.isDeskTile(t.col, t.row) && !this.hasPropAt(t.col, t.row))
+    if (spot && this.props.size < MAX_PROPS) {
+      this.addProp(kind, spot.col, spot.row, ch.id)
+      addBehaviourEntry({ agentId: ch.id, agentName: name, message: `put the ${label} down on the desk`, type: 'idle' })
+    } else {
+      addBehaviourEntry({ agentId: ch.id, agentName: name, message: `finished the ${label}`, type: 'idle' })
+    }
+  }
+
+  /** Props rendered as virtual furniture using the utensil's own sprite, never written to the layout. */
+  private propsAsFurniture(): PlacedFurniture[] {
+    if (this.props.size === 0) return []
+    const out: PlacedFurniture[] = []
+    for (const p of this.props.values()) out.push({ uid: p.uid, type: p.kind, col: p.col, row: p.row })
+    return out
+  }
+
   rebuildFurnitureInstances(): void {
     // Collect tiles where active agents face desks (only when seated, not while walking to seat)
     const autoOnTiles = new Set<string>()
@@ -1492,8 +1578,9 @@ export class OfficeState {
     // Check if any lamp should be individually ON (staggered toggle support)
     const anyLampOn = this.lampsOn || this.lampIndividualOn.size > 0
 
+    const propItems = this.propsAsFurniture()
     if (autoOnTiles.size === 0 && !anyLampOn) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture, this.layout)
+      this.furniture = layoutToFurnitureInstances(propItems.length ? [...this.layout.furniture, ...propItems] : this.layout.furniture, this.layout)
       return
     }
 
@@ -1528,7 +1615,7 @@ export class OfficeState {
       return item
     })
 
-    this.furniture = layoutToFurnitureInstances(modifiedFurniture, this.layout)
+    this.furniture = layoutToFurnitureInstances(propItems.length ? [...modifiedFurniture, ...propItems] : modifiedFurniture, this.layout)
   }
 
   setAgentTool(id: number, tool: string | null): void {
@@ -1761,6 +1848,11 @@ export class OfficeState {
         if (Math.random() < MEETING_CHANCE_PER_SEC * dt) {
           this.tryStartMeeting()
         }
+      }
+
+      // ── Dynamic items: put a carried item down once seated ───────
+      if (ch.heldItem && ch.seatId && isSittingState(ch.state) && !ch.isRemote && ch.idleAction !== IdleActionType.TIDY_UP) {
+        this.placeHeldItem(ch)
       }
 
       // ── Idle Action System ──────────────────────────────────────

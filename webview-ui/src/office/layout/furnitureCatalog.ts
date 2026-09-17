@@ -14,6 +14,8 @@ import {
 export interface LoadedAssetData {
   catalog: Array<{
     id: string
+    /** Asset name (e.g. COFFEE_MACHINE); absent in very old catalog exports */
+    name?: string
     label: string
     category: string
     width: number
@@ -28,6 +30,9 @@ export interface LoadedAssetData {
     backgroundTiles?: number
     canPlaceOnWalls?: boolean
     interactable?: boolean
+    utensil?: boolean
+    utensilOrigin?: string
+    utensilDisposal?: string
     isSeat?: boolean
     sunlight?: boolean
     sunlightInset?: number
@@ -175,6 +180,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
     }
     return {
       type: asset.id,
+      ...(asset.name ? { name: asset.name } : {}),
       label: asset.label,
       footprintW: asset.footprintW,
       footprintH: asset.footprintH,
@@ -186,6 +192,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
       ...(asset.interactable ? { interactable: true } : {}),
+      ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal } : {}),
       ...(asset.isSeat ? { isSeat: true } : {}),
       ...(asset.sunlight ? { sunlight: true } : {}),
       ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),
@@ -352,6 +359,20 @@ export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefi
   }
   const catalog = dynamicCatalog || FURNITURE_CATALOG
   return catalog.find((e) => e.type === type)
+}
+
+/** Catalog entries that characters can carry (dynamic items). */
+export function getUtensilEntries(): CatalogEntryWithCategory[] {
+  const catalog = internalCatalog || dynamicCatalog || FURNITURE_CATALOG
+  return catalog.filter((e) => e.utensil === true)
+}
+
+/** Catalog types whose asset name equals `name`, or starts with it when `prefix` is true. */
+export function getCatalogTypesByName(name: string, prefix = false): string[] {
+  const catalog = internalCatalog || dynamicCatalog || FURNITURE_CATALOG
+  return catalog
+    .filter((e) => e.name !== undefined && (prefix ? e.name.startsWith(name) : e.name === name))
+    .map((e) => e.type)
 }
 
 export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryWithCategory[] {

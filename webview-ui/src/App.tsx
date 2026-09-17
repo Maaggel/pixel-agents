@@ -187,7 +187,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false, dynamicItems: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -315,6 +315,11 @@ function App() {
   )
 
   // "F" key: toggle camera follow for currently selected agent/vacuum
+  // Dynamic items toggle → engine (turning it off clears props and carried items)
+  useEffect(() => {
+    getOfficeState().setDynamicItems(viewOptions.dynamicItems)
+  }, [viewOptions.dynamicItems])
+
   // Esc leaves display mode (the Show-UI button is deliberately faint)
   const viewOptionsRef = useRef(viewOptions)
   viewOptionsRef.current = viewOptions

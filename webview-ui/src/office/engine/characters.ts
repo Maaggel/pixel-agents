@@ -107,6 +107,8 @@ export function createCharacter(
     conversationPhase: null,
     chatBubbleVariant: 0,
     preConversationDir: null,
+    heldItem: null,
+    itemTargetUid: null,
     meetingGroupId: null,
     isSubagent: false,
     parentAgentId: null,

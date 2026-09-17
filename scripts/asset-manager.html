@@ -336,6 +336,21 @@
         </div>
       </div>
 
+      <!-- Utensil (dynamic item) -->
+      <div class="section-title">Utensil (carried by characters)</div>
+      <div class="checkbox-item">
+        <input id="f-utensil" type="checkbox">
+        <label for="f-utensil">Is Utensil (can be picked up and carried)</label>
+      </div>
+      <div class="form-row">
+        <label for="f-utensil-origin">Origin (asset name prefix, e.g. COFFEE_MACHINE, FRIDGE)</label>
+        <input id="f-utensil-origin" type="text" placeholder="COFFEE_MACHINE">
+      </div>
+      <div class="form-row">
+        <label for="f-utensil-disposal">Disposal (asset name prefix, e.g. SINK, BIN)</label>
+        <input id="f-utensil-disposal" type="text" placeholder="SINK">
+      </div>
+
       <!-- Rotation Group -->
       <div class="section-title">Rotation Group</div>
       <div class="checkbox-group">
@@ -723,6 +738,9 @@ function loadForm(idx) {
   document.getElementById('f-ontop').checked = !!a.canPlaceOnSurfaces
   document.getElementById('f-interactable').checked = !!a.interactable
   document.getElementById('f-isseat').checked = !!a.isSeat
+  document.getElementById('f-utensil').checked = !!a.utensil
+  document.getElementById('f-utensil-origin').value = a.utensilOrigin || ''
+  document.getElementById('f-utensil-disposal').value = a.utensilDisposal || ''
   document.getElementById('f-grouped').checked = !!a.partOfGroup
   document.getElementById('f-group-id').value = a.groupId || ''
   document.getElementById('f-orientation').value = a.orientation || 'front'
@@ -805,6 +823,9 @@ document.getElementById('btn-save').onclick = () => {
   a.canPlaceOnSurfaces = document.getElementById('f-ontop').checked
   a.interactable = document.getElementById('f-interactable').checked
   a.isSeat = document.getElementById('f-isseat').checked
+  a.utensil = document.getElementById('f-utensil').checked
+  a.utensilOrigin = document.getElementById('f-utensil-origin').value.trim() || undefined
+  a.utensilDisposal = document.getElementById('f-utensil-disposal').value.trim() || undefined
   // Rotation
   a.partOfGroup = document.getElementById('f-grouped').checked
   a.groupId = document.getElementById('f-group-id').value.trim() || null

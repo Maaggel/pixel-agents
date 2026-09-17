@@ -8,6 +8,8 @@ import { renderSkillAura, renderSkillBubble } from './skillAura.js'
 import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
 import { computeLampLights, renderLampLights } from './lampLight.js'
+import { getCatalogEntry } from '../layout/furnitureCatalog.js'
+import { HELD_ITEM_OFFSETS } from '../../constants.js'
 import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
 import type { WindowEffectFrameData } from './windowEffects.js'
 import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
@@ -208,6 +210,22 @@ export function renderScene(
     }
   }
 
+  // Held items: a utensil sprite trimmed to its opaque bounds, so it can sit in the hand
+const croppedSpriteCache = new WeakMap<SpriteData, SpriteData>()
+function getCroppedSprite(sprite: SpriteData): SpriteData {
+  const hit = croppedSpriteCache.get(sprite)
+  if (hit) return hit
+  let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1
+  for (let y = 0; y < sprite.length; y++) {
+    for (let x = 0; x < sprite[y].length; x++) {
+      if (sprite[y][x]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y) }
+    }
+  }
+  const cropped = maxX < 0 ? sprite : sprite.slice(minY, maxY + 1).map(row => row.slice(minX, maxX + 1))
+  croppedSpriteCache.set(sprite, cropped)
+  return cropped
+}
+
   // Characters
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift)
@@ -276,6 +294,21 @@ export function renderScene(
         c.drawImage(cached, drawX, drawY)
       },
     })
+
+    // Carried utensil (dynamic items) — anchored at the hand, behind the body when facing up
+    if (ch.heldItem) {
+      const itemSprite = getCatalogEntry(ch.heldItem)?.sprite
+      const anchor = HELD_ITEM_OFFSETS[ch.dir]
+      if (itemSprite && anchor) {
+        const itemCached = getCachedSprite(getCroppedSprite(itemSprite), zoom)
+        const ix = Math.round(offsetX + (ch.x + anchor.dx) * zoom)
+        const iy = Math.round(offsetY + (ch.y + sittingOffset + anchor.dy) * zoom)
+        drawables.push({
+          zY: charZY + (anchor.behind ? -OUTLINE_Z_SORT_OFFSET / 2 : OUTLINE_Z_SORT_OFFSET / 2),
+          draw: (c) => c.drawImage(itemCached, ix, iy),
+        })
+      }
+    }
   }
 
   // Robot Vacuums (active, non-docked)

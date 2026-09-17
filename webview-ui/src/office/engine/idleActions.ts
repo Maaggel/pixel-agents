@@ -1,8 +1,12 @@
 import { CharacterState, Direction, IdleActionType } from '../types.js'
-import type { Character, PlacedFurniture, Seat, TileType as TileTypeVal } from '../types.js'
+import type { Character, PlacedFurniture, PlacedProp, Seat, TileType as TileTypeVal } from '../types.js'
 import { directionBetween, isSittingState } from './characters.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import {
+  ITEM_FETCH_SEC,
+  ITEM_DISPOSE_SEC,
+  PROP_MIN_AGE_SEC,
+  MAX_PROPS,
   CONVERSATION_MIN_DURATION_SEC,
   CONVERSATION_MAX_DURATION_SEC,
   CONVERSATION_BUBBLE_SHOW_MIN_SEC,
@@ -25,7 +29,7 @@ import {
   MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC,
   MEETING_MIN_PARTICIPANTS,
 } from '../../constants.js'
-import { getCatalogEntry } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getCatalogTypesByName, getUtensilEntries } from '../layout/furnitureCatalog.js'
 
 // ── Idle Action Registry ───────────────────────────────────────
 // Adding a new action: 1) add to IdleActionType in types.ts
@@ -40,6 +44,8 @@ interface IdleActionEntry {
   needsFurniture?: boolean
   /** Action requires character to be seated in a specific zone type */
   needsZone?: string
+  /** Action is part of the "dynamic items" feature (toggleable in View options) */
+  needsDynamicItems?: boolean
 }
 
 const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
@@ -48,6 +54,8 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.VISIT_FURNITURE, weight: 35, needsFurniture: true },
   { type: IdleActionType.STAND_AND_THINK, weight: 10 },
   { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
+  { type: IdleActionType.FETCH_ITEM, weight: 25, needsDynamicItems: true },
+  { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
 ]
 
 function logIdle(ch: Character, message: string): void {
@@ -63,6 +71,83 @@ function randomRange(min: number, max: number): number {
 function isInterestingFurniture(type: string): boolean {
   const entry = getCatalogEntry(type)
   return entry?.interactable === true
+}
+
+// ── Dynamic items helpers ──────────────────────────────────────
+
+/** Placed furniture whose asset name starts with `namePrefix` (e.g. 'SINK' → SINK_SM, SINK_LG). */
+function findFurnitureByAssetName(ctx: IdleActionContext, namePrefix: string): PlacedFurniture[] {
+  const types = new Set(getCatalogTypesByName(namePrefix, true))
+  if (types.size === 0) return []
+  return ctx.furniture.filter(f => types.has(f.type))
+}
+
+/** Utensils whose origin furniture exists in the layout, paired with those origins. */
+function findFetchableUtensils(ctx: IdleActionContext): Array<{ type: string; label: string; origins: PlacedFurniture[] }> {
+  const out: Array<{ type: string; label: string; origins: PlacedFurniture[] }> = []
+  for (const entry of getUtensilEntries()) {
+    if (!entry.utensilOrigin) continue
+    const origins = findFurnitureByAssetName(ctx, entry.utensilOrigin)
+    if (origins.length > 0) out.push({ type: entry.type, label: entry.label, origins })
+  }
+  return out
+}
+
+function utensilLabel(type: string | null): string {
+  if (!type) return 'item'
+  return (getCatalogEntry(type)?.label ?? type).toLowerCase()
+}
+
+/** Disposal furniture for a utensil type (from its catalog entry), nearest first. */
+function findDisposalFor(type: string, ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
+  const prefix = getCatalogEntry(type)?.utensilDisposal
+  if (!prefix) return []
+  return findFurnitureByAssetName(ctx, prefix)
+    .sort((a, b) => (Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)) - (Math.abs(b.col - ch.tileCol) + Math.abs(b.row - ch.tileRow)))
+}
+
+/** Props old enough to be tidied and not currently targeted by someone else */
+function findStaleProps(ctx: IdleActionContext): PlacedProp[] {
+  const now = performance.now()
+  const targeted = new Set<string>()
+  for (const other of ctx.characters.values()) {
+    if (other.itemTargetUid) targeted.add(other.itemTargetUid)
+  }
+  return ctx.props.filter(p => !targeted.has(p.uid) && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC && !!getCatalogEntry(p.kind)?.utensilDisposal)
+}
+
+/** Walk to a tile adjacent to `target` (footprint from the catalog, or 1×1). Returns false if unreachable. */
+function walkToFurniture(ch: Character, target: PlacedFurniture, ctx: IdleActionContext): boolean {
+  const footprint = ctx.getFurnitureFootprint(target.type)
+  const fw = footprint ? footprint.w : 1
+  const fh = footprint ? footprint.h : 1
+  const adj = findAdjacentWalkableTile(target, fw, fh, ctx.tileMap, ctx.blockedTiles)
+  if (!adj) return false
+  const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
+  if (path.length === 0 && (ch.tileCol !== adj.col || ch.tileRow !== adj.row)) return false
+  ch.preConversationDir = adj.facingDir
+  if (path.length > 0) {
+    ch.path = path
+    ch.moveProgress = 0
+    ch.state = CharacterState.WALK
+    ch.frame = 0
+    ch.frameTimer = 0
+  }
+  return true
+}
+
+/** True once a walkToFurniture() trip has finished; faces the target on arrival. */
+function arrivedAtFurniture(ch: Character): boolean {
+  if (ch.state === CharacterState.WALK || ch.path.length > 0) return false
+  ch.dir = ch.preConversationDir ?? ch.dir
+  ch.preConversationDir = null
+  ch.state = CharacterState.IDLE
+  ch.frame = 0
+  return true
+}
+
+function pickRandom<T>(list: T[]): T | null {
+  return list.length > 0 ? list[Math.floor(Math.random() * list.length)] : null
 }
 
 /** Check if a character's current seat is in the given zone type */
@@ -245,6 +330,12 @@ export interface IdleActionContext {
   findPathUnblocked: (ch: Character, toCol: number, toRow: number) => Array<{ col: number; row: number }>
   /** Callback for personality tracking of idle events */
   onIdleEvent?: (type: string, agentIds: number[]) => void
+  /** Dynamic items feature enabled (View options) */
+  dynamicItems: boolean
+  /** Props currently lying around the office */
+  props: PlacedProp[]
+  /** Remove a prop (picked up). Returns it, or null if it was already gone. */
+  takeProp: (uid: string) => PlacedProp | null
 }
 
 /** Pick an idle action for a character based on weighted registry + prerequisites */
@@ -267,6 +358,11 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsPartner && idlePartnerCount === 0) continue
     if (entry.needsFurniture && !hasInterestingFurniture) continue
     if (entry.needsZone && !isCharacterInZone(ch, entry.needsZone, ctx)) continue
+    if (entry.needsDynamicItems) {
+      if (!ctx.dynamicItems || ch.heldItem !== null) continue
+      if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx).length === 0)) continue
+      if (entry.type === IdleActionType.TIDY_UP && findStaleProps(ctx).length === 0) continue
+    }
     eligible.push(entry)
   }
 
@@ -489,6 +585,39 @@ export function initIdleAction(
       return true
     }
 
+    case IdleActionType.FETCH_ITEM: {
+      // Walk to a utensil's origin (coffee machine, fridge…), wait, walk away carrying it
+      const choice = pickRandom(findFetchableUtensils(ctx))
+      if (!choice) return false
+      const origins = [...choice.origins]
+      for (let i = origins.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [origins[i], origins[j]] = [origins[j], origins[i]]
+      }
+      for (const origin of origins) {
+        if (!walkToFurniture(ch, origin, ctx)) continue
+        ch.itemTargetUid = choice.type // utensil type to receive on arrival
+        ch.conversationPhase = 'approaching'
+        ch.idleActionTimer = ITEM_FETCH_SEC
+        logIdle(ch, `going to get a ${choice.label.toLowerCase()}`)
+        return true
+      }
+      return false
+    }
+
+    case IdleActionType.TIDY_UP: {
+      // Pick up a stray item and carry it to a sink
+      const stale = findStaleProps(ctx)
+      const prop = pickRandom(stale)
+      if (!prop) return false
+      const propAsFurniture: PlacedFurniture = { uid: prop.uid, type: '', col: prop.col, row: prop.row }
+      if (!walkToFurniture(ch, propAsFurniture, ctx)) return false
+      ch.itemTargetUid = prop.uid
+      ch.conversationPhase = 'approaching'
+      logIdle(ch, `going to pick up a stray ${utensilLabel(prop.kind)}`)
+      return true
+    }
+
     default:
       return false
   }
@@ -514,9 +643,70 @@ export function updateIdleAction(
       return updateMeeting(ch, dt, ctx)
     case IdleActionType.EATING:
       return updateEating(ch, dt)
+    case IdleActionType.FETCH_ITEM:
+      return updateFetchItem(ch, dt, ctx)
+    case IdleActionType.TIDY_UP:
+      return updateTidyUp(ch, dt, ctx)
     default:
       return false
   }
+}
+
+// ── Dynamic items: update loops ────────────────────────────────
+
+function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boolean {
+  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearIdleAction(ch); return false }
+  if (ch.conversationPhase === 'approaching') {
+    if (arrivedAtFurniture(ch)) ch.conversationPhase = 'talking' // waiting at the origin (brewing…)
+    return true
+  }
+  if (ch.conversationPhase === 'talking') {
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer <= 0) {
+      ch.heldItem = ch.itemTargetUid
+      ch.itemTargetUid = null
+      logIdle(ch, `got a ${utensilLabel(ch.heldItem)}`)
+      clearIdleAction(ch)
+      return false // back to seat, carrying the item
+    }
+    return true
+  }
+  return false
+}
+
+function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolean {
+  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearIdleAction(ch); return false }
+  if (ch.conversationPhase === 'approaching') {
+    if (!arrivedAtFurniture(ch)) return true
+    const prop = ch.itemTargetUid ? ctx.takeProp(ch.itemTargetUid) : null
+    ch.itemTargetUid = null
+    if (!prop) { clearIdleAction(ch); return false } // someone else took it
+    ch.heldItem = prop.kind
+    // Carry it to the nearest reachable disposal furniture (from the utensil's catalog entry)
+    for (const target of findDisposalFor(prop.kind, ch, ctx)) {
+      if (walkToFurniture(ch, target, ctx)) {
+        ch.conversationPhase = 'leaving'
+        ch.idleActionTimer = ITEM_DISPOSE_SEC
+        logIdle(ch, `carrying the ${utensilLabel(prop.kind)} to the ${(getCatalogEntry(target.type)?.label ?? 'sink').toLowerCase()}`)
+        return true
+      }
+    }
+    // Nothing reachable — keep the item; it gets placed on the desk when seated
+    clearIdleAction(ch)
+    return false
+  }
+  if (ch.conversationPhase === 'leaving') {
+    if (!arrivedAtFurniture(ch)) return true
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer <= 0) {
+      logIdle(ch, `disposed of the ${utensilLabel(ch.heldItem)}`)
+      ch.heldItem = null
+      clearIdleAction(ch)
+      return false
+    }
+    return true
+  }
+  return false
 }
 
 /** Cycle a single character's conversation bubble independently.

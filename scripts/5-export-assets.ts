@@ -40,6 +40,9 @@ interface Asset {
   isLamp?: boolean
   lightRadius?: number
   lightColor?: [number, number, number]
+  utensil?: boolean
+  utensilOrigin?: string
+  utensilDisposal?: string
 }
 
 interface CatalogEntry {
@@ -62,6 +65,10 @@ interface CatalogEntry {
   isLamp?: boolean
   lightRadius?: number
   lightColor?: [number, number, number]
+  /** Dynamic item: characters fetch it at `utensilOrigin` (asset name prefix) and dispose of it at `utensilDisposal` */
+  utensil?: boolean
+  utensilOrigin?: string
+  utensilDisposal?: string
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -212,6 +219,13 @@ for (const asset of assets) {
     // Background tiles
     if (asset.backgroundTiles && asset.backgroundTiles > 0) {
       entry.backgroundTiles = asset.backgroundTiles
+    }
+
+    // Utensil (dynamic item carried by characters)
+    if (asset.utensil) {
+      entry.utensil = true
+      if (asset.utensilOrigin) entry.utensilOrigin = asset.utensilOrigin
+      if (asset.utensilDisposal) entry.utensilDisposal = asset.utensilDisposal
     }
 
     // Lamp lighting

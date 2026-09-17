@@ -12,6 +12,8 @@ export interface ViewOptions {
   debugLampLights: boolean
   /** Display mode: hide every overlay except the restore button */
   hideUi: boolean
+  /** Characters fetch, carry, place and tidy utensils (coffee mugs…) */
+  dynamicItems: boolean
 }
 
 interface ViewOptionsPanelProps {
@@ -158,6 +160,10 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
           <label style={labelStyle}>
             <input type="checkbox" checked={options.showWeatherClock} onChange={() => toggle('showWeatherClock')} style={checkboxStyle} />
             Weather & clock
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={options.dynamicItems} onChange={() => toggle('dynamicItems')} style={checkboxStyle} />
+            Dynamic items (coffee etc.)
           </label>
           <label style={{ ...labelStyle, color: 'var(--pixel-text-dim)', fontSize: '18px', marginTop: 4, borderTop: '1px solid var(--pixel-border)', paddingTop: 4 }}>
             <input type="checkbox" checked={options.debugLampLights} onChange={() => toggle('debugLampLights')} style={checkboxStyle} />

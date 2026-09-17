@@ -63,8 +63,23 @@ export const IdleActionType = {
   STAND_AND_THINK: 'stand_and_think',
   MEETING: 'meeting',
   EATING: 'eating',
+  FETCH_ITEM: 'fetch_item',
+  TIDY_UP: 'tidy_up',
 } as const
 export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
+
+// ── Dynamic items (runtime props, never saved in the layout) ──
+/** An item lying in the office (on a desk tile) — created by characters, tidied away by characters */
+export interface PlacedProp {
+  uid: string
+  /** Catalog type of the utensil (its own sprite is used) */
+  kind: string
+  col: number
+  row: number
+  /** performance.now() when placed — tidy-up only targets props older than PROP_MIN_AGE_SEC */
+  placedAt: number
+  ownerId: number
+}
 
 export const Direction = {
   DOWN: 0,
@@ -225,6 +240,8 @@ export type EditTool = (typeof EditTool)[keyof typeof EditTool]
 
 export interface FurnitureCatalogEntry {
   type: string // FurnitureType enum or asset ID
+  /** Asset name from furniture-catalog.json (e.g. COFFEE_MACHINE) — stable across re-exports, unlike ASSET_nn ids */
+  name?: string
   label: string
   footprintW: number
   footprintH: number
@@ -241,6 +258,12 @@ export interface FurnitureCatalogEntry {
   canPlaceOnWalls?: boolean
   /** Whether idle characters can walk up to and interact with this furniture */
   interactable?: boolean
+  /** Dynamic item: can be picked up and carried by characters */
+  utensil?: boolean
+  /** Asset-name prefix of the furniture it is fetched from (e.g. COFFEE_MACHINE) */
+  utensilOrigin?: string
+  /** Asset-name prefix of the furniture it is disposed of at (e.g. SINK) */
+  utensilDisposal?: string
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
   /** Whether this furniture casts sunlight beams (e.g. windows) */
@@ -394,6 +417,10 @@ export interface Character {
   preConversationDir: Direction | null
   /** Unique ID grouping characters in the same meeting (so multiple meetings can coexist) */
   meetingGroupId: number | null
+  /** Catalog type of the utensil currently carried — drawn at the hand, placed on the desk when seated */
+  heldItem: string | null
+  /** Prop uid targeted by a TIDY_UP action */
+  itemTargetUid: string | null
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
   /** Project name (used for per-project look memory) */

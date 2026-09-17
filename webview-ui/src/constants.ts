@@ -328,6 +328,23 @@ export const VISIT_MIN_DURATION_SEC = 3.0
 export const VISIT_MAX_DURATION_SEC = 6.0
 export const EAT_MIN_DURATION_SEC = 15.0
 export const EAT_MAX_DURATION_SEC = 35.0
+// ── Dynamic items (utensils: catalog entries with utensil/utensilOrigin/utensilDisposal) ──
+/** Seconds standing at the origin furniture (coffee machine, fridge…) before the item appears */
+export const ITEM_FETCH_SEC = 2.5
+/** Seconds standing at the disposal furniture (sink, bin…) to drop an item off */
+export const ITEM_DISPOSE_SEC = 1.0
+/** A prop must lie around at least this long before someone tidies it away */
+export const PROP_MIN_AGE_SEC = 90
+/** Hard cap on props in the office — beyond it, carried items are simply "finished" */
+export const MAX_PROPS = 12
+/** Held-item anchor per facing direction, in sprite px relative to the character's bottom-centre.
+ *  UP draws the item behind the body (z-sorted just before the character). */
+export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind: boolean }> = {
+  0: { dx: 1, dy: -13, behind: false },   // DOWN — front hand
+  1: { dx: -3, dy: -14, behind: true },   // UP — hidden partly behind the body
+  2: { dx: 5, dy: -13, behind: false },   // RIGHT — hand in front
+  3: { dx: -12, dy: -13, behind: false }, // LEFT — mirrored
+}
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4
 /** Number of idle chat bubble emoji variants */

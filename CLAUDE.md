@@ -36,6 +36,7 @@ webview-ui/src/               — React + TypeScript (Vite)
     BottomToolbar.tsx          — + Agent, Layout toggle, Settings button
     ZoomControls.tsx           — +/- zoom (top-right)
     SettingsModal.tsx          — Centered modal: settings, export/import layout, sound toggle, debug toggle
+    ViewOptionsPanel.tsx       — "View" dropdown (top-right): per-overlay toggles persisted in localStorage `pixel-agents-view-options`; `hideUi` = display mode — App.tsx gates every overlay on `!hideUi` except OfficeCanvas, ToolOverlay (in-world labels) and the panel's own faint "Show UI" button. Enabling it exits edit mode.
     DebugView.tsx              — Debug overlay
   office/
     types.ts                  — Interfaces (OfficeLayout, FloorColor, Character, etc.) + re-exports constants from constants.ts

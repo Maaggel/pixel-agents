@@ -337,6 +337,8 @@ export const ITEM_DISPOSE_SEC = 1.0
 export const PROP_MIN_AGE_SEC = 90
 /** Hard cap on props in the office — beyond it, carried items are simply "finished" */
 export const MAX_PROPS = 12
+/** Props are drawn this many sprite px above the tile bottom so they sit on the tabletop, not its front edge */
+export const PROP_SURFACE_LIFT_PX = 5
 /** Held-item anchor per facing direction, in sprite px relative to the character's bottom-centre.
  *  UP draws the item behind the body (z-sorted just before the character). */
 export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind: boolean }> = {

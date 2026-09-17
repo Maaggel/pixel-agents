@@ -4,6 +4,7 @@ import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
   MAX_PROPS,
   PROP_MIN_AGE_SEC,
+  PROP_SURFACE_LIFT_PX,
   PALETTE_COUNT,
   HUE_SHIFT_MIN_DEG,
   HUE_SHIFT_RANGE_DEG,
@@ -1588,7 +1589,9 @@ export class OfficeState {
   private propsAsFurniture(): PlacedFurniture[] {
     if (this.props.size === 0) return []
     const out: PlacedFurniture[] = []
-    for (const p of this.props.values()) out.push({ uid: p.uid, type: p.kind, col: p.col, row: p.row })
+    // Fractional row = sub-tile offset (same mechanism as half-tile placement)
+    const lift = PROP_SURFACE_LIFT_PX / TILE_SIZE
+    for (const p of this.props.values()) out.push({ uid: p.uid, type: p.kind, col: p.col, row: p.row - lift })
     return out
   }
 

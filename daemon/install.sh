@@ -56,7 +56,10 @@ fi
 
 # ── Preflight ────────────────────────────────────────────────
 [ "$(id -u)" -ne 0 ] || die "Run as the user that runs Claude Code, not root (discovery reads that user's ~/.claude)."
-[ -f "$SRC_DIR/$BUNDLE" ] || die "$BUNDLE not found next to install.sh — run 'npm run package:daemon' on your dev machine and upload the tarball."
+# Bundle lives next to install.sh in the tarball; when run from a repo checkout, fall back to dist/
+BUNDLE_SRC="$SRC_DIR/$BUNDLE"
+[ -f "$BUNDLE_SRC" ] || BUNDLE_SRC="$SRC_DIR/../dist/$BUNDLE"
+[ -f "$BUNDLE_SRC" ] || die "$BUNDLE not found next to install.sh (or in ../dist) — run 'npm run package:daemon' and upload the tarball."
 command -v systemctl >/dev/null || die "systemd not found; start the daemon another way (see README)."
 # `systemctl --user` needs the user bus; non-login shells (ssh host 'cmd', cron) often lack these.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -78,7 +81,7 @@ fi
 
 # ── Files ────────────────────────────────────────────────────
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
-install -m 755 "$SRC_DIR/$BUNDLE" "$INSTALL_DIR/$BUNDLE"
+install -m 755 "$BUNDLE_SRC" "$INSTALL_DIR/$BUNDLE"
 [ -f "$SRC_DIR/README.md" ] && install -m 644 "$SRC_DIR/README.md" "$INSTALL_DIR/README.md"
 log "Installed $INSTALL_DIR/$BUNDLE"
 
@@ -123,6 +126,7 @@ JSON
   log "Wrote $CONFIG_FILE"
 else
   log "Keeping existing $CONFIG_FILE"
+  RELAY_URL="$("$NODE_BIN" -p 'try{JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).relayUrl||""}catch{""}' "$CONFIG_FILE")"
 fi
 [ -n "$RELAY_URL" ] || warn "No relay URL configured — daemon runs local-only. Edit $CONFIG_FILE and restart."
 

@@ -85,7 +85,9 @@
     "relay": "node relay/server.mjs",
     "daemon": "node dist/pixel-agents-daemon.cjs",
     "build:daemon": "npm run check-types && node esbuild.js --daemon-only",
-    "package:daemon": "npm run build:daemon && bash daemon/package.sh"
+    "package:daemon": "npm run build:daemon && bash daemon/package.sh",
+    "deploy": "npm run build && bash relay/deploy.sh && bash daemon/install.sh",
+    "deploy:ui": "npm run build:webview && bash relay/deploy.sh --ui-only"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

@@ -5,7 +5,14 @@
 #   PIXEL_AGENTS_FTP_NETRC=~/.pixel-agents/relay-ftp.netrc \
 #   PIXEL_AGENTS_RELAY_HTTP=https://apps.example.com/pixelagents \
 #   PIXEL_AGENTS_RELAY_TOKEN=… \
+#   PIXEL_AGENTS_RELAY_SSH=pixelagents-deploy \
 #   relay/deploy.sh [--ui-only] [--dry-run]
+#
+# PIXEL_AGENTS_RELAY_SSH is an ssh alias for the restricted gate on the relay host
+# (allow-listed: sudo systemctl restart pixel-agents-relay). When set and relay
+# code was uploaded, the script restarts the service, waits for /api/build to
+# report the new build, then triggers the viewer reload. Without it, it tells
+# you to restart by hand.
 #
 # Netrc file (mode 600):  machine <ftp-host> login <user> password <pass>
 # Reads FTP host from the netrc's `machine` line. Upload order matters: assets
@@ -19,6 +26,7 @@ cd "$(dirname "$0")/.."
 NETRC="${PIXEL_AGENTS_FTP_NETRC:-$HOME/.pixel-agents/relay-ftp.netrc}"
 RELAY_HTTP="${PIXEL_AGENTS_RELAY_HTTP:-}"
 TOKEN="${PIXEL_AGENTS_RELAY_TOKEN:-}"
+GATE="${PIXEL_AGENTS_RELAY_SSH:-}"
 UI_ONLY=0; DRY=0
 for a in "$@"; do case "$a" in --ui-only) UI_ONLY=1;; --dry-run) DRY=1;; *) echo "unknown arg $a"; exit 2;; esac; done
 
@@ -78,21 +86,48 @@ if [ "$UI_ONLY" = 0 ]; then
   put package.json package.json
   put relay/package.json relay/package.json
   RELAY_CHANGED=1
-  echo "==> relay/server.mjs + package.json uploaded (needs: sudo systemctl restart pixel-agents-relay)"
+  echo "==> relay/server.mjs + package.json uploaded"
 fi
 
-# 5. Tell viewers to reload (only works once the build-id relay is running)
+# 5. Restart the relay through the SSH gate if its code changed
 if [ "$DRY" = 1 ]; then exit 0; fi
+expected="$(node -e '
+  const {createHash}=require("crypto"),fs=require("fs");
+  const srv=createHash("sha256").update(fs.readFileSync("relay/server.mjs")).digest("hex").slice(0,8);
+  const v=JSON.parse(fs.readFileSync("package.json","utf8")).version;
+  process.stdout.write(createHash("sha256").update(fs.readFileSync("dist/webview/index.html","utf8")).update(srv).update(v).digest("hex").slice(0,12))')"
+live_build() { curl -s -m 10 "$RELAY_HTTP/api/build" 2>/dev/null | sed -n 's/.*"buildId":"\([a-f0-9]*\)".*/\1/p'; }
+
+if [ "$RELAY_CHANGED" = 1 ]; then
+  if [ -n "$GATE" ]; then
+    echo "==> Restarting relay via ssh $GATE"
+    if ssh -o BatchMode=yes -o ConnectTimeout=10 "$GATE" 'sudo systemctl restart pixel-agents-relay'; then
+      for i in $(seq 1 20); do
+        sleep 1
+        if [ -n "$RELAY_HTTP" ] && [ "$(live_build)" = "$expected" ]; then
+          echo "==> Relay is back with build $expected"
+          break
+        fi
+        [ "$i" = 20 ] && echo "WARNING: relay did not report build $expected within 20s — check: ssh $GATE 'sudo journalctl -u pixel-agents-relay -n 200 --no-pager'" >&2
+      done
+    else
+      echo "WARNING: gate restart failed — restart by hand: sudo systemctl restart pixel-agents-relay" >&2
+    fi
+  else
+    echo "==> relay code changed and no PIXEL_AGENTS_RELAY_SSH set — restart by hand: sudo systemctl restart pixel-agents-relay"
+  fi
+fi
+
+# 6. Tell viewers to reload (a restart already made them reload on reconnect; this covers UI-only deploys)
 if [ -n "$RELAY_HTTP" ] && [ -n "$TOKEN" ]; then
-  live="$(curl -s -m 10 "$RELAY_HTTP/api/build" || true)"
-  if echo "$live" | grep -q buildId; then
+  if [ -n "$(live_build)" ]; then
     res="$(curl -s -m 10 -X POST -H "Authorization: Bearer $TOKEN" "$RELAY_HTTP/api/reload")"
     echo "==> Viewers told to reload: $res"
+    [ "$(live_build)" = "$expected" ] && echo "==> Live build matches local build ($expected)" || echo "WARNING: live build $(live_build) != local $expected" >&2
   else
     echo "==> Relay on $RELAY_HTTP predates auto-reload (no /api/build) — restart it; viewers must refresh once by hand this time."
   fi
 else
   echo "==> Set PIXEL_AGENTS_RELAY_HTTP (+ token) to trigger viewer reload automatically."
 fi
-[ "$RELAY_CHANGED" = 1 ] && echo "==> Remember: ssh pixelagents-deploy 'sudo systemctl restart pixel-agents-relay'"
 exit 0

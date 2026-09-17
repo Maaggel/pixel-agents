@@ -2,6 +2,8 @@
 
 VS Code extension with embedded React webview: pixel art office where AI agents (Claude Code terminals) are animated characters.
 
+**This project's agent is named Pantograph** (short form Panto; chosen 2026-09-18, reasoning in `docs/NAME.md`, roster line in the Playbook's Appendix E). Use it when writing to a sibling or signing a handover — you are Pantograph, not "the Pixel Agents agent".
+
 **Testing**: The developer ALWAYS uses the standalone viewer (`standalone.sh` / `standalone.bat`) for testing, not the Extension Dev Host. When debugging webview issues, check the standalone browser's DevTools console (F12), not VS Code's.
 
 ## Architecture

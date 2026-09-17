@@ -9,6 +9,7 @@ import type { SunBeam } from './sunlight.js'
 import { renderSunBeams } from './sunlight.js'
 import { computeLampLights, renderLampLights } from './lampLight.js'
 import { getCatalogEntry } from '../layout/furnitureCatalog.js'
+import { getColorizedSprite } from '../colorize.js'
 import { HELD_ITEM_OFFSETS } from '../../constants.js'
 import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
 import type { WindowEffectFrameData } from './windowEffects.js'
@@ -122,6 +123,13 @@ interface ZDrawable {
 let _overlayLogged = false
 
 // Held items: a utensil sprite trimmed to its opaque bounds, so it can sit in the hand
+/** A utensil's sprite with its optional color variant applied (cached by type + color). */
+function getItemSprite(type: string, color: FloorColor | null): SpriteData | undefined {
+  const base = getCatalogEntry(type)?.sprite
+  if (!base || !color) return base
+  return getColorizedSprite(`item-${type}-${color.h}-${color.s}-${color.b}-${color.c}-${color.colorize ? 1 : 0}`, base, color)
+}
+
 const croppedSpriteCache = new WeakMap<SpriteData, SpriteData>()
 function getCroppedSprite(sprite: SpriteData): SpriteData {
   const hit = croppedSpriteCache.get(sprite)
@@ -297,7 +305,7 @@ export function renderScene(
 
     // Carried utensil (dynamic items) — anchored at the hand, behind the body when facing up
     if (ch.heldItem) {
-      const itemSprite = getCatalogEntry(ch.heldItem)?.sprite
+      const itemSprite = getItemSprite(ch.heldItem, ch.itemColor)
       const anchor = HELD_ITEM_OFFSETS[ch.dir]
       if (itemSprite && anchor) {
         const itemCached = getCachedSprite(getCroppedSprite(itemSprite), zoom)
@@ -620,7 +628,7 @@ export function renderBubbles(
     } else if (ch.bubbleType === 'idle_tidy') {
       sprite = BUBBLE_IDLE_TIDY_SPRITE
     } else if (ch.bubbleType === 'idle_item') {
-      const itemSprite = ch.bubbleItemType ? getCatalogEntry(ch.bubbleItemType)?.sprite : undefined
+      const itemSprite = ch.bubbleItemType ? getItemSprite(ch.bubbleItemType, ch.itemColor) : undefined
       sprite = itemSprite ? getItemBubbleSprite(getCroppedSprite(itemSprite)) : BUBBLE_IDLE_THINK_SPRITE
     } else if (ch.bubbleType === 'talking') {
       // Active with no specific tool — show working bubble (not thinking cloud)

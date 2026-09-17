@@ -6,6 +6,7 @@ import {
   ITEM_FETCH_SEC,
   ITEM_DISPOSE_SEC,
   ITEM_BUBBLE_MAX_SEC,
+  ITEM_COLOR_VARIANTS,
   PROP_MIN_AGE_SEC,
   MAX_PROPS,
   CONVERSATION_MIN_DURATION_SEC,
@@ -106,6 +107,7 @@ function startFetch(ch: Character, utensil: FetchableUtensil, ctx: IdleActionCon
   for (const origin of origins) {
     if (!walkToFurniture(ch, origin, ctx)) continue
     ch.itemTargetUid = utensil.type // utensil type to receive on arrival
+    ch.itemColor = pickRandom(ITEM_COLOR_VARIANTS) ?? null
     ch.idleActionTimer = ITEM_FETCH_SEC
     return true
   }
@@ -745,6 +747,7 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
     ch.itemTargetUid = null
     if (!prop) { clearItemBubble(ch); clearIdleAction(ch); return false } // someone else took it
     ch.heldItem = prop.kind
+    ch.itemColor = prop.color ?? null
     // Carry it to the nearest reachable disposal furniture (from the utensil's catalog entry)
     for (const target of findDisposalFor(prop.kind, ch, ctx)) {
       if (walkToFurniture(ch, target, ctx)) {
@@ -765,6 +768,7 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
     if (ch.idleActionTimer <= 0) {
       logIdle(ch, `disposed of the ${utensilLabel(ch.heldItem)}`)
       ch.heldItem = null
+      ch.itemColor = null
       clearItemBubble(ch)
       clearIdleAction(ch)
       return false

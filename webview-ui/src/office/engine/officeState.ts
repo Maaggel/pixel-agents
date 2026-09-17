@@ -47,7 +47,7 @@ import {
   LAMP_ON_INTENSITY_THRESHOLD,
   LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC,
 } from '../../constants.js'
-import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp } from '../types.js'
+import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
 import { getSunState } from './sunlight.js'
@@ -1477,6 +1477,7 @@ export class OfficeState {
       this.props.clear()
       for (const ch of this.characters.values()) {
         ch.heldItem = null
+        ch.itemColor = null
         ch.itemTargetUid = null
         if (ch.bubbleType === 'idle_item' || ch.bubbleType === 'idle_tidy') { ch.bubbleType = null; ch.bubbleTimer = 0 }
         ch.bubbleItemType = null
@@ -1485,8 +1486,8 @@ export class OfficeState {
     this.rebuildFurnitureInstances()
   }
 
-  addProp(kind: string, col: number, row: number, ownerId: number): PlacedProp {
-    const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: performance.now(), ownerId }
+  addProp(kind: string, col: number, row: number, ownerId: number, color: FloorColor | null = null): PlacedProp {
+    const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: performance.now(), ownerId, ...(color ? { color } : {}) }
     this.props.set(prop.uid, prop)
     this.rebuildFurnitureInstances()
     return prop
@@ -1521,7 +1522,9 @@ export class OfficeState {
     const seat = this.seats.get(ch.seatId)
     if (!seat) return
     const kind = ch.heldItem
+    const color = ch.itemColor
     ch.heldItem = null
+    ch.itemColor = null
     const name = ch.nametag || `Agent ${ch.id}`
     const label = (getCatalogEntry(kind)?.label ?? 'item').toLowerCase()
     const f = seat.facingDir
@@ -1532,7 +1535,7 @@ export class OfficeState {
     const behind = { col: seat.seatCol - (front.col - seat.seatCol), row: seat.seatRow - (front.row - seat.seatRow) }
     const spot = [front, ...sides, behind].find(t => this.isDeskTile(t.col, t.row) && !this.hasPropAt(t.col, t.row))
     if (spot && this.props.size < MAX_PROPS) {
-      this.addProp(kind, spot.col, spot.row, ch.id)
+      this.addProp(kind, spot.col, spot.row, ch.id, color)
       addBehaviourEntry({ agentId: ch.id, agentName: name, message: `put the ${label} down on the desk`, type: 'idle' })
     } else {
       addBehaviourEntry({ agentId: ch.id, agentName: name, message: `finished the ${label}`, type: 'idle' })
@@ -1567,6 +1570,7 @@ export class OfficeState {
     ch.preConversationDir = null
     ch.itemTargetUid = null
     ch.heldItem = null
+    ch.itemColor = null
     ch.bubbleType = null
     ch.bubbleTimer = 0
     ch.bubbleItemType = null
@@ -1594,7 +1598,7 @@ export class OfficeState {
     const out: PlacedFurniture[] = []
     // Fractional row = sub-tile offset (same mechanism as half-tile placement)
     const lift = PROP_SURFACE_LIFT_PX / TILE_SIZE
-    for (const p of this.props.values()) out.push({ uid: p.uid, type: p.kind, col: p.col, row: p.row - lift })
+    for (const p of this.props.values()) out.push({ uid: p.uid, type: p.kind, col: p.col, row: p.row - lift, ...(p.color ? { color: p.color } : {}) })
     return out
   }
 

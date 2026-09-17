@@ -341,6 +341,17 @@ export const MAX_PROPS = 12
 export const PROP_SURFACE_LIFT_PX = 5
 /** Safety timeout for fetch/tidy bubbles — the action clears them earlier when it finishes */
 export const ITEM_BUBBLE_MAX_SEC = 60
+/** Random look given to a fetched utensil (adjust-mode hue shifts, like the editor's furniture color sliders).
+ *  `null` = the sprite's original colors. */
+export const ITEM_COLOR_VARIANTS: Array<{ h: number; s: number; b: number; c: number } | null> = [
+  null,
+  { h: 60, s: 0, b: 0, c: 0 },
+  { h: 120, s: 0, b: 0, c: 0 },
+  { h: 180, s: 0, b: 0, c: 0 },
+  { h: -120, s: 0, b: 0, c: 0 },
+  { h: -60, s: 0, b: 0, c: 0 },
+  { h: 0, s: -80, b: 10, c: 0 },
+]
 /** Held-item anchor per facing direction, in sprite px relative to the character's bottom-centre.
  *  UP draws the item behind the body (z-sorted just before the character). */
 export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind: boolean }> = {

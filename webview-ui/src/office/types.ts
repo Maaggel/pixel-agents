@@ -74,6 +74,8 @@ export interface PlacedProp {
   uid: string
   /** Catalog type of the utensil (its own sprite is used) */
   kind: string
+  /** Optional color variant (adjust-mode, same as editor furniture color) */
+  color?: FloorColor
   col: number
   row: number
   /** performance.now() when placed — tidy-up only targets props older than PROP_MIN_AGE_SEC */
@@ -425,6 +427,8 @@ export interface Character {
   meetingGroupId: number | null
   /** Catalog type of the utensil currently carried — drawn at the hand, placed on the desk when seated */
   heldItem: string | null
+  /** Color variant of the item being fetched / carried (null = original sprite colors) */
+  itemColor: FloorColor | null
   /** Prop uid targeted by a TIDY_UP action */
   itemTargetUid: string | null
   /** Workspace folder name (only set for multi-root workspaces) */

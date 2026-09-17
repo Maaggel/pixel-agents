@@ -3,6 +3,7 @@ import type { ZoneType } from '../types.js'
 import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
   MAX_PROPS,
+  PROP_MIN_AGE_SEC,
   PALETTE_COUNT,
   HUE_SHIFT_MIN_DEG,
   HUE_SHIFT_RANGE_DEG,
@@ -1533,6 +1534,54 @@ export class OfficeState {
     } else {
       addBehaviourEntry({ agentId: ch.id, agentName: name, message: `finished the ${label}`, type: 'idle' })
     }
+  }
+
+  /**
+   * Debug trigger (Behaviour log → Items): force an idle agent to run a dynamic-item action now.
+   * Prefers `preferredId` when that agent is idle; otherwise the first idle local agent.
+   * 'tidy' ages every prop past PROP_MIN_AGE_SEC so something is eligible immediately.
+   * Returns a reason string on failure, null on success.
+   */
+  triggerDynamicItemAction(kind: 'drink' | 'food' | 'tidy', preferredId: number | null): string | null {
+    if (!this.dynamicItemsEnabled) return 'dynamic items are disabled in View options'
+    // Interrupt anything solo (wander, visit, think, eating, a previous item run) — not partnered actions
+    const eligible = (ch: Character) => !ch.isActive && !ch.isSubagent && !ch.isRemote && ch.matrixEffect === null
+      && ch.idleAction !== IdleActionType.MEETING && ch.idleAction !== IdleActionType.CONVERSATION
+    let ch = preferredId !== null ? this.characters.get(preferredId) ?? null : null
+    if (ch && !eligible(ch)) ch = null
+    if (!ch) {
+      for (const c of this.characters.values()) { if (eligible(c)) { ch = c; break } }
+    }
+    if (!ch) return 'no idle agent available'
+    if (kind === 'tidy') {
+      if (this.props.size === 0) return 'nothing lying around to tidy'
+      for (const p of this.props.values()) p.placedAt = Math.min(p.placedAt, performance.now() - PROP_MIN_AGE_SEC * 1000)
+    }
+    if (kind === 'food' && !ch.seatId) return 'agent has no seat to eat at'
+    // Interrupt whatever idle thing they were doing and start from a standing state
+    ch.idleAction = null
+    ch.conversationPhase = null
+    ch.preConversationDir = null
+    ch.itemTargetUid = null
+    ch.heldItem = null
+    ch.bubbleType = null
+    ch.bubbleTimer = 0
+    ch.path = []
+    ch.seatTimer = 0
+    ch.wanderTimer = 0
+    ch.state = CharacterState.IDLE
+    const action = kind === 'drink' ? IdleActionType.FETCH_ITEM : kind === 'food' ? IdleActionType.EATING : IdleActionType.TIDY_UP
+    const ctx = this.buildIdleActionContext()
+    if (!initIdleAction(ch, action, ctx)) {
+      ch.idleAction = null
+      return kind === 'drink' ? 'no reachable drink origin (coffee machine) — is a utensil configured?'
+        : kind === 'food' ? 'no reachable food origin (fridge) — is a food utensil configured?'
+        : 'no reachable prop / disposal furniture'
+    }
+    if (kind === 'food' && ch.heldItem === null && ch.conversationPhase !== 'leaving') {
+      return 'no food utensil in the catalog — agent will just eat at its seat'
+    }
+    return null
   }
 
   /** Props rendered as virtual furniture using the utensil's own sprite, never written to the layout. */

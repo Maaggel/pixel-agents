@@ -224,6 +224,13 @@ function App() {
     }
   }, [])
 
+  const handleTriggerItem = useCallback((kind: 'drink' | 'food' | 'tidy') => {
+    const os = officeStateRef.current
+    if (!os) return
+    const reason = os.triggerDynamicItemAction(kind, os.selectedAgentId)
+    if (reason) addBehaviourEntry({ agentId: 0, agentName: 'System', message: `Items (${kind}): ${reason}`, type: 'info' })
+  }, [])
+
   const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(null)
 
   // Sync exterior wall state when layout is loaded — default to Small Bricks if not set
@@ -592,6 +599,7 @@ function App() {
       {!hideUi && (
         <BehaviourLog
           onTriggerMeeting={handleTriggerMeeting}
+          onTriggerItem={viewOptions.dynamicItems ? handleTriggerItem : undefined}
           onSetWeather={handleSetWeather}
           currentWeatherMode={weatherMode}
           showWeather={viewOptions.showSunlight}

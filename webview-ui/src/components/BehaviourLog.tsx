@@ -46,12 +46,14 @@ function formatTime(ts: number): string {
 
 interface BehaviourLogProps {
   onTriggerMeeting?: () => void
+  /** Debug: force a dynamic-item action on the selected (or any idle) agent */
+  onTriggerItem?: (kind: 'drink' | 'food' | 'tidy') => void
   onSetWeather?: (weather: string) => void
   currentWeatherMode?: string
   showWeather?: boolean
 }
 
-export function BehaviourLog({ onTriggerMeeting, onSetWeather, currentWeatherMode, showWeather }: BehaviourLogProps) {
+export function BehaviourLog({ onTriggerMeeting, onTriggerItem, onSetWeather, currentWeatherMode, showWeather }: BehaviourLogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [entries, setEntries] = useState<readonly BehaviourEntry[]>(getBehaviourEntries)
   const [isHovered, setIsHovered] = useState(false)
@@ -290,6 +292,31 @@ export function BehaviourLog({ onTriggerMeeting, onSetWeather, currentWeatherMod
             >
               Weather
             </button>
+          </div>
+        )}
+        {onTriggerItem && (
+          <div style={{ display: 'flex', gap: 4 }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+            {([['drink', 'Coffee', 'Selected/any idle agent fetches a drink'], ['food', 'Food', 'Selected/any idle agent fetches food and eats'], ['tidy', 'Tidy', 'Selected/any idle agent tidies a stray item to its disposal']] as const).map(([kind, label, title]) => (
+              <button
+                key={kind}
+                onClick={() => onTriggerItem(kind)}
+                style={{
+                  background: 'var(--pixel-bg)',
+                  border: '2px solid var(--pixel-border)',
+                  borderRadius: 0,
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  fontSize: '22px',
+                  color: 'var(--pixel-text)',
+                  boxShadow: 'var(--pixel-shadow)',
+                  opacity: isHovered ? 1 : 0.5,
+                  transition: 'opacity 0.3s',
+                }}
+                title={title}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         )}
         {onTriggerMeeting && (

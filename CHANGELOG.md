@@ -3,6 +3,7 @@
 ## v1.6.14
 
 - **Agents keep their look** — appearance is now derived from the nametag (hash → palette + hue), identical on every device and spawn; Shuffle overrides are remembered per name.
+- **Touch panning** — double-tap and hold, then drag, moves the view on phones/tablets (same as middle-mouse drag).
 - **Calmer idle behaviour** — agents sit 2–3× longer between outings and take shorter walks.
 
 ## v1.6.13

@@ -5,7 +5,7 @@ import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, Rotat
 import { startGameLoop } from '../engine/gameLoop.js'
 import { renderFrame } from '../engine/renderer.js'
 import { TILE_SIZE, EditTool } from '../types.js'
-import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION } from '../../constants.js'
+import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION, TOUCH_DOUBLE_TAP_MS, TOUCH_DOUBLE_TAP_MAX_DIST_PX } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
 import { unlockAudio } from '../../notificationSound.js'
@@ -745,6 +745,63 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     if (e.button === 1) e.preventDefault()
   }, [])
 
+  // Touch: double-tap-and-hold drags the view (mobile equivalent of middle-mouse pan).
+  // A single tap still falls through to the browser's synthesized click (select agent etc.).
+  // Native listeners because React registers touch handlers as passive (no preventDefault).
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      const t = e.touches[0]
+      const now = performance.now()
+      const last = lastTapRef.current
+      lastTapRef.current = { t: now, x: t.clientX, y: t.clientY }
+      if (!last) return
+      const dt = now - last.t
+      const dist = Math.hypot(t.clientX - last.x, t.clientY - last.y)
+      if (dt > TOUCH_DOUBLE_TAP_MS || dist > TOUCH_DOUBLE_TAP_MAX_DIST_PX) return
+      // Second tap of a double-tap: start panning; swallow the synthesized click
+      e.preventDefault()
+      lastTapRef.current = null
+      unlockAudio()
+      officeState.cameraFollowId = null
+      officeState.cameraFollowVacuumUid = null
+      isPanningRef.current = true
+      panStartRef.current = { mouseX: t.clientX, mouseY: t.clientY, panX: panRef.current.x, panY: panRef.current.y }
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isPanningRef.current || e.touches.length !== 1) return
+      e.preventDefault()
+      const t = e.touches[0]
+      const dpr = window.devicePixelRatio || 1
+      panRef.current = clampPan(
+        panStartRef.current.panX + (t.clientX - panStartRef.current.mouseX) * dpr,
+        panStartRef.current.panY + (t.clientY - panStartRef.current.mouseY) * dpr,
+      )
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isPanningRef.current) return
+      if (e.touches.length === 0) {
+        e.preventDefault()
+        isPanningRef.current = false
+      }
+    }
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false })
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false })
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false })
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: false })
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart)
+      canvas.removeEventListener('touchmove', onTouchMove)
+      canvas.removeEventListener('touchend', onTouchEnd)
+      canvas.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [officeState, panRef, clampPan])
+
   return (
     <div
       ref={containerRef}
@@ -766,7 +823,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
-        style={{ display: 'block' }}
+        style={{ display: 'block', touchAction: 'none' }}
       />
     </div>
   )

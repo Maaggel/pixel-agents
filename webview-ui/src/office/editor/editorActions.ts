@@ -185,7 +185,7 @@ export function canPlaceFurniture(
     for (const item of layout.furniture) {
       if (item.uid === excludeUid) continue
       const itemEntry = getCatalogEntry(item.type)
-      if (!itemEntry || !itemEntry.isDesk) continue
+      if (!itemEntry || !(itemEntry.isSurface || itemEntry.isDesk)) continue
       for (let dr = 0; dr < itemEntry.footprintH; dr++) {
         for (let dc = 0; dc < itemEntry.footprintW; dc++) {
           exemptTiles.add(`${item.col + dc},${item.row + dr}`)

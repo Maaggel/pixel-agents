@@ -45,6 +45,7 @@ interface Asset {
   utensilDisposal?: string
   utensilUse?: string
   useSide?: string
+  surface?: boolean
 }
 
 interface CatalogEntry {
@@ -75,6 +76,8 @@ interface CatalogEntry {
   utensilUse?: string
   /** Side characters stand on to use/visit this item: 'front' (below), 'back' (above), 'left', 'right'. Default: front, or the rotation orientation. */
   useSide?: string
+  /** Items (mugs, plates…) can be placed on top of this. Desks are surfaces implicitly. */
+  surface?: boolean
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -225,6 +228,11 @@ for (const asset of assets) {
     // Background tiles
     if (asset.backgroundTiles && asset.backgroundTiles > 0) {
       entry.backgroundTiles = asset.backgroundTiles
+    }
+
+    // Surface: things can be put on top (desks implicitly)
+    if (asset.surface && !asset.isDesk) {
+      entry.surface = true
     }
 
     // Side to stand on when using/visiting

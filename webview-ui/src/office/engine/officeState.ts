@@ -1506,11 +1506,11 @@ export class OfficeState {
     return false
   }
 
-  /** Is this tile covered by desk-like furniture (somewhere a cup can stand)? */
+  /** Is this tile covered by a surface (desk, table, chess board…) a cup can stand on? */
   private isDeskTile(col: number, row: number): boolean {
     for (const item of this.layout.furniture) {
       const entry = getCatalogEntry(item.type)
-      if (!entry?.isDesk) continue
+      if (!entry || !(entry.isSurface || entry.isDesk)) continue
       if (col >= item.col && col < item.col + entry.footprintW && row >= item.row && row < item.row + entry.footprintH) return true
     }
     return false

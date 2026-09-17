@@ -270,6 +270,8 @@ export interface FurnitureCatalogEntry {
   utensilUse?: 'drink' | 'food'
   /** Side characters stand on to use/visit this item. Default: 'front' (below), or the rotation `orientation`. */
   useSide?: 'front' | 'back' | 'left' | 'right'
+  /** Items (mugs, plates…) can be placed on top — surface items and dynamic props. True for every desk; catalog `surface` adds others (chess board, mats…). */
+  isSurface?: boolean
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
   /** Whether this furniture casts sunlight beams (e.g. windows) */

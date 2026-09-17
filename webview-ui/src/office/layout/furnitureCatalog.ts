@@ -35,6 +35,7 @@ export interface LoadedAssetData {
     utensilDisposal?: string
     utensilUse?: string
     useSide?: string
+    surface?: boolean
     isSeat?: boolean
     sunlight?: boolean
     sunlightInset?: number
@@ -194,6 +195,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
       ...(asset.interactable ? { interactable: true } : {}),
+      ...(asset.surface || asset.isDesk ? { isSurface: true } : {}),
       ...(asset.useSide ? { useSide: asset.useSide as 'front' | 'back' | 'left' | 'right' } : {}),
       ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal, utensilUse: asset.utensilUse === 'food' ? 'food' : 'drink' } : {}),
       ...(asset.isSeat ? { isSeat: true } : {}),

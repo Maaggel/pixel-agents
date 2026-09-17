@@ -327,6 +327,10 @@
           <label for="f-ontop">Can Place On Surfaces</label>
         </div>
         <div class="checkbox-item">
+          <input id="f-surface" type="checkbox">
+          <label for="f-surface">Is Surface (items can be placed on top; desks always are)</label>
+        </div>
+        <div class="checkbox-item">
           <input id="f-interactable" type="checkbox">
           <label for="f-interactable">Interactable (idle visit)</label>
         </div>
@@ -756,6 +760,7 @@ function loadForm(idx) {
   document.getElementById('f-isdesk').checked = !!a.isDesk
   document.getElementById('f-walls').checked = !!a.canPlaceOnWalls
   document.getElementById('f-ontop').checked = !!a.canPlaceOnSurfaces
+  document.getElementById('f-surface').checked = !!a.surface
   document.getElementById('f-interactable').checked = !!a.interactable
   document.getElementById('f-isseat').checked = !!a.isSeat
   document.getElementById('f-useside').value = a.useSide || 'auto'
@@ -843,6 +848,7 @@ document.getElementById('btn-save').onclick = () => {
   a.isDesk = document.getElementById('f-isdesk').checked
   a.canPlaceOnWalls = document.getElementById('f-walls').checked
   a.canPlaceOnSurfaces = document.getElementById('f-ontop').checked
+  a.surface = document.getElementById('f-surface').checked
   a.interactable = document.getElementById('f-interactable').checked
   a.isSeat = document.getElementById('f-isseat').checked
   a.useSide = document.getElementById('f-useside').value === 'auto' ? undefined : document.getElementById('f-useside').value

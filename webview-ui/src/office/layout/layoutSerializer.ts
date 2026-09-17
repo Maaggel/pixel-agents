@@ -41,11 +41,11 @@ function isFurnitureNearMeetingZone(
 
 /** Convert placed furniture into renderable FurnitureInstance[] */
 export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?: { zones?: Array<ZoneType | null>; cols: number; rows: number }): FurnitureInstance[] {
-  // Pre-compute desk zY per tile so surface items can sort in front of desks
+  // Pre-compute surface zY per tile so surface items can sort in front of desks/tables/mats
   const deskZByTile = new Map<string, number>()
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
-    if (!entry || !entry.isDesk) continue
+    if (!entry || !(entry.isSurface || entry.isDesk)) continue
     const deskZY = item.row * TILE_SIZE + entry.sprite.length
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {

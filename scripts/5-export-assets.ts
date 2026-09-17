@@ -46,6 +46,7 @@ interface Asset {
   utensilUse?: string
   useSide?: string
   surface?: boolean
+  utensilEmpty?: string
 }
 
 interface CatalogEntry {
@@ -78,6 +79,8 @@ interface CatalogEntry {
   useSide?: string
   /** Items (mugs, plates…) can be placed on top of this. Desks are surfaces implicitly. */
   surface?: boolean
+  /** Asset name this utensil turns into once consumed (e.g. PLATE_FOOD → PLATE_EMPTY) */
+  utensilEmpty?: string
 }
 
 const metadataPath = './scripts/.tileset-working/tileset-metadata-final.json'
@@ -246,6 +249,7 @@ for (const asset of assets) {
       if (asset.utensilOrigin) entry.utensilOrigin = asset.utensilOrigin
       if (asset.utensilDisposal) entry.utensilDisposal = asset.utensilDisposal
       if (asset.utensilUse) entry.utensilUse = asset.utensilUse
+      if (asset.utensilEmpty) entry.utensilEmpty = asset.utensilEmpty
     }
 
     // Lamp lighting

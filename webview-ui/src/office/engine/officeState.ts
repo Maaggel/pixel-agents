@@ -60,7 +60,7 @@ import {
   layoutToSeats,
   getBlockedTiles,
 } from '../layout/layoutSerializer.js'
-import { getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getOnStateType, getCatalogTypesByName } from '../layout/furnitureCatalog.js'
 import { IdleActionType } from '../types.js'
 import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation, disengageMeeting, trySeatedConversation } from './idleActions.js'
 import type { IdleActionContext } from './idleActions.js'
@@ -321,6 +321,7 @@ export class OfficeState {
       dynamicItems: this.dynamicItemsEnabled,
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
+      finishFoodNear: (ch: Character) => this.finishFoodNear(ch),
       onIdleEvent: (type: string, agentIds: number[]) => {
         this.onIdleEvent?.({ type: type as IdleEventType, agentIds })
       },
@@ -1499,6 +1500,22 @@ export class OfficeState {
     this.props.delete(uid)
     this.rebuildFurnitureInstances()
     return prop
+  }
+
+  /** Finished eating: food props within one tile of the character become their `utensilEmpty` variant. */
+  finishFoodNear(ch: Character): void {
+    let changed = false
+    for (const p of this.props.values()) {
+      if (Math.abs(p.col - ch.tileCol) + Math.abs(p.row - ch.tileRow) > 1) continue
+      const entry = getCatalogEntry(p.kind)
+      if (entry?.utensilUse !== 'food' || !entry.utensilEmpty) continue
+      const emptyType = getCatalogTypesByName(entry.utensilEmpty)[0]
+      if (!emptyType) continue
+      p.kind = emptyType
+      p.placedAt = performance.now() // tidy clock starts now
+      changed = true
+    }
+    if (changed) this.rebuildFurnitureInstances()
   }
 
   private hasPropAt(col: number, row: number): boolean {

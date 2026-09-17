@@ -368,6 +368,10 @@
         <input id="f-utensil-disposal" type="text" placeholder="SINK">
       </div>
       <div class="form-row">
+        <label for="f-utensil-empty">Turns into when used up (asset name, e.g. PLATE_EMPTY) — leave empty to stay as is</label>
+        <input id="f-utensil-empty" type="text" placeholder="PLATE_EMPTY">
+      </div>
+      <div class="form-row">
         <label for="f-utensil-use">Use</label>
         <select id="f-utensil-use">
           <option value="drink">Drink — fetched on breaks, carried back to the desk</option>
@@ -768,6 +772,7 @@ function loadForm(idx) {
   document.getElementById('f-utensil-origin').value = a.utensilOrigin || ''
   document.getElementById('f-utensil-disposal').value = a.utensilDisposal || ''
   document.getElementById('f-utensil-use').value = a.utensilUse || 'drink'
+  document.getElementById('f-utensil-empty').value = a.utensilEmpty || ''
   document.getElementById('f-grouped').checked = !!a.partOfGroup
   document.getElementById('f-group-id').value = a.groupId || ''
   document.getElementById('f-orientation').value = a.orientation || 'front'
@@ -856,6 +861,7 @@ document.getElementById('btn-save').onclick = () => {
   a.utensilOrigin = document.getElementById('f-utensil-origin').value.trim() || undefined
   a.utensilDisposal = document.getElementById('f-utensil-disposal').value.trim() || undefined
   a.utensilUse = a.utensil ? document.getElementById('f-utensil-use').value : undefined
+  a.utensilEmpty = document.getElementById('f-utensil-empty').value.trim() || undefined
   // Rotation
   a.partOfGroup = document.getElementById('f-grouped').checked
   a.groupId = document.getElementById('f-group-id').value.trim() || null

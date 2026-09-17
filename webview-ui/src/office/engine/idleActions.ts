@@ -415,6 +415,8 @@ export interface IdleActionContext {
   props: PlacedProp[]
   /** Remove a prop (picked up). Returns it, or null if it was already gone. */
   takeProp: (uid: string) => PlacedProp | null
+  /** Food props next to the character turn into their "empty" variant (finished eating) */
+  finishFoodNear: (ch: Character) => void
 }
 
 /** Pick an idle action for a character based on weighted registry + prerequisites */
@@ -1064,6 +1066,7 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
 
     if (ch.idleActionTimer <= 0) {
       logIdle(ch, 'finished eating')
+      ctx.finishFoodNear(ch)
       ch.bubbleType = null
       ch.bubbleTimer = 0
       clearIdleAction(ch)

@@ -38,6 +38,7 @@ webview-ui/src/               — React + TypeScript (Vite)
     BottomToolbar.tsx          — + Agent, Layout toggle, Settings button
     ZoomControls.tsx           — +/- zoom (top-right)
     SettingsModal.tsx          — Centered modal: settings, export/import layout, sound toggle, debug toggle
+    useWakeLock.ts            — Screen Wake Lock (keep display on while visible; re-requests on visibilitychange and first gesture), driven by ViewOptions.keepAwake (default on)
     ViewOptionsPanel.tsx       — "View" dropdown (top-right): per-overlay toggles persisted in localStorage `pixel-agents-view-options`; `hideUi` = display mode — App.tsx gates every overlay on `!hideUi` except OfficeCanvas, ToolOverlay (in-world labels) and the panel's own faint "Show UI" button. Enabling it exits edit mode.
     DebugView.tsx              — Debug overlay
   office/

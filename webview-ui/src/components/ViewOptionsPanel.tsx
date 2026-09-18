@@ -14,6 +14,8 @@ export interface ViewOptions {
   hideUi: boolean
   /** Characters fetch, carry, place and tidy utensils (coffee mugs…) */
   dynamicItems: boolean
+  /** Screen Wake Lock: keep the display on while the page is visible (tablets/phones) */
+  keepAwake: boolean
 }
 
 interface ViewOptionsPanelProps {
@@ -164,6 +166,10 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
           <label style={labelStyle}>
             <input type="checkbox" checked={options.dynamicItems} onChange={() => toggle('dynamicItems')} style={checkboxStyle} />
             Dynamic items (coffee etc.)
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={options.keepAwake} onChange={() => toggle('keepAwake')} style={checkboxStyle} />
+            Keep screen awake
           </label>
           <label style={{ ...labelStyle, color: 'var(--pixel-text-dim)', fontSize: '18px', marginTop: 4, borderTop: '1px solid var(--pixel-border)', paddingTop: 4 }}>
             <input type="checkbox" checked={options.debugLampLights} onChange={() => toggle('debugLampLights')} style={checkboxStyle} />

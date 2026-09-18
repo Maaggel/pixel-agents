@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useWakeLock } from './hooks/useWakeLock.js'
 import { OfficeState } from './office/engine/officeState.js'
 import { OfficeCanvas } from './office/components/OfficeCanvas.js'
 import { ToolOverlay } from './office/components/ToolOverlay.js'
@@ -187,7 +188,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false, dynamicItems: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false, dynamicItems: true, keepAwake: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -322,6 +323,9 @@ function App() {
   )
 
   // "F" key: toggle camera follow for currently selected agent/vacuum
+  // Keep the display on (tablets on a shelf, phone as a PWA)
+  useWakeLock(viewOptions.keepAwake)
+
   // Dynamic items toggle → engine (turning it off clears props and carried items)
   useEffect(() => {
     getOfficeState().setDynamicItems(viewOptions.dynamicItems)

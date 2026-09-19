@@ -416,7 +416,8 @@ function getBridgeScript() {
   <div class="pa-box">
     <h2>Pixel Agents</h2>
     <p>Enter the instance key to connect:</p>
-    <input type="password" id="pa-token-input" placeholder="Instance key" autocomplete="off" />
+    <input type="password" id="pa-token-input" placeholder="Instance key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    <label style="display:block;margin-top:8px;color:#888;font-size:12px;cursor:pointer"><input type="checkbox" id="pa-token-show" style="vertical-align:middle;margin-right:6px"> Show key</label>
     <button id="pa-token-submit">Connect</button>
     <div class="pa-error" id="pa-token-error">Invalid key. Try again.</div>
   </div>
@@ -425,8 +426,17 @@ function getBridgeScript() {
 window.__PIXEL_AGENTS_STANDALONE__ = true;
 window.__PIXEL_AGENTS_RELAY__ = true;
 
-// Token management — check localStorage first
+// Token management — a key in the URL fragment (…/#token=…) wins and is stored, then stripped
+// from the address bar (fragments never reach the server or its logs). Else localStorage.
 let VIEWER_TOKEN = localStorage.getItem('pa-relay-token') || '';
+try {
+  var hashMatch = /(?:^#|[#&])token=([^&]+)/.exec(location.hash || '');
+  if (hashMatch) {
+    VIEWER_TOKEN = decodeURIComponent(hashMatch[1]);
+    localStorage.setItem('pa-relay-token', VIEWER_TOKEN);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+} catch (e) {}
 
 function showTokenPrompt() {
   const overlay = document.getElementById('pa-token-prompt');
@@ -465,6 +475,8 @@ document.addEventListener('DOMContentLoaded', function() {
   input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') submitToken();
   });
+  var show = document.getElementById('pa-token-show');
+  if (show) show.addEventListener('change', function() { input.type = show.checked ? 'text' : 'password'; });
 });
 
 window.acquireVsCodeApi = function() {

@@ -60,7 +60,7 @@ import {
   layoutToSeats,
   getBlockedTiles,
 } from '../layout/layoutSerializer.js'
-import { getCatalogEntry, getOnStateType, getCatalogTypesByName } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getOnStateType, getCatalogTypesMatching } from '../layout/furnitureCatalog.js'
 import { IdleActionType } from '../types.js'
 import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation, disengageMeeting, trySeatedConversation } from './idleActions.js'
 import type { IdleActionContext } from './idleActions.js'
@@ -1509,7 +1509,7 @@ export class OfficeState {
       if (Math.abs(p.col - ch.tileCol) + Math.abs(p.row - ch.tileRow) > 1) continue
       const entry = getCatalogEntry(p.kind)
       if (entry?.utensilUse !== 'food' || !entry.utensilEmpty) continue
-      const emptyType = getCatalogTypesByName(entry.utensilEmpty)[0]
+      const emptyType = getCatalogTypesMatching(entry.utensilEmpty)[0]
       if (!emptyType) continue
       p.kind = emptyType
       p.placedAt = performance.now() // tidy clock starts now

@@ -198,7 +198,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.interactable ? { interactable: true } : {}),
       ...(asset.surface || asset.isDesk ? { isSurface: true } : {}),
       ...(asset.useSide ? { useSide: asset.useSide as 'front' | 'back' | 'left' | 'right' } : {}),
-      ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal, utensilUse: asset.utensilUse === 'food' ? 'food' : 'drink', ...(asset.utensilEmpty ? { utensilEmpty: asset.utensilEmpty } : {}) } : {}),
+      ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal, utensilUse: asset.utensilUse === 'food' ? 'food' : asset.utensilUse === 'item' ? 'item' : 'drink', ...(asset.utensilEmpty ? { utensilEmpty: asset.utensilEmpty } : {}) } : {}),
       ...(asset.isSeat ? { isSeat: true } : {}),
       ...(asset.sunlight ? { sunlight: true } : {}),
       ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),
@@ -371,6 +371,25 @@ export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefi
 export function getUtensilEntries(): CatalogEntryWithCategory[] {
   const catalog = internalCatalog || dynamicCatalog || FURNITURE_CATALOG
   return catalog.filter((e) => e.utensil === true)
+}
+
+/**
+ * Catalog types matching an asset-name spec: comma-separated terms, each either an exact
+ * name, a prefix (`SINK` matches SINK_SM/SINK_LG) or a glob with `*` (`*BOOKSHELF*`).
+ * Used by utensilOrigin / utensilDisposal / utensilEmpty.
+ */
+export function getCatalogTypesMatching(spec: string): string[] {
+  const terms = spec.split(',').map(t => t.trim()).filter(Boolean)
+  if (terms.length === 0) return []
+  const matchers = terms.map(term => {
+    if (term.includes('*')) {
+      const re = new RegExp('^' + term.split('*').map(p => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
+      return (name: string) => re.test(name)
+    }
+    return (name: string) => name === term || name.startsWith(term + '_') || name.startsWith(term)
+  })
+  const catalog = internalCatalog || dynamicCatalog || FURNITURE_CATALOG
+  return catalog.filter(e => e.name !== undefined && matchers.some(m => m(e.name!))).map(e => e.type)
 }
 
 /** Catalog types whose asset name equals `name`, or starts with it when `prefix` is true. */

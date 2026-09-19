@@ -360,11 +360,11 @@
         <label for="f-utensil">Is Utensil (can be picked up and carried)</label>
       </div>
       <div class="form-row">
-        <label for="f-utensil-origin">Origin (asset name prefix, e.g. COFFEE_MACHINE, FRIDGE)</label>
+        <label for="f-utensil-origin">Origin — asset names, comma list, * wildcard (e.g. COFFEE_MACHINE · SINK,WATER_COOLER · *BOOKSHELF*)</label>
         <input id="f-utensil-origin" type="text" placeholder="COFFEE_MACHINE">
       </div>
       <div class="form-row">
-        <label for="f-utensil-disposal">Disposal (asset name prefix, e.g. SINK, BIN)</label>
+        <label for="f-utensil-disposal">Disposal — same syntax (e.g. SINK · BIN · *BOOKSHELF*)</label>
         <input id="f-utensil-disposal" type="text" placeholder="SINK">
       </div>
       <div class="form-row">
@@ -376,6 +376,7 @@
         <select id="f-utensil-use">
           <option value="drink">Drink — fetched on breaks, carried back to the desk</option>
           <option value="food">Food — fetched before eating at a kitchen seat</option>
+          <option value="item">Item — fetched on breaks like a drink (paper, book…)</option>
         </select>
       </div>
 

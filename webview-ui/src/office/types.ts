@@ -262,12 +262,12 @@ export interface FurnitureCatalogEntry {
   interactable?: boolean
   /** Dynamic item: can be picked up and carried by characters */
   utensil?: boolean
-  /** Asset-name prefix of the furniture it is fetched from (e.g. COFFEE_MACHINE) */
+  /** Where it is fetched: comma list of asset-name prefixes or `*` globs (e.g. `SINK,WATER_COOLER`, `*BOOKSHELF*`) */
   utensilOrigin?: string
-  /** Asset-name prefix of the furniture it is disposed of at (e.g. SINK) */
+  /** Where it is disposed of, same syntax (e.g. `SINK`, `BIN`, `*BOOKSHELF*`) */
   utensilDisposal?: string
-  /** 'drink': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
-  utensilUse?: 'drink' | 'food'
+  /** 'drink'/'item': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
+  utensilUse?: 'drink' | 'food' | 'item'
   /** Asset name this utensil turns into once consumed (food → empty plate). The result should itself be a utensil with a disposal. */
   utensilEmpty?: string
   /** Side characters stand on to use/visit this item. Default: 'front' (below), or the rotation `orientation`. */

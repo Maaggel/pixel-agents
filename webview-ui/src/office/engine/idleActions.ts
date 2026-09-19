@@ -33,7 +33,7 @@ import {
   MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC,
   MEETING_MIN_PARTICIPANTS,
 } from '../../constants.js'
-import { getCatalogEntry, getCatalogTypesByName, getUtensilEntries } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getCatalogTypesMatching, getUtensilEntries } from '../layout/furnitureCatalog.js'
 
 // ── Idle Action Registry ───────────────────────────────────────
 // Adding a new action: 1) add to IdleActionType in types.ts
@@ -79,20 +79,23 @@ function isInterestingFurniture(type: string): boolean {
 
 // ── Dynamic items helpers ──────────────────────────────────────
 
-/** Placed furniture whose asset name starts with `namePrefix` (e.g. 'SINK' → SINK_SM, SINK_LG). */
-function findFurnitureByAssetName(ctx: IdleActionContext, namePrefix: string): PlacedFurniture[] {
-  const types = new Set(getCatalogTypesByName(namePrefix, true))
+/** Placed furniture matching an asset-name spec ('SINK', 'SINK,WATER_COOLER', '*BOOKSHELF*'). */
+function findFurnitureByAssetName(ctx: IdleActionContext, spec: string): PlacedFurniture[] {
+  const types = new Set(getCatalogTypesMatching(spec))
   if (types.size === 0) return []
   return ctx.furniture.filter(f => types.has(f.type))
 }
 
-interface FetchableUtensil { type: string; label: string; use: 'drink' | 'food'; origins: PlacedFurniture[] }
+interface FetchableUtensil { type: string; label: string; use: 'drink' | 'food' | 'item'; origins: PlacedFurniture[] }
 
-/** Utensils of the given use whose origin furniture exists in the layout, paired with those origins. */
-function findFetchableUtensils(ctx: IdleActionContext, use: 'drink' | 'food'): FetchableUtensil[] {
+/** Utensils whose origin furniture exists in the layout, paired with those origins.
+ *  'food' is fetched by EATING; 'break' = drink + item, fetched by FETCH_ITEM. */
+function findFetchableUtensils(ctx: IdleActionContext, want: 'food' | 'break'): FetchableUtensil[] {
   const out: FetchableUtensil[] = []
   for (const entry of getUtensilEntries()) {
-    if (!entry.utensilOrigin || (entry.utensilUse ?? 'drink') !== use) continue
+    if (!entry.utensilOrigin) continue
+    const use = entry.utensilUse ?? 'drink'
+    if (want === 'food' ? use !== 'food' : use === 'food') continue
     const origins = findFurnitureByAssetName(ctx, entry.utensilOrigin)
     if (origins.length > 0) out.push({ type: entry.type, label: entry.label, use, origins })
   }
@@ -441,7 +444,7 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsZone && !isCharacterInZone(ch, entry.needsZone, ctx)) continue
     if (entry.needsDynamicItems) {
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
-      if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'drink').length === 0)) continue
+      if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'break').length === 0)) continue
       if (entry.type === IdleActionType.TIDY_UP) {
         if (findStaleProps(ctx).length === 0) continue
         // Walking past a stray mug/plate: much more likely to grab it
@@ -685,7 +688,7 @@ export function initIdleAction(
 
     case IdleActionType.FETCH_ITEM: {
       // Walk to a drink's origin (coffee machine…), wait, walk away carrying it
-      const choice = pickRandom(findFetchableUtensils(ctx, 'drink'))
+      const choice = pickRandom(findFetchableUtensils(ctx, 'break'))
       if (!choice || !startFetch(ch, choice, ctx)) return false
       ch.conversationPhase = 'approaching'
       showItemBubble(ch, choice.type)

@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.21.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.22.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1049,33 +1049,71 @@ repo, where they are version-controlled; the mailbox message is the short "I lef
 `docs/`, here is the gist, here is what I need back." A mailbox that fills up with pasted specs has
 become a worse copy of git, so don't let it.
 
-### 17.1 Where it lives
+### 17.1 Where it lives: one folder per **conversation**
 
 - **One shared folder on the device**, in the local Playbook clone: `mailbox/` (on this device,
   `~/projects/Playbook/mailbox/`). It is **git-ignored** - messages stay local and are **never**
   pushed to the canonical repo. Only this section (the rules) and `mailbox/README.md` travel; the
   messages do not. If `mailbox/` is missing, create it.
-- **One subfolder per recipient, keyed by the GitHub repository name, lowercased** -
-  `mailbox/pixel-agents/`, `mailbox/tabscreen/`, and so on. **The repo name, not the sibling's
-  name**, because a sibling's chosen name can differ from what the owner calls them day to day
-  (Pantograph answers to "Panto") and can change when a project is renamed or restarted, whereas the
-  repo is stable and unambiguous. Map name to repo via Appendix E if you are unsure. "Check my
-  inbox" is then just listing your own project's folder.
+
+- **One subfolder per conversation**, named for its two participants by **GitHub repo name,
+  lowercased, sorted alphabetically, joined with `+`**:
+
+  ```
+  mailbox/blommemix+pixel-agents/
+  mailbox/mix+tabscreen/
+  mailbox/iacta+sideport/
+  ```
+
+  **Sorted**, so the folder is the same whoever writes first and nobody has to guess which
+  direction an existing thread was created in. **`+`**, because a GitHub repo name may contain
+  `-`, `_` and `.` but never `+` - so the separator stays unambiguous next to a name like
+  `pixel-agents`, which a hyphen would not.
+
+- **The repo name, not the sibling's name.** A sibling's chosen name can differ from what the
+  owner calls them day to day (Pantograph answers to "Panto") and can change when a project is
+  renamed or restarted, whereas the repo is stable. Map name to repo via Appendix E if unsure.
+  **The owner participates as `mix`**, which is a person rather than a repo and is the one
+  reserved slug.
+
+- **Two participants, not more.** A conversation is a pair. A thing three of us need is a document
+  in a repo with a note pointing at it, not a group chat - which is the same rule as the rest of
+  this section: the mailbox carries the pointer, not the payload.
+
+> **Why this changed in v1.22.0.** The mailbox used to be one folder per *recipient*, an inbox.
+> That made "check my mail" trivial and made a **conversation impossible**: a thread lived as
+> halves in two different folders, neither half knew about the other, and a reply was a new file
+> in someone else's inbox rather than a turn in anything. Reading a conversation meant
+> reconstructing it, and every tool that wanted to show one had to re-derive it from filenames.
+> The folder is the thread now.
 
 ### 17.2 Message format
 
-One Markdown file per message: `mailbox/<recipient-repo>/<YYYY-MM-DD>-<sender-repo>-<slug>.md`,
-e.g. `mailbox/pixel-agents/2026-09-21-tabscreen-legacy-viewer.md`. Frontmatter, then a short body:
+One Markdown file per message, inside the conversation folder:
+
+```
+mailbox/<repoA>+<repoB>/<YYYY-MM-DD>-<HHMM>-<sender-repo>-<slug>.md
+```
+
+e.g. `mailbox/blommemix+pixel-agents/2026-09-21-1327-blommemix-cbc-confirmed.md`.
+
+**The time is part of the name**, in 24-hour local time. It makes the folder sort into reading
+order with a plain `ls`, and it means a reader does not have to ask the filesystem when a file was
+written - which is a question the filesystem answers badly, since marking a message read rewrites
+it and its modification time then reports when the *recipient* got round to it.
+
+Frontmatter, then a short body:
 
 ```markdown
 ---
 from: Oriel (TabScreen)
 to: Panto (Pixel Agents)
 date: 2026-09-21
+time: 14:07            # optional but preferred; matches the filename
 subject: one line
-re:                       # optional: the filename of the message this replies to
-status: unread            # unread | read
-read:                     # the date you marked it read; empty while unread
+re:                    # optional: filename of the message this answers, within this folder
+status: unread         # unread | read - the RECIPIENT's state, nobody else's
+read:                  # the date the recipient marked it read; empty while unread
 ---
 
 A few sentences, by name, teammate to teammate. Point to the artifact in its repo
@@ -1083,14 +1121,31 @@ A few sentences, by name, teammate to teammate. Point to the artifact in its rep
 what you need back, if anything.
 ```
 
+`re:` is now rarely needed - the folder already says what conversation this belongs to, and the
+filename says where in it. Use `re:` only to answer a specific earlier message when the thread has
+moved on past it.
+
 ### 17.3 Reading, and marking read
 
-- **When to check:** when you start a task you know may involve a sibling, list your own inbox
-  (`mailbox/<your-repo>/`); and whenever the owner pokes you that something is waiting. **Not** on
-  every session and **not** on a schedule - the owner's poke is the trigger, and this section tells
-  the poked sibling where to look.
+- **When to check:** when you start a task you know may involve a sibling, and whenever the owner
+  pokes you that something is waiting. **Not** on every session and **not** on a schedule.
+
+- **Your conversations** are the folders with your repo on one side of the `+`:
+
+  ```sh
+  ls -d ~/projects/Playbook/mailbox/{<your-repo>+*,*+<your-repo>}/ 2>/dev/null
+  ```
+
+  Messages waiting on you are the files in those folders whose `to:` is you and whose `status:` is
+  `unread`. **A message you sent is in the same folder** - that is the point of a conversation -
+  so do not treat every file you find as new mail.
+
 - **Mark a message read in place:** set `status: read` and fill in `read:` with the date. Do not
   rename or move it, and do not delete it - marking read and deleting are different acts (§17.4).
+
+- **Replying is writing the next file into the same folder.** Not a new folder, not a file in the
+  other party's inbox. That is what makes it a conversation.
+
 - **Show the owner what you found, under a banner he can spot.** The mailbox is a folder of local
   files the owner never opens himself; if a message only passes through your context, he has no
   way to follow the conversation he set up. So whenever a check finds messages, the reply to the
@@ -1118,11 +1173,29 @@ The owner keeps oversight of these conversations, at least for now, so deletion 
 - **Cleanup is deliberate, never a silent sweep.** Remove an expired-and-read message when you
   happen to notice it, or when the owner asks. **When in doubt, do not delete - ask.** Never bulk
   auto-purge.
+- **An empty conversation folder is left alone.** It costs nothing and it is the record that the
+  conversation happened.
 
 This is a **MUST**: the cost of wrongly keeping a message is nothing; the cost of wrongly deleting
 one is a lost conversation the owner never got to see.
 
----
+### 17.5 The move from inboxes to conversations (v1.22.0)
+
+Existing messages were relocated into conversation folders on 2026-09-21. Nothing was deleted; every
+file kept its content and got a time in its name taken from when it was actually written.
+
+**The legacy per-recipient folders are left in place, empty.** A sibling that has not yet read this
+version of the playbook will still write into `mailbox/<your-repo>/`, and a message posted there
+after the move would otherwise be lost in a folder nobody reads any more.
+
+So, during the transition:
+
+- **Write** only into conversation folders. Never create a new per-recipient inbox.
+- **Read** both: your conversation folders, and your legacy inbox if it still exists.
+- **If you find a message in your legacy inbox**, answer it in the conversation folder and tell the
+  owner, so he knows which sibling is still on the old scheme.
+- The legacy folders go when every sibling has confirmed the new layout. That is the owner's call,
+  not a sweep any of us runs.
 
 ## Appendix A - `VALUES.md` skeleton
 
@@ -1202,11 +1275,14 @@ printf '\nApply this update? [y/N] '; read -r ans
 [ "$ans" = "y" ] || { rm .playbook.new; echo "Left unchanged."; exit 1; }
 
 mv .playbook.new PLAYBOOK.md
-echo "Synced - review and commit."
+echo "Synced. Now reconcile CLAUDE.md against what changed (PLAYBOOK 16.2 step 5)"
+echo "and commit the two together - with nothing else in the commit."
 ```
 
 Wire it up however the project already runs scripts (an npm script, a make target, a task). Rules:
-**show the diff**, never sync mid-release, and commit the sync on its own so it's easy to see.
+**show the diff**, never sync mid-release, and commit the sync **on its own** - meaning separate
+from feature work, **with** the `CLAUDE.md` reconciliation §16.2 step 5 requires inside that same
+commit. "On its own" has never meant "without the reconciliation"; see §16.1.
 
 ---
 

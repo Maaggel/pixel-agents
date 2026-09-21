@@ -32,6 +32,8 @@ const cfg = {
   maxFps: Number(env.PIXEL_AGENTS_RENDERER_FPS || file.maxFps || 5),
   /** Resend an unchanged frame at least this often so a relay restart never leaves tablets blank */
   keyframeSec: Number(env.PIXEL_AGENTS_RENDERER_KEYFRAME_SEC || file.keyframeSec || 15),
+  /** Reload the viewer if the picture has not changed for this long (the office is never still this long) */
+  stallSec: Number(env.PIXEL_AGENTS_RENDERER_STALL_SEC || file.stallSec || 180),
   /** Debug: write one frame as PNG + .rgb565 + .lz4 to this path prefix and exit */
   once: env.PIXEL_AGENTS_RENDERER_ONCE || null,
 }
@@ -66,6 +68,8 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--autoplay-policy=no-user-gesture-required', `--window-size=${cfg.width},${cfg.height}`],
 })
 const page = await browser.newPage()
+// #kiosk: display mode with no UI and the camera centred on the office
+const kioskUrl = /(^|[#&])kiosk(&|$)/.test(new URL(cfg.viewerUrl).hash) ? cfg.viewerUrl : cfg.viewerUrl + (cfg.viewerUrl.includes('#') ? '&kiosk' : '#kiosk')
 await page.setViewport({ width: cfg.width, height: cfg.height, deviceScaleFactor: 1 })
 // Pre-seed the viewer: relay key + display mode (no chrome, no wake lock needed)
 await page.evaluateOnNewDocument((token) => {
@@ -75,15 +79,25 @@ await page.evaluateOnNewDocument((token) => {
     localStorage.setItem('pixel-agents-view-options', JSON.stringify({ ...opts, hideUi: true, keepAwake: false, ...(window.__PA_NO_LIGHT__ ? { showSunlight: false } : {}) }))
   } catch {}
 }, cfg.token)
-page.on('pageerror', (e) => log(`page error: ${e.message}`))
-// #kiosk: display mode with no UI and the camera centred on the office
-const kioskUrl = /(^|[#&])kiosk(&|$)/.test(new URL(cfg.viewerUrl).hash) ? cfg.viewerUrl : cfg.viewerUrl + (cfg.viewerUrl.includes('#') ? '&kiosk' : '#kiosk')
+// A viewer bug that throws inside the game loop freezes the picture; a reload costs one second.
+let reloading = false
+async function reloadPage(reason) {
+  if (reloading) return
+  reloading = true
+  log(`reloading viewer: ${reason}`)
+  try { await page.goto(kioskUrl, { waitUntil: 'networkidle2', timeout: 60000 }); lastSentHash = null; log('viewer reloaded') }
+  catch (e) { log(`reload failed: ${e.message}`) }
+  finally { setTimeout(() => { reloading = false }, 5000) }
+}
+page.on('pageerror', (e) => { log(`page error: ${(e.stack || e.message || String(e)).split('\n').slice(0, 6).join(' | ')}`); void reloadPage('page error') })
+page.on('console', (m) => { if (m.type() === 'error') log(`console.error: ${m.text().slice(0, 300)}`) })
 await page.goto(kioskUrl, { waitUntil: 'networkidle2', timeout: 60000 })
 log(`viewer loaded: ${cfg.viewerUrl}`)
 
 // ── Capture loop ────────────────────────────────────────────
 let lastSentHash = null
 let lastSentAt = 0
+let lastChangeAt = Date.now()
 let stats = { captured: 0, sent: 0, bytes: 0, since: Date.now() }
 const rawSize = cfg.width * cfg.height * 2
 
@@ -93,6 +107,7 @@ async function captureAndSend() {
   const hash = createHash('sha1').update(png).digest('hex')
   const now = Date.now()
   const unchanged = hash === lastSentHash
+  if (!unchanged) lastChangeAt = now
   if (unchanged && now - lastSentAt < cfg.keyframeSec * 1000) return
   const img = PNG.sync.read(png)
   if (img.width !== cfg.width || img.height !== cfg.height) { log(`unexpected screenshot size ${img.width}x${img.height}`); return }
@@ -123,6 +138,11 @@ setInterval(async () => {
   busy = true
   try { await captureAndSend() } catch (e) { log(`capture failed: ${e.message}`) } finally { busy = false }
 }, interval)
+// Stall watchdog: the office animates continuously, so a long run of identical captures means
+// the page's loop has died (a thrown error, a lost WebSocket) rather than a quiet office.
+setInterval(() => {
+  if (lastSentAt && Date.now() - lastChangeAt > cfg.stallSec * 1000) void reloadPage(`no change for ${cfg.stallSec}s`)
+}, 30000)
 setInterval(() => {
   const s = (Date.now() - stats.since) / 1000
   log(`${stats.captured} captures, ${stats.sent} frames sent (${(stats.bytes / 1024).toFixed(0)} KB, ${(stats.bytes / s / 1024).toFixed(1)} KB/s) in ${s.toFixed(0)}s`)

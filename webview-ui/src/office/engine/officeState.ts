@@ -129,7 +129,7 @@ export class OfficeState {
   private sharedRooms: Array<Set<string>> = []
   /** Whether lamps are currently auto-toggled ON (sun intensity below threshold) */
   private lampsOn = false
-  /** Target lamp state (what all lamps should eventually be — may differ from lampsOn during staggered toggle) */
+  /** Target lamp state (what all lamps should eventually be - may differ from lampsOn during staggered toggle) */
   private lampsTargetOn = false
   /** Per-lamp ON/OFF state (uid → currently on). Allows staggered toggling. */
   private lampIndividualOn: Map<string, boolean> = new Map()
@@ -185,7 +185,7 @@ export class OfficeState {
         const seat = this.seats.get(ch.seatId)!
         if (!seat.assigned) {
           this.assignSeat(seat)
-          // Don't snap position — source window controls remote positions
+          // Don't snap position - source window controls remote positions
         }
       }
     }
@@ -432,13 +432,13 @@ export class OfficeState {
         for (const [nr, nc] of [[br, bc], [br - 1, bc], [br + 1, bc], [br, bc - 1], [br, bc + 1]] as [number, number][]) {
           for (const room of rooms) {
             if (!room.has(`${nc},${nr}`)) continue
-            // This furniture is adjacent to this room — check if anyone assigned to THIS room is physically here
+            // This furniture is adjacent to this room - check if anyone assigned to THIS room is physically here
             for (const ch of this.characters.values()) {
               if (ch.idleAction !== IdleActionType.MEETING || !ch.seatId) continue
               // Verify the character's meeting seat is in THIS room (not just passing through)
               const seat = this.seats.get(ch.seatId)
               if (!seat || !room.has(`${seat.seatCol},${seat.seatRow}`)) continue
-              // Character belongs to this room's meeting — check they've arrived
+              // Character belongs to this room's meeting - check they've arrived
               if (room.has(`${ch.tileCol},${ch.tileRow}`)) return true
             }
           }
@@ -460,11 +460,11 @@ export class OfficeState {
 
     const busyRooms = this.getRoomsWithActiveMeetings()
 
-    // For each room, collect free seats — only rooms with enough seats and no active meeting are eligible
+    // For each room, collect free seats - only rooms with enough seats and no active meeting are eligible
     const eligible: string[][] = []
     for (let i = 0; i < rooms.length; i++) {
       if (busyRooms.has(i)) {
-        console.log(`[Meeting] Room ${i} (${rooms[i].size} tiles): skipped — meeting in progress`)
+        console.log(`[Meeting] Room ${i} (${rooms[i].size} tiles): skipped - meeting in progress`)
         continue
       }
       const room = rooms[i]
@@ -594,7 +594,7 @@ export class OfficeState {
         ch.frame = 0
         ch.frameTimer = 0
       } else {
-        // Already at meeting seat — sit immediately
+        // Already at meeting seat - sit immediately
         ch.conversationPhase = 'talking'
         ch.state = CharacterState.SIT_IDLE
         ch.dir = seat.facingDir
@@ -638,7 +638,7 @@ export class OfficeState {
       }
     }
 
-    // Original seat taken — find any free seat
+    // Original seat taken - find any free seat
     const newSeatId = this.findFreeSeat()
     if (newSeatId) {
       this.assignSeat(this.seats.get(newSeatId)!)
@@ -667,7 +667,7 @@ export class OfficeState {
 
     const dirGroups = Array.from(byDir.values())
     if (dirGroups.length <= 1) {
-      // Only one facing direction — just return as-is (shuffled)
+      // Only one facing direction - just return as-is (shuffled)
       const shuffled = [...freeSeats]
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
@@ -834,7 +834,7 @@ export class OfficeState {
         if (zone === ZoneTypeValues.REST_AREA) { restSeats.push(uid); continue }
         if (zone === ZoneTypeValues.KITCHEN) { kitchenSeats.push(uid); continue }
       }
-      // Unzoned, workspace, or meeting — all go in "other"
+      // Unzoned, workspace, or meeting - all go in "other"
       otherSeats.push(uid)
     }
 
@@ -982,7 +982,7 @@ export class OfficeState {
       this.assignSeat(seat)
       ch = createCharacter(id, palette, seatId, seat, hueShift)
     } else {
-      // No seats — spawn at random walkable tile
+      // No seats - spawn at random walkable tile
       const spawn = this.walkableTiles.length > 0
         ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
         : { col: 1, row: 1 }
@@ -1065,7 +1065,7 @@ export class OfficeState {
       ch.frame = 0
       ch.frameTimer = 0
     } else {
-      // Already at seat or no path — sit down
+      // Already at seat or no path - sit down
       ch.state = ch.isActive ? CharacterState.TYPE : CharacterState.SIT_IDLE
       ch.dir = seat.facingDir
       ch.frame = 0
@@ -1092,7 +1092,7 @@ export class OfficeState {
       ch.frame = 0
       ch.frameTimer = 0
     } else {
-      // Already at seat — sit down
+      // Already at seat - sit down
       ch.state = ch.isActive ? CharacterState.TYPE : CharacterState.SIT_IDLE
       ch.dir = seat.facingDir
       ch.frame = 0
@@ -1168,7 +1168,7 @@ export class OfficeState {
       this.assignSeat(seat)
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
-      // No seats — spawn at closest walkable tile to parent
+      // No seats - spawn at closest walkable tile to parent
       let spawn = { col: 1, row: 1 }
       if (this.walkableTiles.length > 0) {
         let closest = this.walkableTiles[0]
@@ -1215,7 +1215,7 @@ export class OfficeState {
     const ch = this.characters.get(id)
     if (ch) {
       if (ch.matrixEffect === 'despawn') {
-        // Already despawning — just clean up maps
+        // Already despawning - just clean up maps
         this.subagentIdMap.delete(key)
         this.subagentMeta.delete(id)
         return
@@ -1224,7 +1224,7 @@ export class OfficeState {
         const seat = this.seats.get(ch.seatId)
         if (seat) seat.assigned = false
       }
-      // Start despawn animation — keep character in map for rendering
+      // Start despawn animation - keep character in map for rendering
       ch.matrixEffect = 'despawn'
       ch.matrixEffectTimer = 0
       ch.matrixEffectSeeds = matrixEffectSeeds()
@@ -1246,7 +1246,7 @@ export class OfficeState {
         const ch = this.characters.get(id)
         if (ch) {
           if (ch.matrixEffect === 'despawn') {
-            // Already despawning — just clean up maps
+            // Already despawning - just clean up maps
             this.subagentMeta.delete(id)
             toRemove.push(key)
             continue
@@ -1311,7 +1311,7 @@ export class OfficeState {
         if (ch.idleAction === IdleActionType.CONVERSATION) {
           disengageConversation(ch, this.buildIdleActionContext())
         }
-        // Disengage from meeting if in one — only this agent leaves
+        // Disengage from meeting if in one - only this agent leaves
         if (ch.idleAction === IdleActionType.MEETING) {
           disengageMeeting(ch, this.buildIdleActionContext())
           this.restoreMeetingSeat(ch)
@@ -1350,9 +1350,9 @@ export class OfficeState {
       }
       if (!active && wasActive) {
         // Transition from active → inactive: start zone delay timers
-        // Only set on transition — repeated calls with active=false must not reset timers
+        // Only set on transition - repeated calls with active=false must not reset timers
         ch.idleZoneTimer = IDLE_ZONE_DELAY_SEC
-        // seatTimer controls how long SIT_IDLE lasts — match the zone delay
+        // seatTimer controls how long SIT_IDLE lasts - match the zone delay
         // so character sits at desk until zone transition fires
         ch.seatTimer = IDLE_ZONE_DELAY_SEC + 0.1 // slightly longer so zone fires first
         ch.path = []
@@ -1523,7 +1523,7 @@ export class OfficeState {
     return false
   }
 
-  /** Is this tile covered by a surface (desk, table, chess board…) a cup can stand on? */
+  /** Is this tile covered by a surface (desk, table, chess board...) a cup can stand on? */
   private isDeskTile(col: number, row: number): boolean {
     for (const item of this.layout.furniture) {
       const entry = getCatalogEntry(item.type)
@@ -1567,7 +1567,7 @@ export class OfficeState {
    */
   triggerDynamicItemAction(kind: 'drink' | 'food' | 'tidy', preferredId: number | null): string | null {
     if (!this.dynamicItemsEnabled) return 'dynamic items are disabled in View options'
-    // Interrupt anything solo (wander, visit, think, eating, a previous item run) — not partnered actions
+    // Interrupt anything solo (wander, visit, think, eating, a previous item run) - not partnered actions
     const eligible = (ch: Character) => !ch.isActive && !ch.isSubagent && !ch.isRemote && ch.matrixEffect === null
       && ch.idleAction !== IdleActionType.MEETING && ch.idleAction !== IdleActionType.CONVERSATION
     let ch = preferredId !== null ? this.characters.get(preferredId) ?? null : null
@@ -1599,12 +1599,12 @@ export class OfficeState {
     const ctx = this.buildIdleActionContext()
     if (!initIdleAction(ch, action, ctx)) {
       ch.idleAction = null
-      return kind === 'drink' ? 'no reachable drink origin (coffee machine) — is a utensil configured?'
-        : kind === 'food' ? 'no reachable food origin (fridge) — is a food utensil configured?'
+      return kind === 'drink' ? 'no reachable drink origin (coffee machine) - is a utensil configured?'
+        : kind === 'food' ? 'no reachable food origin (fridge) - is a food utensil configured?'
         : 'no reachable prop / disposal furniture'
     }
     if (kind === 'food' && ch.heldItem === null && ch.conversationPhase !== 'leaving') {
-      return 'no food utensil in the catalog — agent will just eat at its seat'
+      return 'no food utensil in the catalog - agent will just eat at its seat'
     }
     return null
   }
@@ -1744,7 +1744,7 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click - permission: instant, waiting: quick fade */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id)
     if (!ch || !ch.bubbleType) return
@@ -1779,12 +1779,12 @@ export class OfficeState {
         ch.matrixEffectTimer += dt
         if (ch.matrixEffectTimer >= MATRIX_EFFECT_DURATION) {
           if (ch.matrixEffect === 'spawn') {
-            // Spawn complete — clear effect, resume normal FSM
+            // Spawn complete - clear effect, resume normal FSM
             ch.matrixEffect = null
             ch.matrixEffectTimer = 0
             ch.matrixEffectSeeds = []
           } else {
-            // Despawn complete — mark for deletion
+            // Despawn complete - mark for deletion
             toDelete.push(ch.id)
           }
         }
@@ -1817,7 +1817,7 @@ export class OfficeState {
               if (ch.frameTimer >= BUILD_FRAME_DURATION_SEC) { ch.frameTimer -= BUILD_FRAME_DURATION_SEC; ch.frame = (ch.frame + 1) % 3 }
             }
           } else if (target.path && target.path.length > 0) {
-            // Source is walking — find destination and walk there locally
+            // Source is walking - find destination and walk there locally
             const dest = target.path[target.path.length - 1]
             const myDest = ch.path.length > 0 ? ch.path[ch.path.length - 1] : null
 
@@ -1862,7 +1862,7 @@ export class OfficeState {
               }
             }
           } else {
-            // Idle or no path — snap to source position
+            // Idle or no path - snap to source position
             ch.x = target.x
             ch.y = target.y
             ch.tileCol = target.tileCol
@@ -1887,7 +1887,7 @@ export class OfficeState {
         ch.idleZoneTimer -= dt
         if (ch.idleZoneTimer <= 0) {
           ch.idleZoneTimer = 0
-          // Still idle — reassign using weighted zone preferences
+          // Still idle - reassign using weighted zone preferences
           const oldSeatId = ch.seatId
           this.reassignToWeightedIdleZoneSeat(ch)
           // If seat changed, pathfind to the new seat
@@ -1937,7 +1937,7 @@ export class OfficeState {
         const idleCtx = this.buildIdleActionContext()
         const action = pickIdleAction(ch, idleCtx)
         if (!initIdleAction(ch, action, idleCtx)) {
-          // Init failed — fall back to wander
+          // Init failed - fall back to wander
           ch.idleAction = IdleActionType.WANDER
         }
       }
@@ -1948,7 +1948,7 @@ export class OfficeState {
         const idleCtx = this.buildIdleActionContext()
         const stillRunning = updateIdleAction(ch, dt, idleCtx)
         if (!stillRunning) {
-          // Action completed — restore meeting seats if applicable, then return to seat
+          // Action completed - restore meeting seats if applicable, then return to seat
           if (wasMeeting) {
             this.restoreMeetingSeat(ch)
             // Also restore seats for any other participants who ended simultaneously
@@ -1977,7 +1977,7 @@ export class OfficeState {
       this.withOwnSeatUnblocked(ch, () =>
         updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles, pickNewSeat)
       )
-      // Active agent just sat down — rebuild furniture to turn on electronics
+      // Active agent just sat down - rebuild furniture to turn on electronics
       if (wasWalking && ch.isActive && isSittingState(ch.state)) {
         needFurnitureRebuild = true
       }
@@ -2315,7 +2315,7 @@ export class OfficeState {
     for (const ch of this.characters.values()) {
       if (ch.idleAction !== IdleActionType.VISIT_FURNITURE) continue
       if (ch.conversationPhase !== 'talking') continue
-      // The character is standing adjacent to furniture — add tiles they're facing
+      // The character is standing adjacent to furniture - add tiles they're facing
       const dCol = ch.dir === Direction.RIGHT ? 1 : ch.dir === Direction.LEFT ? -1 : 0
       const dRow = ch.dir === Direction.DOWN ? 1 : ch.dir === Direction.UP ? -1 : 0
       // Add the tile they're looking at (1 deep)
@@ -2504,7 +2504,7 @@ export class OfficeState {
     return tiles
   }
 
-  /** Compute a fingerprint for a room (smallest tile key — unique per connected region). */
+  /** Compute a fingerprint for a room (smallest tile key - unique per connected region). */
   private roomFingerprint(room: Set<string>): string {
     let min = ''
     for (const k of room) {
@@ -2554,7 +2554,7 @@ export class OfficeState {
       if (vacuum.cycleActive) return
       // Give the vacuum the shared rooms
       vacuum.rooms = this.sharedRooms
-      // Check if all rooms are done — reset the shared list
+      // Check if all rooms are done - reset the shared list
       const allDone = this.sharedRooms.length > 0 &&
         this.sharedCleanedRoomKeys.size >= this.sharedRooms.length
       if (allDone) {
@@ -2725,7 +2725,7 @@ export class OfficeState {
       const dockSprite = getVacuumDockSprite(vacuum)
       if (dockSprite) {
         const dockX = vacuum.baseCol * TILE_SIZE
-        // Dock sprite is 16x32 — bottom-aligned to the base tile
+        // Dock sprite is 16x32 - bottom-aligned to the base tile
         const dockY = baseBottomY - dockSprite.length
         result.push({
           sprite: dockSprite,
@@ -2735,7 +2735,7 @@ export class OfficeState {
           zY: facingUp ? baseBottomY + 1 : baseBottomY - 1,
         })
       }
-      // Render moving vacuum (skip if docked — the dock sprite already shows it)
+      // Render moving vacuum (skip if docked - the dock sprite already shows it)
       if (vacuum.state === VacuumState.DOCKED) continue
       const sprite = getVacuumSprite(vacuum)
       if (!sprite) continue
@@ -2764,7 +2764,7 @@ export class OfficeState {
     }> = []
     let idx = 1
     for (const [uid, vacuum] of this.vacuums) {
-      // Always use the vacuum sprite (16x16) for outline — not the dock sprite (16x32)
+      // Always use the vacuum sprite (16x16) for outline - not the dock sprite (16x32)
       const sprite = getVacuumSprite(vacuum)
       const showAutoTimer = vacuum.state === VacuumState.DOCKED && vacuum.tilesCleaned <= 0 && !vacuum.cycleActive
       result.push({

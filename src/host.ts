@@ -1,11 +1,11 @@
 /**
- * Host abstraction — everything the backend needs from its environment.
+ * Host abstraction - everything the backend needs from its environment.
  *
  * Two implementations exist:
  *   - vscodeHost.ts  → VS Code extension (workspace folders, terminals, workspaceState)
  *   - daemon.ts      → headless Linux service (config file / CLI, no terminals, JSON state file)
  *
- * Backend modules must never import 'vscode' directly — go through getHost().
+ * Backend modules must never import 'vscode' directly - go through getHost().
  */
 
 /** Anything that accepts backend messages (formerly vscode.Webview). */
@@ -39,8 +39,8 @@ export interface RelaySettings {
 
 /**
  * How the backend finds Claude Code sessions.
- *  - 'terminals': VS Code — infer from terminals + JSONL mtime heuristics (fileWatcher.ts)
- *  - 'registry':  headless — exact list from ~/.claude/sessions (claudeSessions.ts),
+ *  - 'terminals': VS Code - infer from terminals + JSONL mtime heuristics (fileWatcher.ts)
+ *  - 'registry':  headless - exact list from ~/.claude/sessions (claudeSessions.ts),
  *                 pushed in via PixelAgentsBackend.applyLiveSessions()
  */
 export type DiscoveryMode = 'terminals' | 'registry';
@@ -73,12 +73,12 @@ export function setHost(host: Host): void {
 
 export function getHost(): Host {
 	if (!currentHost) {
-		throw new Error('[Pixel Agents] Host not initialised — call setHost() before using the backend');
+		throw new Error('[Pixel Agents] Host not initialised - call setHost() before using the backend');
 	}
 	return currentHost;
 }
 
-/** In-memory KeyValueStore — handy for tests and as a base for file-backed stores. */
+/** In-memory KeyValueStore - handy for tests and as a base for file-backed stores. */
 export class MemoryKeyValueStore implements KeyValueStore {
 	protected data: Record<string, unknown> = {};
 

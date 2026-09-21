@@ -3,7 +3,7 @@
  *
  * Runs on the machine where Claude Code runs (no VS Code needed). Every
  * REGISTRY_POLL_MS it reads Claude Code's own process registry
- * (~/.claude/sessions/<pid>.json — see claudeSessions.ts), so the set of
+ * (~/.claude/sessions/<pid>.json - see claudeSessions.ts), so the set of
  * tracked agents is exactly the set of live `claude` processes: no guessing
  * from file timestamps, no configured folder list required.
  *
@@ -58,7 +58,7 @@ interface ConfigFile {
 }
 
 function usage(): never {
-	console.log(`Pixel Agents daemon — headless publisher for the relay server
+	console.log(`Pixel Agents daemon - headless publisher for the relay server
 
 Usage: pixel-agents-daemon [options]
 
@@ -238,7 +238,7 @@ class ProjectManager {
 		// React quickly to sessions starting/stopping; the poll remains the safety net.
 		try {
 			this.registryWatcher = fs.watch(sessionsRegistryDir(), () => this.poll());
-		} catch { /* registry dir absent (old Claude Code) — /proc fallback via poll */ }
+		} catch { /* registry dir absent (old Claude Code) - /proc fallback via poll */ }
 	}
 
 	private accepts(cwd: string): boolean {
@@ -276,7 +276,7 @@ class ProjectManager {
 		try {
 			const { sessions, source } = discoverLiveSessions();
 			if (source !== this.lastSource) {
-				console.log(`${timestamp()} [Daemon] Session discovery via ${source === 'registry' ? '~/.claude/sessions registry' : '/proc scan (registry not found — older Claude Code?)'}`);
+				console.log(`${timestamp()} [Daemon] Session discovery via ${source === 'registry' ? '~/.claude/sessions registry' : '/proc scan (registry not found - older Claude Code?)'}`);
 				this.lastSource = source;
 			}
 
@@ -335,10 +335,10 @@ function main(): void {
 	const config = loadConfig();
 
 	if (!config.relayUrl || !config.relayToken) {
-		console.log('[Daemon] No relay configured (relayUrl/relayToken) — running local-only (sync files for the standalone viewer).');
+		console.log('[Daemon] No relay configured (relayUrl/relayToken) - running local-only (sync files for the standalone viewer).');
 	}
 
-	console.log(`[Daemon] Starting (pid ${process.pid}) — relay: ${config.relayUrl || '(none)'}`
+	console.log(`[Daemon] Starting (pid ${process.pid}) - relay: ${config.relayUrl || '(none)'}`
 		+ (config.folders.length ? `, pinned: ${config.folders.join(', ')}` : '')
 		+ (config.include.length ? `, include: ${config.include.join(', ')}` : '')
 		+ (config.exclude.length ? `, exclude: ${config.exclude.join(', ')}` : ''));
@@ -356,7 +356,7 @@ function main(): void {
 	const shutdown = (signal: string): void => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		console.log(`[Daemon] ${signal} received — shutting down`);
+		console.log(`[Daemon] ${signal} received - shutting down`);
 		manager.dispose();
 		process.exit(0);
 	};

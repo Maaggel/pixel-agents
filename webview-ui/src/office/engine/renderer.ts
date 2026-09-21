@@ -164,7 +164,7 @@ export function renderScene(
     const cached = getCachedSprite(f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
-    // Pre-cache overlay sprite (uncolorized — ignores user color changes)
+    // Pre-cache overlay sprite (uncolorized - ignores user color changes)
     const overlayCached = f.lampOverlaySprite ? getCachedSprite(f.lampOverlaySprite, zoom) : null
     if (f.isLamp && !_overlayLogged) {
       _overlayLogged = true
@@ -241,7 +241,7 @@ export function renderScene(
     const cached = getCachedSprite(spriteData, zoom)
     // Sitting offset: shift character down when seated so they visually sit in the chair
     const sittingOffset = isSittingState(ch.state) ? CHARACTER_SITTING_OFFSET_PX : 0
-    // Anchor at bottom-center of character — round to integer device pixels
+    // Anchor at bottom-center of character - round to integer device pixels
     const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
     const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - cached.height)
 
@@ -250,7 +250,7 @@ export function renderScene(
     // at lower rows (e.g. desks, bookshelves that occlude from below).
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET
 
-    // Matrix spawn/despawn effect — skip outline, use per-pixel rendering
+    // Matrix spawn/despawn effect - skip outline, use per-pixel rendering
     if (ch.matrixEffect) {
       const mDrawX = drawX
       const mDrawY = drawY
@@ -265,7 +265,7 @@ export function renderScene(
       continue
     }
 
-    // Skill aura — soft glow behind the character (before outline, behind character sprite)
+    // Skill aura - soft glow behind the character (before outline, behind character sprite)
     if (ch.activeSkill) {
       const auraCh = ch
       drawables.push({
@@ -303,7 +303,7 @@ export function renderScene(
       },
     })
 
-    // Carried utensil (dynamic items) — anchored at the hand, behind the body when facing up
+    // Carried utensil (dynamic items) - anchored at the hand, behind the body when facing up
     if (ch.heldItem) {
       const itemSprite = getItemSprite(ch.heldItem, ch.itemColor)
       const anchor = HELD_ITEM_OFFSETS[ch.dir]
@@ -372,7 +372,7 @@ export function renderGridOverlay(
   ctx.strokeStyle = GRID_LINE_COLOR
   ctx.lineWidth = 1
   ctx.beginPath()
-  // Vertical lines — offset by 0.5 for crisp 1px lines
+  // Vertical lines - offset by 0.5 for crisp 1px lines
   for (let c = 0; c <= cols; c++) {
     const x = offsetX + c * s + 0.5
     ctx.moveTo(x, offsetY)
@@ -611,7 +611,7 @@ export function renderBubbles(
         // Log unknown tool for future sprite creation
         if (!loggedUnknownTools.has(ch.currentTool)) {
           loggedUnknownTools.add(ch.currentTool)
-          console.log(`[Pixel Agents] Unknown tool bubble: "${ch.currentTool}" — using default working sprite`)
+          console.log(`[Pixel Agents] Unknown tool bubble: "${ch.currentTool}" - using default working sprite`)
         }
         sprite = BUBBLE_WORKING_SPRITE
       }
@@ -631,7 +631,7 @@ export function renderBubbles(
       const itemSprite = ch.bubbleItemType ? getItemSprite(ch.bubbleItemType, ch.itemColor) : undefined
       sprite = itemSprite ? getItemBubbleSprite(getCroppedSprite(itemSprite)) : BUBBLE_IDLE_THINK_SPRITE
     } else if (ch.bubbleType === 'talking') {
-      // Active with no specific tool — show working bubble (not thinking cloud)
+      // Active with no specific tool - show working bubble (not thinking cloud)
       sprite = BUBBLE_WORKING_SPRITE
     } else {
       sprite = BUBBLE_WAITING_SPRITE
@@ -646,7 +646,7 @@ export function renderBubbles(
     ctx.drawImage(cached, bubbleX, bubbleY)
     ctx.restore()
   }
-  // Skill badges — small secondary bubbles shown above/beside the main bubble
+  // Skill badges - small secondary bubbles shown above/beside the main bubble
   for (const ch of characters) {
     if (ch.activeSkill) {
       renderSkillBubble(ctx, ch, offsetX, offsetY, zoom, BUBBLE_VERTICAL_OFFSET_PX)
@@ -698,7 +698,7 @@ function renderVacuumOverlays(
       ctx.restore()
     }
 
-    // Nametag + state info (above sprite — matches agent nametag sizing)
+    // Nametag + state info (above sprite - matches agent nametag sizing)
     const fontSize = Math.max(7, Math.round(zoom * 3.5))
     ctx.font = `${fontSize}px sans-serif`
     ctx.textAlign = 'center'
@@ -1108,7 +1108,7 @@ export function renderFrame(
             if (c < 0 || c >= tmCols || searchRow < 0 || searchRow >= tmRows) continue
             const tile = tileMap[searchRow][c]
             if (tile !== TileType.VOID && tile !== TileType.WALL) {
-              // Found an interior floor tile — tile-fill the glass area
+              // Found an interior floor tile - tile-fill the glass area
               if (useSpriteFloors) {
                 const colorIdx = searchRow * (layoutCols ?? tmCols) + c
                 const color = tileColors?.[colorIdx] ?? { h: 0, s: 0, b: 0, c: 0 }
@@ -1205,7 +1205,7 @@ export function renderFrame(
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId, vacuumDrawables, windowEffectsData)
 
-  // Exterior wall faces — after scene so bricks render on top of wall sprites
+  // Exterior wall faces - after scene so bricks render on top of wall sprites
   if (exteriorWall && exteriorWall.style !== 'none') {
     // Clip brick rendering to exclude glass sections of exterior windows
     if (exteriorGlassScreenRects.length > 0) {
@@ -1231,7 +1231,7 @@ export function renderFrame(
     }
     for (const f of furniture) {
       if (!f.uid) continue
-      // Skip chairs — they're z-sorted with characters and shouldn't be re-drawn on top
+      // Skip chairs - they're z-sorted with characters and shouldn't be re-drawn on top
       if (f.isSeat) continue
       let overlaps = false
       for (let fr = 0; fr < f.footprintH && !overlaps; fr++) {

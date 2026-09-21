@@ -426,7 +426,7 @@ function getBridgeScript() {
 window.__PIXEL_AGENTS_STANDALONE__ = true;
 window.__PIXEL_AGENTS_RELAY__ = true;
 
-// Token management — a key in the URL fragment (…/#token=…) wins and is stored, then stripped
+// Token management - a key in the URL fragment (.../#token=...) wins and is stored, then stripped
 // from the address bar (fragments never reach the server or its logs). Else localStorage.
 let VIEWER_TOKEN = localStorage.getItem('pa-relay-token') || '';
 try {
@@ -556,7 +556,7 @@ function reloadForBuild(buildId, reason) {
   var last = 0;
   try { last = parseInt(sessionStorage.getItem('pa-last-reload') || '0', 10); } catch (e) {}
   if (Date.now() - last < RELOAD_GUARD_MS) {
-    devLog('BUILD  ' + buildId + ' differs from loaded ' + LOADED_BUILD + ' but reloaded ' + Math.round((Date.now() - last) / 1000) + 's ago — skipping (stale index.html from a cache?)');
+    devLog('BUILD  ' + buildId + ' differs from loaded ' + LOADED_BUILD + ' but reloaded ' + Math.round((Date.now() - last) / 1000) + 's ago - skipping (stale index.html from a cache?)');
     return false;
   }
   try { sessionStorage.setItem('pa-last-reload', String(Date.now())); } catch (e) {}
@@ -733,7 +733,7 @@ function connectRelay() {
 
   relayWs.onopen = function() {
     reconnectDelay = 1000;
-    devLog('CONN   v${VERSION} — relay connected');
+    devLog('CONN   v${VERSION} - relay connected');
   };
 
   relayWs.onmessage = function(e) {
@@ -760,7 +760,7 @@ function connectRelay() {
       } else if (msg.type === 'reload') {
         reloadForBuild(msg.buildId, 'reload requested');
       } else if (msg.type === 'authError') {
-        // Bad token — clear stored token and show prompt again
+        // Bad token - clear stored token and show prompt again
         localStorage.removeItem('pa-relay-token');
         VIEWER_TOKEN = '';
         relayWs.close();
@@ -776,7 +776,7 @@ function connectRelay() {
 
   relayWs.onclose = function(e) {
     relayWs = null;
-    // 4001 = invalid token — show prompt instead of reconnecting
+    // 4001 = invalid token - show prompt instead of reconnecting
     if (e.code === 4001) {
       localStorage.removeItem('pa-relay-token');
       VIEWER_TOKEN = '';
@@ -811,7 +811,7 @@ function getBackupsPageHtml() {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pixel Agents — Backups</title>
+  <title>Pixel Agents - Backups</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -899,7 +899,7 @@ function getBackupsPageHtml() {
   </style>
 </head>
 <body>
-  <h1>Pixel Agents — Backups</h1>
+  <h1>Pixel Agents - Backups</h1>
   <p class="subtitle">Hourly snapshots of your office layout. Thumbnails captured from connected viewers.</p>
   <div class="toolbar">
     <button id="btn-create">Create Backup Now</button>
@@ -1027,7 +1027,7 @@ function getBackupsPageHtml() {
     btn.disabled = true;
     api('/api/backups/create', 'POST').then(function(r) {
       if (r.ok) {
-        showToast('Backup requested — screenshot will be captured from a connected viewer');
+        showToast('Backup requested - screenshot will be captured from a connected viewer');
         setTimeout(function() { loadBackups(); btn.disabled = false; }, 3000);
       } else {
         showToast('Failed to create backup', true);
@@ -1077,7 +1077,7 @@ const server = createServer((req, res) => {
 
   // ── Backup API endpoints ──────────────────────────────────
   // Deploy helpers: what build is live, and tell every viewer to reload.
-  // Flow after uploading a new dist/: curl -X POST -H 'Authorization: Bearer $TOKEN' …/api/reload
+  // Flow after uploading a new dist/: curl -X POST -H 'Authorization: Bearer $TOKEN' .../api/reload
   if (pathname === '/api/build' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
     res.end(JSON.stringify({ version: VERSION, buildId: currentBuildId(), viewers: viewers.size, publishers: publishers.size }))
@@ -1205,7 +1205,7 @@ const server = createServer((req, res) => {
     html = html.replace('<meta name="viewport"', pwaMeta + '\n    <meta name="viewport"')
     html = html.replace('<script type="module"', getBridgeScript() + '\n    <script type="module"')
     html = html.replace(/\s+crossorigin/g, '')
-    // The bridge embeds the build id — never let a proxy/browser serve a stale copy
+    // The bridge embeds the build id - never let a proxy/browser serve a stale copy
     res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' })
     res.end(html)
     return
@@ -1376,7 +1376,7 @@ server.listen(PORT, () => {
   console.log(`  Backups:   ${BACKUP_DIR}`)
   console.log(`\n  Waiting for publishers (VS Code) and viewers (browsers)...\n`)
 
-  // Hourly backup check — save if layout has changed
+  // Hourly backup check - save if layout has changed
   setInterval(() => {
     const currentHash = computeLayoutHash(lastLayout)
     if (currentHash && currentHash !== lastBackupHash) {

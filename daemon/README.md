@@ -21,8 +21,8 @@ The relay serves the web UI + assets; the daemon only sends JSON state.
 | Machine | What you need there | Size |
 |---------|--------------------|------|
 | **Claude Code server** | `pixel-agents-daemon.cjs` + `install.sh` (this tarball) and Node.js 18+ | ~60 KB |
-| **Viewer/relay server** (can be the same box or elsewhere) | the full `dist/` + `relay/` — see [relay/README.md](../relay/README.md) | — |
-| **Dev machine** (only to build) | this repo with `npm install` | — |
+| **Viewer/relay server** (can be the same box or elsewhere) | the full `dist/` + `relay/` - see [relay/README.md](../relay/README.md) | - |
+| **Dev machine** (only to build) | this repo with `npm install` | - |
 
 The daemon is a single self-contained file: no `node_modules`, no repo checkout,
 no webview build on the Claude Code server.
@@ -39,7 +39,7 @@ npm run package:daemon
 # → build/pixel-agents-daemon-<version>.tar.gz
 ```
 
-No dev machine? Do the same on the server — it just needs `git` and `npm` there.
+No dev machine? Do the same on the server - it just needs `git` and `npm` there.
 
 ### 2. Upload it
 
@@ -49,7 +49,7 @@ scp build/pixel-agents-daemon-*.tar.gz you@claude-server:~
 
 ### 3. Install as a service (Claude Code server)
 
-Log in **as the user that runs `claude`** (not root — session discovery reads
+Log in **as the user that runs `claude`** (not root - session discovery reads
 that user's `~/.claude/` and `/proc/<pid>/cwd`).
 
 ```bash
@@ -74,7 +74,7 @@ sudo loginctl enable-linger $USER
 
 Useful flags: `--include ~/projects` (only track sessions under that path),
 `--exclude`, `--folder` (pin a project so it is always shown), `--system`
-(system-wide unit under `/etc/systemd/system` running as your user — needs
+(system-wide unit under `/etc/systemd/system` running as your user - needs
 `sudo`, doesn't need linger), `--uninstall`.
 
 ### 4. Check it
@@ -85,12 +85,12 @@ journalctl --user -u pixel-agents-daemon -f
 ```
 
 You should see `Session discovery via ~/.claude/sessions registry` followed by one
-`Project discovered:` and `[Registry] Bound pid …` line per running `claude`.
-Open the relay in a browser — the characters are there.
+`Project discovered:` and `[Registry] Bound pid ...` line per running `claude`.
+Open the relay in a browser - the characters are there.
 
 ### 5. Upgrade later
 
-Build a new tarball, upload it, and run `./install.sh` again — it replaces the
+Build a new tarball, upload it, and run `./install.sh` again - it replaces the
 bundle, keeps your config, and restarts the service.
 
 ## Manual alternatives
@@ -149,14 +149,14 @@ Code maintains for its own processes:
 
 ```
 ~/.claude/sessions/<pid>.json
-  { "pid": 1215, "sessionId": "ad73…", "cwd": "/home/you/projects/app",
-    "procStart": "6758", "name": "App (Tally)", "nameSource": "user", "status": "idle", … }
+  { "pid": 1215, "sessionId": "ad73...", "cwd": "/home/you/projects/app",
+    "procStart": "6758", "name": "App (Tally)", "nameSource": "user", "status": "idle", ... }
 ```
 
 Every 2 s (and immediately on any change to that directory) the daemon:
 
 1. Reads each entry and keeps it only if the pid is **alive and its kernel start
-   time (`/proc/<pid>/stat`) equals `procStart`** — a leftover file from a crashed
+   time (`/proc/<pid>/stat`) equals `procStart`** - a leftover file from a crashed
    or rebooted machine whose pid was reused never produces a phantom agent.
 2. Collapses duplicates on `sessionId` (`claude --continue` on an existing session).
 3. Maps `cwd` → `~/.claude/projects/<cwd with / → ->/` and binds the agent to
@@ -166,36 +166,36 @@ Every 2 s (and immediately on any change to that directory) the daemon:
    further concurrent sessions become extra characters. A session named via
    Claude Code (`nameSource: "user"`) uses that name on its nametag.
 5. When a process exits, its definition agent goes idle (stays in the office) and
-   ad-hoc agents are removed — within one poll interval.
+   ad-hoc agents are removed - within one poll interval.
 
 **Fallback:** if `~/.claude/sessions` doesn't exist (older Claude Code), the daemon
 scans `/proc` for `claude` processes, takes each one's cwd, and pairs it with the
 newest non-ended transcript whose records carry that cwd. The log line
-`Session discovery via …` tells you which mode is active.
+`Session discovery via ...` tells you which mode is active.
 
 Because discovery is per-user (`/proc/<pid>/cwd` and `~/.claude` are only readable
 by the owner), run the daemon **as the user that runs Claude Code**.
 
 ## State files
 
-- `~/.pixel-agents/daemon-state/<folder>.json` — per-folder persisted agents
+- `~/.pixel-agents/daemon-state/<folder>.json` - per-folder persisted agents
   (replaces VS Code `workspaceState`)
-- `~/.pixel-agents/projects/<hash>.json` — per-folder agent config (palette, seat)
-- `~/.pixel-agents/sync/` — sync files also readable by the local standalone viewer
-- `~/.pixel-agents/layout.json` — office layout (relay layout edits are written here)
+- `~/.pixel-agents/projects/<hash>.json` - per-folder agent config (palette, seat)
+- `~/.pixel-agents/sync/` - sync files also readable by the local standalone viewer
+- `~/.pixel-agents/layout.json` - office layout (relay layout edits are written here)
 
 ## Troubleshooting
 
-- **"No relay configured"** — pass `--relay-url` and `--relay-token` (or set them in the config file).
-- **Relay says "bad token"** — the daemon token must equal the relay's `RELAY_TOKEN`.
-- **No agents appear** — `ls ~/.claude/sessions/` should list one `<pid>.json` per
+- **"No relay configured"** - pass `--relay-url` and `--relay-token` (or set them in the config file).
+- **Relay says "bad token"** - the daemon token must equal the relay's `RELAY_TOKEN`.
+- **No agents appear** - `ls ~/.claude/sessions/` should list one `<pid>.json` per
   running `claude`. If it's empty, Claude Code is running as a different user or
   the daemon's `--include`/`--exclude` filters exclude the cwd. Send `SIGUSR1` to
   the daemon (`systemctl --user kill -s USR1 pixel-agents-daemon`) to log what it
   is tracking.
-- **A project shows but its character never moves** — the transcript hasn't been
+- **A project shows but its character never moves** - the transcript hasn't been
   written yet (no prompt sent); the daemon polls for it and binds automatically.
-- **Service dies after a Node upgrade via nvm** — the unit has the absolute node path
+- **Service dies after a Node upgrade via nvm** - the unit has the absolute node path
   baked in; re-run `./install.sh` to refresh it.
-- **Stops when you log out** — linger isn't enabled: `sudo loginctl enable-linger $USER`,
+- **Stops when you log out** - linger isn't enabled: `sudo loginctl enable-linger $USER`,
   or install with `--system`.

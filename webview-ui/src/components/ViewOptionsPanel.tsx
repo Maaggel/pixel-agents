@@ -12,7 +12,7 @@ export interface ViewOptions {
   debugLampLights: boolean
   /** Display mode: hide every overlay except the restore button */
   hideUi: boolean
-  /** Characters fetch, carry, place and tidy utensils (coffee mugs…) */
+  /** Characters fetch, carry, place and tidy utensils (coffee mugs...) */
   dynamicItems: boolean
   /** Screen Wake Lock: keep the display on while the page is visible (tablets/phones) */
   keepAwake: boolean

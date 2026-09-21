@@ -26,7 +26,7 @@ import { addBehaviourEntry } from './behaviourLog.js'
 import { WeatherClock } from './components/WeatherClock.js'
 import { PersonalityPanel } from './components/PersonalityPanel.js'
 
-// Game state lives outside React — updated imperatively by message handlers
+// Game state lives outside React - updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
 const editorState = new EditorState()
 
@@ -198,7 +198,7 @@ function App() {
   const handleViewOptionsChange = useCallback((opts: ViewOptions) => {
     setViewOptions(opts)
     try { localStorage.setItem('pixel-agents-view-options', JSON.stringify(opts)) } catch { /* ignore */ }
-    // Hiding the UI while editing would strand the editor with no toolbar — leave edit mode first
+    // Hiding the UI while editing would strand the editor with no toolbar - leave edit mode first
     if (opts.hideUi && editor.isEditMode) editor.handleToggleEditMode()
     // Sync nametags toggle with existing setting
     if (opts.showNametags !== showNametags) {
@@ -234,7 +234,7 @@ function App() {
 
   const [exteriorWall, setExteriorWallState] = useState<{ style: string; color: FloorColor; height: number } | null>(null)
 
-  // Sync exterior wall state when layout is loaded — default to Small Bricks if not set
+  // Sync exterior wall state when layout is loaded - default to Small Bricks if not set
   const defaultExteriorWall = { style: 'brick_small' as const, color: { ...DEFAULT_EXTERIOR_WALL_COLOR }, height: 0 }
   useEffect(() => {
     if (layoutReady) {
@@ -610,7 +610,7 @@ function App() {
         />
       )}
 
-      {/* Personality panel — open via agent mood button or agent list */}
+      {/* Personality panel - open via agent mood button or agent list */}
       {!hideUi && personalityPanelKey !== null && (
         <PersonalityPanel
           personality={personalities[personalityPanelKey] ?? null}

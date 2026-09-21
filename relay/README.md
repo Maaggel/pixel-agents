@@ -34,7 +34,7 @@ cd relay && npm install && cd ..
 RELAY_TOKEN=my-secret-key npm run relay
 ```
 
-Open `http://localhost:7601` in a browser. You'll see a token prompt — enter `my-secret-key`.
+Open `http://localhost:7601` in a browser. You'll see a token prompt - enter `my-secret-key`.
 
 ## Server deployment
 
@@ -46,9 +46,9 @@ scp -r dist/ relay/ user@yourserver:~/pixel-agents/
 ```
 
 You need:
-- `dist/webview/` — the built web UI
-- `dist/assets/` — sprite PNGs, furniture catalog, default layout
-- `relay/` — the relay server code
+- `dist/webview/` - the built web UI
+- `dist/assets/` - sprite PNGs, furniture catalog, default layout
+- `relay/` - the relay server code
 
 ### 2. Install dependencies on the server
 
@@ -111,7 +111,7 @@ Add to your Apache site config (e.g. for `apps.blommemix.dk`):
 
     # ... your existing SSL config ...
 
-    # Pixel Agents relay — WebSocket MUST come before HTTP proxy
+    # Pixel Agents relay - WebSocket MUST come before HTTP proxy
     ProxyPass /pixelagents/ws ws://127.0.0.1:7601/ws
     ProxyPassReverse /pixelagents/ws ws://127.0.0.1:7601/ws
 
@@ -143,7 +143,7 @@ The extension will start pushing agent state to the relay as soon as these are s
 
 ## Viewer authentication
 
-When a browser opens the relay URL for the first time, a token prompt appears. After entering the correct key, it's saved in `localStorage` — no prompt on future visits.
+When a browser opens the relay URL for the first time, a token prompt appears. After entering the correct key, it's saved in `localStorage` - no prompt on future visits.
 
 If the token is wrong, the server rejects the WebSocket connection (code 4001) and the prompt reappears with an error message.
 
@@ -166,7 +166,7 @@ Returns:
 
 ## Updating
 
-Viewers reload themselves after a deploy — no one has to hard-refresh a tablet.
+Viewers reload themselves after a deploy - no one has to hard-refresh a tablet.
 Every page embeds the **build id** it was served with (a hash of
 `dist/webview/index.html`, which names the content-hashed bundles, plus the relay
 source). The relay sends its current build id in every WebSocket `init` and in
@@ -174,7 +174,7 @@ source). The relay sends its current build id in every WebSocket `init` and in
 `index.html` is served with `Cache-Control: no-cache` so a proxy can't hand out a
 stale page, and a viewer won't reload more than once per 30 s (loop guard).
 
-**Scripted (FTP)** — `relay/deploy.sh` uploads `dist/assets` + `dist/webview` in a
+**Scripted (FTP)** - `relay/deploy.sh` uploads `dist/assets` + `dist/webview` in a
 safe order (bundles first, `index.html` last), deletes stale content-hashed bundles,
 stages `relay/server.mjs` + `package.json`, and POSTs `/api/reload`:
 
@@ -182,13 +182,13 @@ stages `relay/server.mjs` + `package.json`, and POSTs `/api/reload`:
 # once: FTP credentials, mode 600
 printf 'machine ftp.host login USER password PASS\n' > ~/.pixel-agents/relay-ftp.netrc && chmod 600 ~/.pixel-agents/relay-ftp.netrc
 npm run build
-PIXEL_AGENTS_RELAY_HTTP=https://yourserver.com/pixelagents PIXEL_AGENTS_RELAY_TOKEN=… relay/deploy.sh [--ui-only] [--dry-run]
+PIXEL_AGENTS_RELAY_HTTP=https://yourserver.com/pixelagents PIXEL_AGENTS_RELAY_TOKEN=... relay/deploy.sh [--ui-only] [--dry-run]
 ```
 
 It never touches `data/`. A file it can't overwrite (owned by another user) is skipped
 only if the remote copy is identical; otherwise it aborts before `index.html` goes live.
 
-**Web UI only, by hand** — no restart needed:
+**Web UI only, by hand** - no restart needed:
 
 ```bash
 # Dev machine
@@ -219,7 +219,7 @@ curl https://yourserver.com/pixelagents/api/build
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RELAY_TOKEN` | Shared authentication token | _(none — warning printed, no auth)_ |
+| `RELAY_TOKEN` | Shared authentication token | _(none - warning printed, no auth)_ |
 
 ## CLI options
 

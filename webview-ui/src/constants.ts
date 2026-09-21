@@ -27,7 +27,7 @@ export const SEAT_RETURN_SAME_CHANCE = 0.4
 /** Chance (0-1) to pick a completely random work seat instead of a nearby one. */
 export const WORK_SEAT_RANDOM_CHANCE = 0.3
 /** Weighted zone preferences for idle seat selection (rest > kitchen > work/any).
- *  Weights are relative — if a zone has no free seats, its weight is redistributed. */
+ *  Weights are relative - if a zone has no free seats, its weight is redistributed. */
 export const IDLE_ZONE_WEIGHT_REST = 50
 export const IDLE_ZONE_WEIGHT_KITCHEN = 30
 export const IDLE_ZONE_WEIGHT_OTHER = 20
@@ -203,7 +203,7 @@ export const LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC = 2.0
 // ── Window Glass Effects ────────────────────────────────────
 /** Glass tint opacity at full sun during clear weather */
 export const GLASS_DAY_TINT_OPACITY = 0.22
-/** Glass tint opacity at full sun during rain/snow (subdued — overcast sky) */
+/** Glass tint opacity at full sun during rain/snow (subdued - overcast sky) */
 export const GLASS_DAY_WEATHER_TINT_OPACITY = 0.06
 /** Glass overlay opacity at full night (dark sky through window) */
 export const GLASS_NIGHT_OVERLAY_OPACITY = 0.55
@@ -329,9 +329,9 @@ export const VISIT_MAX_DURATION_SEC = 6.0
 export const EAT_MIN_DURATION_SEC = 15.0
 export const EAT_MAX_DURATION_SEC = 35.0
 // ── Dynamic items (utensils: catalog entries with utensil/utensilOrigin/utensilDisposal) ──
-/** Seconds standing at the origin furniture (coffee machine, fridge…) before the item appears */
+/** Seconds standing at the origin furniture (coffee machine, fridge...) before the item appears */
 export const ITEM_FETCH_SEC = 2.5
-/** Seconds standing at the disposal furniture (sink, bin…) to drop an item off */
+/** Seconds standing at the disposal furniture (sink, bin...) to drop an item off */
 export const ITEM_DISPOSE_SEC = 1.0
 /** A prop must lie around at least this long before someone tidies it away */
 export const PROP_MIN_AGE_SEC = 90
@@ -339,11 +339,11 @@ export const PROP_MIN_AGE_SEC = 90
 export const TIDY_NEAR_DISTANCE_TILES = 6
 /** TIDY_UP weight when such a prop is near (registry weight applies otherwise) */
 export const TIDY_NEAR_WEIGHT = 70
-/** Hard cap on props in the office — beyond it, carried items are simply "finished" */
+/** Hard cap on props in the office - beyond it, carried items are simply "finished" */
 export const MAX_PROPS = 12
 /** Props are drawn this many sprite px above the tile bottom so they sit on the tabletop, not its front edge */
 export const PROP_SURFACE_LIFT_PX = 5
-/** Safety timeout for fetch/tidy bubbles — the action clears them earlier when it finishes */
+/** Safety timeout for fetch/tidy bubbles - the action clears them earlier when it finishes */
 export const ITEM_BUBBLE_MAX_SEC = 60
 /** Random look given to a fetched utensil (adjust-mode hue shifts, like the editor's furniture color sliders).
  *  `null` = the sprite's original colors. */
@@ -359,10 +359,10 @@ export const ITEM_COLOR_VARIANTS: Array<{ h: number; s: number; b: number; c: nu
 /** Held-item anchor per facing direction, in sprite px relative to the character's bottom-centre.
  *  UP draws the item behind the body (z-sorted just before the character). */
 export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind: boolean }> = {
-  0: { dx: 1, dy: -13, behind: false },   // DOWN — front hand
-  1: { dx: -3, dy: -14, behind: true },   // UP — hidden partly behind the body
-  2: { dx: 5, dy: -13, behind: false },   // RIGHT — hand in front
-  3: { dx: -12, dy: -13, behind: false }, // LEFT — mirrored
+  0: { dx: 1, dy: -13, behind: false },   // DOWN - front hand
+  1: { dx: -3, dy: -14, behind: true },   // UP - hidden partly behind the body
+  2: { dx: 5, dy: -13, behind: false },   // RIGHT - hand in front
+  3: { dx: -12, dy: -13, behind: false }, // LEFT - mirrored
 }
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pixel Agents daemon installer — run ON the machine where Claude Code runs,
+# Pixel Agents daemon installer - run ON the machine where Claude Code runs,
 # AS the user that runs Claude Code. Installs the bundle, writes the config,
 # and registers a systemd service that starts on boot.
 #
@@ -59,7 +59,7 @@ fi
 # Bundle lives next to install.sh in the tarball; when run from a repo checkout, fall back to dist/
 BUNDLE_SRC="$SRC_DIR/$BUNDLE"
 [ -f "$BUNDLE_SRC" ] || BUNDLE_SRC="$SRC_DIR/../dist/$BUNDLE"
-[ -f "$BUNDLE_SRC" ] || die "$BUNDLE not found next to install.sh (or in ../dist) — run 'npm run package:daemon' and upload the tarball."
+[ -f "$BUNDLE_SRC" ] || die "$BUNDLE not found next to install.sh (or in ../dist) - run 'npm run package:daemon' and upload the tarball."
 command -v systemctl >/dev/null || die "systemd not found; start the daemon another way (see README)."
 # `systemctl --user` needs the user bus; non-login shells (ssh host 'cmd', cron) often lack these.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -76,7 +76,7 @@ NODE_MAJOR="$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
 log "Node $("$NODE_BIN" -v) at $NODE_BIN"
 
 if [ ! -d "$HOME/.claude" ]; then
-  warn "$HOME/.claude does not exist — has Claude Code ever run as $USER on this machine? The daemon will find nothing until it does."
+  warn "$HOME/.claude does not exist - has Claude Code ever run as $USER on this machine? The daemon will find nothing until it does."
 fi
 
 # ── Files ────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ else
   log "Keeping existing $CONFIG_FILE"
   RELAY_URL="$("$NODE_BIN" -p 'try{JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).relayUrl||""}catch{""}' "$CONFIG_FILE")"
 fi
-[ -n "$RELAY_URL" ] || warn "No relay URL configured — daemon runs local-only. Edit $CONFIG_FILE and restart."
+[ -n "$RELAY_URL" ] || warn "No relay URL configured - daemon runs local-only. Edit $CONFIG_FILE and restart."
 
 # ── Service ──────────────────────────────────────────────────
 UNIT_BODY="[Unit]
@@ -165,9 +165,9 @@ else
   log "User service installed and started ($UNIT_FILE)"
   # Without linger the user manager (and this service) stops when the last login ends.
   if loginctl show-user "$USER" -p Linger 2>/dev/null | grep -q 'Linger=yes'; then
-    log "Linger already enabled — service survives logout and starts at boot"
+    log "Linger already enabled - service survives logout and starts at boot"
   elif loginctl enable-linger "$USER" 2>/dev/null; then
-    log "Enabled linger for $USER — service survives logout and starts at boot"
+    log "Enabled linger for $USER - service survives logout and starts at boot"
   else
     warn "Could not enable linger. Run once:  sudo loginctl enable-linger $USER   (otherwise the daemon stops when you log out)"
   fi
@@ -179,7 +179,7 @@ $SYSCTL is-active --quiet "$UNIT_NAME" && ok=1 || ok=0
 if [ "$ok" = 1 ]; then
   log "Daemon is running. Tracking $(ls "$HOME/.claude/sessions" 2>/dev/null | grep -c '\.json$' || echo 0) registered Claude Code process(es) right now."
 else
-  warn "Service is not active — check: $LOGS"
+  warn "Service is not active - check: $LOGS"
 fi
 echo
 echo "  Status:   $SYSCTL status $UNIT_NAME"

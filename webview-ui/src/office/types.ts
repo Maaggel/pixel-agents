@@ -69,7 +69,7 @@ export const IdleActionType = {
 export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
 
 // ── Dynamic items (runtime props, never saved in the layout) ──
-/** An item lying in the office (on a desk tile) — created by characters, tidied away by characters */
+/** An item lying in the office (on a desk tile) - created by characters, tidied away by characters */
 export interface PlacedProp {
   uid: string
   /** Catalog type of the utensil (its own sprite is used) */
@@ -78,7 +78,7 @@ export interface PlacedProp {
   color?: FloorColor
   col: number
   row: number
-  /** performance.now() when placed — tidy-up only targets props older than PROP_MIN_AGE_SEC */
+  /** performance.now() when placed - tidy-up only targets props older than PROP_MIN_AGE_SEC */
   placedAt: number
   ownerId: number
 }
@@ -192,7 +192,7 @@ export interface FurnitureInstance {
   idleCycleIdx?: number
   /** Sprite to render when no work/interaction/meeting cycle is active. Set/cleared by game loop. */
   activeIdleSprite?: SpriteData | null
-  /** Whether this furniture is a seat (chair) — used to skip exterior wall re-draw */
+  /** Whether this furniture is a seat (chair) - used to skip exterior wall re-draw */
   isSeat?: boolean
   /** Screen-space rectangles to exclude from drawing (used for exterior window glass cutouts in wall sprites) */
   clipExclusions?: Array<{ x: number; y: number; w: number; h: number }>
@@ -242,7 +242,7 @@ export type EditTool = (typeof EditTool)[keyof typeof EditTool]
 
 export interface FurnitureCatalogEntry {
   type: string // FurnitureType enum or asset ID
-  /** Asset name from furniture-catalog.json (e.g. COFFEE_MACHINE) — stable across re-exports, unlike ASSET_nn ids */
+  /** Asset name from furniture-catalog.json (e.g. COFFEE_MACHINE) - stable across re-exports, unlike ASSET_nn ids */
   name?: string
   label: string
   footprintW: number
@@ -272,7 +272,7 @@ export interface FurnitureCatalogEntry {
   utensilEmpty?: string
   /** Side characters stand on to use/visit this item. Default: 'front' (below), or the rotation `orientation`. */
   useSide?: 'front' | 'back' | 'left' | 'right'
-  /** Items (mugs, plates…) can be placed on top — surface items and dynamic props. True for every desk; catalog `surface` adds others (chess board, mats…). */
+  /** Items (mugs, plates...) can be placed on top - surface items and dynamic props. True for every desk; catalog `surface` adds others (chess board, mats...). */
   isSurface?: boolean
   /** Whether this furniture generates a seat (characters can sit here) */
   isSeat?: boolean
@@ -429,7 +429,7 @@ export interface Character {
   preConversationDir: Direction | null
   /** Unique ID grouping characters in the same meeting (so multiple meetings can coexist) */
   meetingGroupId: number | null
-  /** Catalog type of the utensil currently carried — drawn at the hand, placed on the desk when seated */
+  /** Catalog type of the utensil currently carried - drawn at the hand, placed on the desk when seated */
   heldItem: string | null
   /** Color variant of the item being fetched / carried (null = original sprite colors) */
   itemColor: FloorColor | null
@@ -451,9 +451,9 @@ export interface Character {
   remoteToolStatus?: string | null
   /** Hint from backend: 'thinking' (fresh prompt) vs 'between-turns' (grace period) */
   idleHint?: 'thinking' | 'between-turns' | null
-  /** Currently active Claude Code Skill — aura, bubble, and overlay visuals key off this */
+  /** Currently active Claude Code Skill - aura, bubble, and overlay visuals key off this */
   activeSkill?: ActiveSkillInfo | null
-  /** Target state from the source window — remote characters animate locally using synced path */
+  /** Target state from the source window - remote characters animate locally using synced path */
   syncTarget?: {
     x: number
     y: number

@@ -476,7 +476,7 @@ export function initIdleAction(
 
   switch (action) {
     case IdleActionType.WANDER:
-      // Wander uses existing updateCharacter logic — no extra init needed
+      // Wander uses existing updateCharacter logic - no extra init needed
       logIdle(ch, 'wandering around the office')
       return true
 
@@ -569,7 +569,7 @@ export function initIdleAction(
     }
 
     case IdleActionType.VISIT_FURNITURE: {
-      // Pick a random interesting furniture piece — try several until one works
+      // Pick a random interesting furniture piece - try several until one works
       const interesting = ctx.furniture.filter(f => isInterestingFurniture(f.type))
       if (interesting.length === 0) return false
 
@@ -599,7 +599,7 @@ export function initIdleAction(
           ch.frame = 0
           ch.frameTimer = 0
         } else {
-          // Already at the tile — start visiting immediately
+          // Already at the tile - start visiting immediately
           ch.dir = adj.facingDir
           ch.conversationPhase = 'talking' // "talking" phase = standing at furniture
         }
@@ -643,7 +643,7 @@ export function initIdleAction(
       const seat = ctx.seats.get(ch.seatId)
       if (!seat) return false
 
-      // Dynamic items: fetch food (a plate from the fridge…) first, then come back and eat it.
+      // Dynamic items: fetch food (a plate from the fridge...) first, then come back and eat it.
       // 'leaving' marks the fetch leg; updateEating switches to 'approaching' once the food is in hand.
       if (ctx.dynamicItems && ch.heldItem === null && ctx.props.length < MAX_PROPS) {
         const food = pickRandom(findFetchableUtensils(ctx, 'food'))
@@ -687,7 +687,7 @@ export function initIdleAction(
     }
 
     case IdleActionType.FETCH_ITEM: {
-      // Walk to a drink's origin (coffee machine…), wait, walk away carrying it
+      // Walk to a drink's origin (coffee machine...), wait, walk away carrying it
       const choice = pickRandom(findFetchableUtensils(ctx, 'break'))
       if (!choice || !startFetch(ch, choice, ctx)) return false
       ch.conversationPhase = 'approaching'
@@ -750,7 +750,7 @@ export function updateIdleAction(
 function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boolean {
   if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
   if (ch.conversationPhase === 'approaching') {
-    if (arrivedAtFurniture(ch)) ch.conversationPhase = 'talking' // waiting at the origin (brewing…)
+    if (arrivedAtFurniture(ch)) ch.conversationPhase = 'talking' // waiting at the origin (brewing...)
     return true
   }
   if (ch.conversationPhase === 'talking') {
@@ -786,7 +786,7 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
         return true
       }
     }
-    // Nothing reachable — keep the item; it gets placed on the desk when seated
+    // Nothing reachable - keep the item; it gets placed on the desk when seated
     clearItemBubble(ch)
     clearIdleAction(ch)
     return false
@@ -813,11 +813,11 @@ function cycleConversationBubble(ch: Character, dt: number): void {
   if (ch.bubbleType === 'permission') return // don't override permission bubbles
 
   if (ch.bubbleType === 'idle_chat') {
-    // Bubble is currently showing — main loop handles its timer countdown
+    // Bubble is currently showing - main loop handles its timer countdown
     return
   }
 
-  // No bubble showing — count down the gap timer (stored in wanderTimer)
+  // No bubble showing - count down the gap timer (stored in wanderTimer)
   ch.wanderTimer -= dt
   if (ch.wanderTimer <= 0) {
     // Show a new bubble with a random duration
@@ -829,7 +829,7 @@ function cycleConversationBubble(ch: Character, dt: number): void {
   }
 }
 
-/** Cycle meeting bubbles — longer show/gap durations than conversations */
+/** Cycle meeting bubbles - longer show/gap durations than conversations */
 function cycleMeetingBubble(ch: Character, dt: number): void {
   if (ch.bubbleType === 'permission') return
   if (ch.bubbleType === 'idle_chat') return // bubble showing, main loop handles timer
@@ -858,7 +858,7 @@ function updateMeeting(ch: Character, dt: number, ctx: IdleActionContext): boole
   if (ch.conversationPhase === 'approaching') {
     // Wait for walk to meeting seat
     if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
-      // Arrived — sit down facing forward (seat's facing direction)
+      // Arrived - sit down facing forward (seat's facing direction)
       ch.conversationPhase = 'talking'
       ch.state = CharacterState.SIT_IDLE
       ch.frame = 0
@@ -877,7 +877,7 @@ function updateMeeting(ch: Character, dt: number, ctx: IdleActionContext): boole
     const totalInMeeting = others.length + 1
 
     if (totalInMeeting < MEETING_MIN_PARTICIPANTS) {
-      // Not enough participants — end meeting for this character
+      // Not enough participants - end meeting for this character
       logIdle(ch, 'meeting ended (not enough participants)')
       ch.bubbleType = null
       ch.bubbleTimer = 0
@@ -886,7 +886,7 @@ function updateMeeting(ch: Character, dt: number, ctx: IdleActionContext): boole
     }
 
     if (ch.idleActionTimer <= 0) {
-      // Meeting time's up — end for ALL remaining participants simultaneously
+      // Meeting time's up - end for ALL remaining participants simultaneously
       logIdle(ch, 'meeting concluded')
       ch.bubbleType = null
       ch.bubbleTimer = 0
@@ -908,7 +908,7 @@ function updateMeeting(ch: Character, dt: number, ctx: IdleActionContext): boole
 function updateConversation(ch: Character, dt: number, ctx: IdleActionContext): boolean {
   const partner = ch.conversationPartnerId !== null ? ctx.characters.get(ch.conversationPartnerId) : null
 
-  // Partner gone or became active — disengage
+  // Partner gone or became active - disengage
   if (!partner || partner.isActive || partner.conversationPartnerId !== ch.id) {
     logIdle(ch, 'conversation interrupted')
     clearIdleAction(ch)
@@ -920,7 +920,7 @@ function updateConversation(ch: Character, dt: number, ctx: IdleActionContext): 
     if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
       // Check if partner also arrived
       if (partner.state !== CharacterState.WALK && partner.path.length === 0) {
-        // Both arrived — face each other
+        // Both arrived - face each other
         ch.dir = directionBetween(ch.tileCol, ch.tileRow, partner.tileCol, partner.tileRow)
         partner.dir = directionBetween(partner.tileCol, partner.tileRow, ch.tileCol, ch.tileRow)
         ch.conversationPhase = 'talking'
@@ -949,7 +949,7 @@ function updateConversation(ch: Character, dt: number, ctx: IdleActionContext): 
     }
 
     if (ch.idleActionTimer <= 0) {
-      // Conversation done — disengage both and clear bubbles
+      // Conversation done - disengage both and clear bubbles
       logIdle(ch, `finished chatting with ${partner.nametag || `Agent ${partner.id}`}`)
       ch.conversationPhase = 'leaving'
       partner.conversationPhase = 'leaving'
@@ -1006,7 +1006,7 @@ function updateStandAndThink(ch: Character, dt: number): boolean {
       ch.conversationPhase = 'talking' // arrived, start thinking
       ch.state = CharacterState.IDLE
       ch.frame = 0
-      // No bubble — just a brief pause before doing something else
+      // No bubble - just a brief pause before doing something else
     }
     return true
   }
@@ -1040,7 +1040,7 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
     ch.conversationPhase = 'approaching'
     if (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow) {
       const path = ctx.findPathUnblocked(ch, seat.seatCol, seat.seatRow)
-      if (path.length === 0) { clearIdleAction(ch); return false } // seat unreachable — keep the plate, place it wherever we sit
+      if (path.length === 0) { clearIdleAction(ch); return false } // seat unreachable - keep the plate, place it wherever we sit
       ch.path = path
       ch.moveProgress = 0
       ch.state = CharacterState.WALK
@@ -1053,7 +1053,7 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
   if (ch.conversationPhase === 'approaching') {
     // Wait for walk to seat
     if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
-      // Arrived — sit down and start eating
+      // Arrived - sit down and start eating
       ch.conversationPhase = 'talking'
       ch.state = CharacterState.SIT_IDLE
       ch.frame = 0
@@ -1094,7 +1094,7 @@ function clearIdleAction(ch: Character): void {
   ch.idleActionTimer = 0
   ch.meetingGroupId = null
   ch.currentTool = null
-  // Don't clear bubbleType here — let it fade naturally or get cleared by the caller
+  // Don't clear bubbleType here - let it fade naturally or get cleared by the caller
 }
 
 /** Disengage a character from a conversation (called when partner becomes active or is removed) */
@@ -1123,7 +1123,7 @@ export function disengageConversation(ch: Character, ctx: IdleActionContext): vo
 }
 
 /** Disengage a single character from a meeting (called when agent becomes active).
- *  Only removes THIS character — others continue if enough remain.
+ *  Only removes THIS character - others continue if enough remain.
  *  If fewer than MEETING_MIN_PARTICIPANTS remain, ends meeting for all. */
 export function disengageMeeting(ch: Character, ctx: IdleActionContext): void {
   if (ch.idleAction !== IdleActionType.MEETING) return

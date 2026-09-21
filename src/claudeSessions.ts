@@ -4,14 +4,14 @@
  * Primary source: Claude Code's own process registry at ~/.claude/sessions/<pid>.json
  * (written by every `claude` process; contains pid, sessionId, cwd, name, status).
  * A registry entry is only trusted when the pid is alive AND its kernel start time
- * matches the recorded `procStart` — this guards against pid reuse after reboots
+ * matches the recorded `procStart` - this guards against pid reuse after reboots
  * or crashes, where a stale registry file could point at an unrelated process.
  *
  * Fallback (older Claude Code without the registry): walk /proc for `claude`
  * processes, take their cwd, and pick the newest non-ended JSONL under the
  * matching project dir whose records carry that cwd.
  *
- * Pure Node — no VS Code, no side effects beyond reads.
+ * Pure Node - no VS Code, no side effects beyond reads.
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -30,7 +30,7 @@ export interface LiveClaudeSession {
 	/** Display name from the registry (user-set or derived) */
 	name: string | null;
 	nameSource: 'user' | 'derived' | null;
-	/** Registry status hint ('busy' / 'idle') — informational only */
+	/** Registry status hint ('busy' / 'idle') - informational only */
 	status: string | null;
 	startedAt: number;
 	/** 'registry' when found via ~/.claude/sessions, 'proc' when inferred from /proc */
@@ -63,7 +63,7 @@ export function sessionsRegistryDir(): string {
 function procStartTime(pid: number): string | null {
 	try {
 		const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf-8');
-		// comm may contain spaces/parens — fields start after the last ')'
+		// comm may contain spaces/parens - fields start after the last ')'
 		const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
 		// rest[0] = state (field 3) → starttime is field 22 → index 19
 		return rest[19] ?? null;
@@ -73,7 +73,7 @@ function procStartTime(pid: number): string | null {
 }
 
 /**
- * True if `pid` is alive and — when both sides are known — was started at the
+ * True if `pid` is alive and - when both sides are known - was started at the
  * recorded time. On non-Linux only the signal-0 check is available.
  */
 export function isProcessAlive(pid: number, expectedStart?: string | number): boolean {
@@ -86,7 +86,7 @@ export function isProcessAlive(pid: number, expectedStart?: string | number): bo
 	}
 	if (expectedStart === undefined || expectedStart === null || expectedStart === '') return true;
 	const actual = procStartTime(pid);
-	if (actual === null) return true; // not Linux — can't verify, trust the signal check
+	if (actual === null) return true; // not Linux - can't verify, trust the signal check
 	return actual === String(expectedStart);
 }
 
@@ -96,7 +96,7 @@ function readRegistryEntry(file: string): RegistryEntry | null {
 	try {
 		return JSON.parse(fs.readFileSync(file, 'utf-8')) as RegistryEntry;
 	} catch {
-		return null; // mid-write or corrupt — skip this tick
+		return null; // mid-write or corrupt - skip this tick
 	}
 }
 
@@ -148,7 +148,7 @@ export function scanSessionRegistry(): LiveClaudeSession[] | null {
 function isClaudeCommand(cmdline: string): boolean {
 	const argv = cmdline.split('\0').filter(Boolean);
 	if (argv.length === 0) return false;
-	// Direct binary (…/bin/claude) or `node …/claude` wrappers; exclude shells that merely mention it
+	// Direct binary (.../bin/claude) or `node .../claude` wrappers; exclude shells that merely mention it
 	const exe = path.basename(argv[0]);
 	if (exe === 'claude') return true;
 	if ((exe === 'node' || exe.startsWith('node')) && argv[1] && path.basename(argv[1]) === 'claude') return true;

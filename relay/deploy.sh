@@ -4,7 +4,7 @@
 #
 #   PIXEL_AGENTS_FTP_NETRC=~/.pixel-agents/relay-ftp.netrc \
 #   PIXEL_AGENTS_RELAY_HTTP=https://apps.example.com/pixelagents \
-#   PIXEL_AGENTS_RELAY_TOKEN=… \
+#   PIXEL_AGENTS_RELAY_TOKEN=... \
 #   PIXEL_AGENTS_RELAY_SSH=pixelagents-deploy \
 #   relay/deploy.sh [--ui-only] [--dry-run]
 #
@@ -19,7 +19,7 @@
 # first, index.html last, so a viewer that loads mid-deploy never references a
 # bundle that isn't there yet. Stale content-hashed bundles are deleted.
 # Relay code (relay/server.mjs, package.json) only takes effect after
-# `systemctl restart pixel-agents-relay` on the host — the script tells you.
+# `systemctl restart pixel-agents-relay` on the host - the script tells you.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -27,13 +27,13 @@ NETRC="${PIXEL_AGENTS_FTP_NETRC:-$HOME/.pixel-agents/relay-ftp.netrc}"
 RELAY_HTTP="${PIXEL_AGENTS_RELAY_HTTP:-}"
 TOKEN="${PIXEL_AGENTS_RELAY_TOKEN:-}"
 GATE="${PIXEL_AGENTS_RELAY_SSH:-}"
-UI_ONLY=0; DRY=0
-for a in "$@"; do case "$a" in --ui-only) UI_ONLY=1;; --dry-run) DRY=1;; *) echo "unknown arg $a"; exit 2;; esac; done
+UI_ONLY=0; DRY=0; ALLOW_SAME=0
+for a in "$@"; do case "$a" in --ui-only) UI_ONLY=1;; --dry-run) DRY=1;; --allow-same-version) ALLOW_SAME=1;; *) echo "unknown arg $a"; exit 2;; esac; done
 
 [ -f "$NETRC" ] || { echo "netrc not found: $NETRC"; exit 1; }
 FTP_HOST="$(awk '/^machine/{print $2; exit}' "$NETRC")"
 [ -n "$FTP_HOST" ] || { echo "no 'machine' line in $NETRC"; exit 1; }
-[ -f dist/webview/index.html ] || { echo "dist/webview/index.html missing — run npm run build"; exit 1; }
+[ -f dist/webview/index.html ] || { echo "dist/webview/index.html missing - run npm run build"; exit 1; }
 # Config from the relay host (relay reads ~/.pixel-agents/daemon.json's token too)
 if [ -z "$TOKEN" ] && [ -f "$HOME/.pixel-agents/daemon.json" ]; then
   TOKEN="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).relayToken||""' "$HOME/.pixel-agents/daemon.json")"
@@ -53,7 +53,7 @@ put() { # put <local> <remote-path>
     echo "  skip $2 (not writable, but identical)"
     return
   fi
-  echo "ERROR: cannot overwrite $2 and remote content differs — fix ownership/permissions on the host (chmod 666 or chown to the FTP user)." >&2
+  echo "ERROR: cannot overwrite $2 and remote content differs - fix ownership/permissions on the host (chmod 666 or chown to the FTP user)." >&2
   exit 1
 }
 del() { if [ "$DRY" = 1 ]; then echo "  DEL $1"; return; fi; "${C[@]}" -Q "DELE $1" "$BASE/" >/dev/null; }
@@ -61,7 +61,27 @@ listdir() { "${C[@]}" "$BASE/$1/" | awk '{print $NF}'; }
 
 echo "==> Deploying to $FTP_HOST (ui-only=$UI_ONLY dry-run=$DRY)"
 
-# 1. Sprite/catalog assets (dist/assets) and webview static files — everything except index.html
+# Build id as the relay will compute it for what we are about to upload
+expected="$(node -e '
+  const {createHash}=require("crypto"),fs=require("fs");
+  const srv=createHash("sha256").update(fs.readFileSync("relay/server.mjs")).digest("hex").slice(0,8);
+  const v=JSON.parse(fs.readFileSync("package.json","utf8")).version;
+  process.stdout.write(createHash("sha256").update(fs.readFileSync("dist/webview/index.html","utf8")).update(srv).update(v).digest("hex").slice(0,12))')"
+live_build() { curl -s -m 10 "$RELAY_HTTP/api/build" 2>/dev/null | sed -n 's/.*"buildId":"\([a-f0-9]*\)".*/\1/p'; }
+live_version() { curl -s -m 10 "$RELAY_HTTP/api/build" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p'; }
+
+# Version gate (playbook 2.2): a code change must carry a version bump. Same version + different
+# build = someone forgot. Docs-only/refactor deploys pass with --allow-same-version, deliberately.
+if [ -n "$RELAY_HTTP" ] && [ "$DRY" = 0 ]; then
+  local_version="$(node -p 'require("./package.json").version')"
+  lv="$(live_version)"; lb="$(live_build)"
+  if [ -n "$lv" ] && [ "$lv" = "$local_version" ] && [ -n "$lb" ] && [ "$lb" != "$expected" ] && [ "$ALLOW_SAME" = 0 ]; then
+    echo "ERROR: live relay is already v$local_version (build $lb) and this build differs ($expected) - bump the version in package.json and add a CHANGELOG entry, or pass --allow-same-version for a docs/refactor-only deploy." >&2
+    exit 1
+  fi
+fi
+
+# 1. Sprite/catalog assets (dist/assets) and webview static files - everything except index.html
 n=0
 while IFS= read -r -d '' f; do
   rel="${f#./}"
@@ -75,7 +95,7 @@ for remote in $(listdir dist/webview/assets | grep -E '^index-[A-Za-z0-9_-]+\.(j
   [ -f "dist/webview/assets/$remote" ] || { del "dist/webview/assets/$remote"; echo "  removed stale $remote"; }
 done
 
-# 3. index.html last — the moment the new UI goes live
+# 3. index.html last - the moment the new UI goes live
 put dist/webview/index.html dist/webview/index.html
 echo "==> index.html live"
 
@@ -91,12 +111,6 @@ fi
 
 # 5. Restart the relay through the SSH gate if its code changed
 if [ "$DRY" = 1 ]; then exit 0; fi
-expected="$(node -e '
-  const {createHash}=require("crypto"),fs=require("fs");
-  const srv=createHash("sha256").update(fs.readFileSync("relay/server.mjs")).digest("hex").slice(0,8);
-  const v=JSON.parse(fs.readFileSync("package.json","utf8")).version;
-  process.stdout.write(createHash("sha256").update(fs.readFileSync("dist/webview/index.html","utf8")).update(srv).update(v).digest("hex").slice(0,12))')"
-live_build() { curl -s -m 10 "$RELAY_HTTP/api/build" 2>/dev/null | sed -n 's/.*"buildId":"\([a-f0-9]*\)".*/\1/p'; }
 
 if [ "$RELAY_CHANGED" = 1 ]; then
   if [ -n "$GATE" ]; then
@@ -108,13 +122,13 @@ if [ "$RELAY_CHANGED" = 1 ]; then
           echo "==> Relay is back with build $expected"
           break
         fi
-        [ "$i" = 20 ] && echo "WARNING: relay did not report build $expected within 20s — check: ssh $GATE 'sudo journalctl -u pixel-agents-relay -n 200 --no-pager'" >&2
+        [ "$i" = 20 ] && echo "WARNING: relay did not report build $expected within 20s - check: ssh $GATE 'sudo journalctl -u pixel-agents-relay -n 200 --no-pager'" >&2
       done
     else
-      echo "WARNING: gate restart failed — restart by hand: sudo systemctl restart pixel-agents-relay" >&2
+      echo "WARNING: gate restart failed - restart by hand: sudo systemctl restart pixel-agents-relay" >&2
     fi
   else
-    echo "==> relay code changed and no PIXEL_AGENTS_RELAY_SSH set — restart by hand: sudo systemctl restart pixel-agents-relay"
+    echo "==> relay code changed and no PIXEL_AGENTS_RELAY_SSH set - restart by hand: sudo systemctl restart pixel-agents-relay"
   fi
 fi
 
@@ -125,7 +139,7 @@ if [ -n "$RELAY_HTTP" ] && [ -n "$TOKEN" ]; then
     echo "==> Viewers told to reload: $res"
     [ "$(live_build)" = "$expected" ] && echo "==> Live build matches local build ($expected)" || echo "WARNING: live build $(live_build) != local $expected" >&2
   else
-    echo "==> Relay on $RELAY_HTTP predates auto-reload (no /api/build) — restart it; viewers must refresh once by hand this time."
+    echo "==> Relay on $RELAY_HTTP predates auto-reload (no /api/build) - restart it; viewers must refresh once by hand this time."
   fi
 else
   echo "==> Set PIXEL_AGENTS_RELAY_HTTP (+ token) to trigger viewer reload automatically."

@@ -76,7 +76,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     canvas.height = Math.round(rect.height * dpr)
     canvas.style.width = `${rect.width}px`
     canvas.style.height = `${rect.height}px`
-    // No ctx.scale(dpr) — we render directly in device pixels
+    // No ctx.scale(dpr) - we render directly in device pixels
   }, [])
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
                 if (dockEntry) {
                   editorRender.ghostExtraSprite = dockEntry.sprite
                   editorRender.ghostExtraCol = editorState.ghostCol
-                  // Dock is 16x32, bottom-aligned — offset row by -1 so bottom aligns with vacuum tile
+                  // Dock is 16x32, bottom-aligned - offset row by -1 so bottom aligns with vacuum tile
                   editorRender.ghostExtraRow = placementRow - 1
                 }
               }
@@ -559,7 +559,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           }
         }
         if (hitFurniture) {
-          // Start drag — record fractional offset from furniture's top-left
+          // Start drag - record fractional offset from furniture's top-left
           const halfTile = !!getCatalogEntry(hitFurniture.type)?.halfTilePlacement
           const snapCol = halfTile ? Math.round(worldCol * 2) / 2 : Math.floor(worldCol)
           const snapRow = halfTile ? Math.round(worldRow * 2) / 2 : Math.floor(worldRow)
@@ -572,7 +572,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           )
           return
         } else {
-          // Clicked empty space — deselect
+          // Clicked empty space - deselect
           editorState.clearSelection()
           onEditorSelectionChange()
         }
@@ -621,7 +621,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           }
           editorState.clearSelection()
         } else {
-          // Click (no movement) — toggle selection
+          // Click (no movement) - toggle selection
           if (editorState.selectedFurnitureUid === editorState.dragUid) {
             editorState.clearSelection()
           } else {
@@ -677,7 +677,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         return
       }
 
-      // No agent or vacuum hit — deselect all
+      // No agent or vacuum hit - deselect all
       if (officeState.selectedAgentId !== null) {
         officeState.selectedAgentId = null
         officeState.cameraFollowId = null

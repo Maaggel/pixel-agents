@@ -4,7 +4,7 @@ import { PALETTE_COUNT, LOOK_HUE_STEPS, LOOK_HUE_STEP_DEG, LOOK_OVERRIDES_STORAG
  * Deterministic character look from the name shown on the nametag.
  *
  * The same name always yields the same palette + hue shift, on every device,
- * with nothing stored — so an agent keeps its look across reloads, relay
+ * with nothing stored - so an agent keeps its look across reloads, relay
  * restarts and browsers. "Shuffle" writes a per-name override to localStorage,
  * which wins over the hash; a look explicitly saved on the backend wins over both
  * (handled by the caller passing a preferred palette).
@@ -14,7 +14,7 @@ export interface CharacterLook {
   hueShift: number
 }
 
-/** FNV-1a 32-bit — small, stable, well distributed for short strings. */
+/** FNV-1a 32-bit - small, stable, well distributed for short strings. */
 export function hashName(name: string): number {
   let h = 0x811c9dc5
   const s = name.trim().toLowerCase()

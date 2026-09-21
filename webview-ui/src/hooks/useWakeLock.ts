@@ -22,7 +22,7 @@ export function useWakeLock(enabled: boolean): void {
         sentinel = await nav.wakeLock!.request('screen')
         sentinel.addEventListener('release', () => { sentinel = null })
       } catch {
-        // Denied (low battery, not visible, needs a gesture) — a later gesture retries
+        // Denied (low battery, not visible, needs a gesture) - a later gesture retries
         sentinel = null
       }
     }

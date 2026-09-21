@@ -70,7 +70,7 @@ export class PixelAgentsBackend {
 
 	/**
 	 * No-op webview proxy. Functions that take a webview parameter call
-	 * postMessage on it — this stub intercepts those calls to trigger
+	 * postMessage on it - this stub intercepts those calls to trigger
 	 * sync file writes (so the standalone viewer sees the update) and
 	 * emit dev logs. No actual webview receives these messages.
 	 */
@@ -189,7 +189,7 @@ export class PixelAgentsBackend {
 		}
 	}
 
-	/** A terminal was closed — unbind definition agents, remove ad-hoc ones. */
+	/** A terminal was closed - unbind definition agents, remove ad-hoc ones. */
 	onTerminalClosed(closed: TerminalHandle): void {
 		for (const [id, agent] of this.agents) {
 			if (agent.terminalRef && agent.terminalRef === closed) {
@@ -220,7 +220,7 @@ export class PixelAgentsBackend {
 
 	/**
 	 * Reconcile tracked agents with the exact set of live Claude Code sessions
-	 * for this backend's folder. Idempotent — call on every registry poll.
+	 * for this backend's folder. Idempotent - call on every registry poll.
 	 *
 	 *  - A session already tracked: refresh pid/name only.
 	 *  - A new session: bind the unbound 'main' definition (Lead) first, then any
@@ -243,7 +243,7 @@ export class PixelAgentsBackend {
 		// 1. Drop agents whose session has exited
 		for (const [id, agent] of [...this.agents]) {
 			if (!agent.jsonlFile || live.has(agent.jsonlFile)) continue;
-			if (agent.pid === null) continue; // not registry-bound (e.g. placeholder) — leave alone
+			if (agent.pid === null) continue; // not registry-bound (e.g. placeholder) - leave alone
 			this.log(`[Registry] Session ended: pid ${agent.pid} ${path.basename(agent.jsonlFile, '.jsonl').slice(0, 8)} → agent #${id}`);
 			if (this.activeAgentId.current === id) this.activeAgentId.current = null;
 			if (agent.agentDefinitionId) {
@@ -301,7 +301,7 @@ export class PixelAgentsBackend {
 			const stat = fs.statSync(session.jsonlFile);
 			fileOffset = stat.size;
 			lastDataAt = stat.mtimeMs;
-		} catch { /* transcript not written yet — poll below */ }
+		} catch { /* transcript not written yet - poll below */ }
 
 		if (agent) {
 			agent.jsonlFile = session.jsonlFile;
@@ -544,7 +544,7 @@ export class PixelAgentsBackend {
 	private startSyncManager(): void {
 		if (this.syncManager) return;
 		this.syncManager = createSyncManager(this.windowId, (_windows) => {
-			// Remote window changes — standalone viewer reads sync files directly
+			// Remote window changes - standalone viewer reads sync files directly
 		});
 		// Initialize remote relay if configured
 		const { url: relayUrl, token: relayToken } = this.host.relaySettings();

@@ -83,6 +83,7 @@
     "import-tileset": "tsx scripts/0-import-tileset.ts",
     "standalone": "node standalone/server.mjs",
     "relay": "node relay/server.mjs",
+    "sync-playbook": "sh scripts/sync-playbook",
     "daemon": "node dist/pixel-agents-daemon.cjs",
     "build:daemon": "npm run check-types && node esbuild.js --daemon-only",
     "package:daemon": "npm run build:daemon && bash daemon/package.sh",

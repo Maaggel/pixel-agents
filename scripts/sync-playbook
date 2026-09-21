@@ -1,0 +1,41 @@
+#!/usr/bin/env sh
+# Sync PLAYBOOK.md from the canonical repo into this project.
+#
+#   - Shows the diff and asks before applying - never silently swaps the rules out.
+#   - Never edits upstream. Fix rules in the canonical repo, bump its VERSION, then sync (§16).
+#   - Don't run this mid-release. Finish shipping, then sync.
+#
+# Requires: gh (private repo) or curl (public raw URL).
+set -e
+
+REPO="Maaggel/Playbook"
+BRANCH="main"
+FILE="PLAYBOOK.md"
+
+fetch() {
+  # Private repo → use the authenticated gh CLI. (For a public repo, curl the raw URL instead.)
+  gh api "repos/$REPO/contents/$FILE?ref=$BRANCH" \
+    -H "Accept: application/vnd.github.raw" > "$1"
+}
+
+fetch .playbook.new
+
+if cmp -s "$FILE" .playbook.new 2>/dev/null; then
+  echo "Playbook is up to date."
+  rm .playbook.new
+  exit 0
+fi
+
+echo "--- changes from the canonical playbook ---"
+diff -u "$FILE" .playbook.new || true
+
+printf '\nApply this update? [y/N] '
+read -r ans
+if [ "$ans" != "y" ] && [ "$ans" != "Y" ]; then
+  rm .playbook.new
+  echo "Left unchanged."
+  exit 1
+fi
+
+mv .playbook.new "$FILE"
+echo "Synced. Commit it on its own so the change is easy to see."

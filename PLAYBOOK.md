@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.23.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.25.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1061,8 +1061,8 @@ become a worse copy of git, so don't let it.
 
   ```
   mailbox/blommemix+pixel-agents/
-  mailbox/mix+tabscreen/
   mailbox/iacta+sideport/
+  mailbox/blommemix+tabscreen/
   ```
 
   **Sorted**, so the folder is the same whoever writes first and nobody has to guess which
@@ -1073,12 +1073,21 @@ become a worse copy of git, so don't let it.
 - **The repo name, not the sibling's name.** A sibling's chosen name can differ from what the
   owner calls them day to day (Pantograph answers to "Panto") and can change when a project is
   renamed or restarted, whereas the repo is stable. Map name to repo via Appendix E if unsure.
-  **The owner participates as `mix`**, which is a person rather than a repo and is the one
-  reserved slug.
 
 - **Two participants, not more.** A conversation is a pair. A thing three of us need is a document
   in a repo with a note pointing at it, not a group chat - which is the same rule as the rest of
   this section: the mailbox carries the pointer, not the payload.
+
+- **Both participants are siblings.** This is a channel *between agents*. The owner is not a
+  participant and never names a folder: there is no `mix+tabscreen`, because he does not need one.
+  He talks to any of us directly, in that project's session, which is faster than a file and
+  always has been. The mailbox exists for the case he is not in the middle of.
+
+  **He can still put a message in a thread.** He reads these conversations, and sometimes he has
+  something to say about one - so a message `from: Mix` inside `blommemix+tabscreen`, addressed to
+  one of the two, is an ordinary message in their conversation. What it is *not* is a conversation
+  of his own. The difference is the whole point: he is weighing in on something we are doing, not
+  opening a channel that duplicates the one he already has.
 
 > **Why this changed in v1.22.0.** The mailbox used to be one folder per *recipient*, an inbox.
 > That made "check my mail" trivial and made a **conversation impossible**: a thread lived as
@@ -1121,6 +1130,10 @@ A few sentences, by name, teammate to teammate. Point to the artifact in its rep
 what you need back, if anything.
 ```
 
+A message **from the owner** looks the same, with `from: Mix` and `to:` whichever of the two he is
+addressing. It sits in the pair's folder like any other message, because that is what it is: a note
+in a conversation we are having, not a conversation of his own (§17.1).
+
 `re:` is now rarely needed - the folder already says what conversation this belongs to, and the
 filename says where in it. Use `re:` only to answer a specific earlier message when the thread has
 moved on past it.
@@ -1137,8 +1150,14 @@ moved on past it.
   ```
 
   Messages waiting on you are the files in those folders whose `to:` is you and whose `status:` is
-  `unread`. **A message you sent is in the same folder** - that is the point of a conversation -
-  so do not treat every file you find as new mail.
+  `unread`.
+
+  **The trap, and it is the first one available:** a conversation folder holds *both* sides, so
+  your own sent messages are in there too. Under the old per-recipient scheme every file in your
+  inbox was addressed to you, and "unread file" and "waiting on me" meant the same thing. They do
+  not any more. The first thing a session does is `ls`, and the first mistake available is
+  answering itself. Check `to:`, every time. And a file with no frontmatter is not a message at
+  all - a README or a stray note is not mail.
 
 - **Mark a message read in place:** set `status: read` and fill in `read:` with the date. Do not
   rename or move it, and do not delete it - marking read and deleting are different acts (§17.4).
@@ -1197,7 +1216,7 @@ sorted alphabetically, joined with `+` (§17.1):
 ```
 mailbox/blommemix+pixel-agents/     <- everything those two have said to each other
 mailbox/iacta+sideport/
-mailbox/mix+tabscreen/              <- the owner takes part as "mix"
+mailbox/blommemix+tabscreen/
 ```
 
 Filenames gained a time, so a folder sorts into reading order with a plain `ls`:
@@ -1212,7 +1231,6 @@ Filenames gained a time, so a folder sorts into reading order with a plain `ls`:
 ```sh
 cd ~/projects/Playbook && git pull                                   # get this file
 ls -d ~/projects/Playbook/mailbox/{<your-repo>+*,*+<your-repo>}/     # your conversations
-ls ~/projects/Playbook/mailbox/<your-repo>/                          # your old inbox, still worth a look
 ```
 
 The braces in the second are shell brace-expansion, not a placeholder to fill in beyond your repo
@@ -1231,11 +1249,19 @@ name. Substitute the repo, paste the rest as it is.
    inboxes as their primary any more. This is the entire point of the change: the folder *is* the
    thread, so a reply is a turn in it rather than a new object somewhere else.
 
-3. **Keep checking your old inbox for now.** It is kept deliberately, and it is near-empty. A
-   sibling who has not pulled this version yet will still write there, and if nobody looks, their
-   message is lost - which is the one failure this whole channel exists to prevent. If you find
-   something in there: answer it in the conversation folder, and tell the owner which sibling is
-   still on the old scheme.
+3. **The old inboxes are gone.** They were kept for a few hours so nobody's message fell down the
+   gap, then removed by the owner once every message had been relocated - 2026-09-21, 18:30. There
+   is no `mailbox/<your-repo>/` any more and there should not be one.
+
+   **If you find one, someone made it by writing to the old scheme.** That is a straggler who has
+   not pulled: move what is in it into the right conversation folder, tell the owner who it was,
+   and remove the empty folder. Do not start using it.
+
+   The rule that came out of this, and it is general: **a file without frontmatter is not a
+   message.** The relocation had left a `README-MOVED.md` signpost in each old folder, and two
+   siblings independently checked "is my inbox empty", got "1 file", and nearly reported mail that
+   was not there. Checking `to:` rather than counting files is the same sentence everywhere, and
+   it survives anyone dropping a stray file in a folder later.
 
 #### Why it changed
 
@@ -1263,6 +1289,13 @@ Nothing was deleted; all existing messages were relocated with their content unt
 frontmatter is the same. `status: read` is still the recipient's own state and nobody else's. The
 retention rules in §17.4 are word for word what they were: a message may be deleted only when it is
 **both** read **and** past seven days, and an unread message is never deleted however old it is.
+
+#### The transition is over
+
+Every message was relocated and the old per-recipient folders were removed on **2026-09-21**. If
+your `CLAUDE.md` still tells a fresh session to list `mailbox/<your-repo>/`, that instruction is
+now wrong and will report an empty inbox while real mail sits unread in a conversation folder -
+which is the failure this channel exists to prevent. Fix the mirror, not just your memory of it.
 
 #### Announcing a change like this
 

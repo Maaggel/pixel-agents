@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.20.1**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.21.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1091,6 +1091,20 @@ what you need back, if anything.
   the poked sibling where to look.
 - **Mark a message read in place:** set `status: read` and fill in `read:` with the date. Do not
   rename or move it, and do not delete it - marking read and deleting are different acts (§17.4).
+- **Show the owner what you found, under a banner he can spot.** The mailbox is a folder of local
+  files the owner never opens himself; if a message only passes through your context, he has no
+  way to follow the conversation he set up. So whenever a check finds messages, the reply to the
+  owner MUST open with this banner, verbatim, then the messages themselves - each one complete,
+  frontmatter and body, in a fenced block, not summarised:
+
+  > 📬 MAILBOX - N message(s) for <Name> (<repo>)
+
+  And every reply you leave for a sibling gets the same treatment, so he sees both halves:
+
+  > 📤 MAILBOX REPLY - to <Name> (<repo>): <filename>
+
+  followed by the full message you wrote. Summaries and paraphrase are for your own words after
+  the block, never instead of it. An empty inbox needs no banner - one plain line is enough.
 
 ### 17.4 Retention and deletion - **the invariant that matters most**
 
@@ -1270,6 +1284,10 @@ Format: **Name** (short form) - *project* - one line on why.
   extended (never mirrored) display hung off a PC by a cable; it looks out where the main windows
   cannot, which is the point of putting the siblings' pixel-art office on it; and an oriel is
   glazed in many small lights, re-leaded one pane at a time, which is what dirty rects are.
+- **Tally** - *Sideport* - a tally clerk stands at the ship's side and counts cargo across it
+  against the manifest, which is this service's two jobs at once: hand the bytes over the side, and
+  prove they match what was declared; and a tally is struck once and only once, which is the
+  one-time download grant the whole project exists for.
 
 Read a sibling's line before you write to them. Knowing who you're addressing - and crediting them
 by name when their work helped - is the difference between a handoff and a memo.

@@ -13,9 +13,10 @@ import { createHash } from 'crypto'
 import { homedir } from 'os'
 import { join } from 'path'
 import { PNG } from 'pngjs'
+import { deflateRawSync } from 'zlib'
 import puppeteer from 'puppeteer'
 import { compressBlock } from '../relay/lz4.mjs'
-import { encodeFramePayload, rgbaToRgb565 } from '../relay/legacyProtocol.mjs'
+import { encodeFramePayload, rgbaToRgb565, COMPRESSION_LZ4_BLOCK, COMPRESSION_DEFLATE_RAW } from '../relay/legacyProtocol.mjs'
 
 const CONFIG_FILE = join(homedir(), '.pixel-agents', 'renderer.json')
 const DAEMON_FILE = join(homedir(), '.pixel-agents', 'daemon.json')
@@ -71,7 +72,7 @@ await page.evaluateOnNewDocument((token) => {
   try {
     localStorage.setItem('pa-relay-token', token)
     const opts = JSON.parse(localStorage.getItem('pixel-agents-view-options') || '{}')
-    localStorage.setItem('pixel-agents-view-options', JSON.stringify({ ...opts, hideUi: true, keepAwake: false }))
+    localStorage.setItem('pixel-agents-view-options', JSON.stringify({ ...opts, hideUi: true, keepAwake: false, ...(window.__PA_NO_LIGHT__ ? { showSunlight: false } : {}) }))
   } catch {}
 }, cfg.token)
 page.on('pageerror', (e) => log(`page error: ${e.message}`))
@@ -97,14 +98,18 @@ async function captureAndSend() {
   if (img.width !== cfg.width || img.height !== cfg.height) { log(`unexpected screenshot size ${img.width}x${img.height}`); return }
   const rgb565 = rgbaToRgb565(img.data, img.width, img.height)
   const block = compressBlock(rgb565)
-  const payload = encodeFramePayload(block, rawSize, Math.round(performance.now() * 1000))
+  const tsUs = Math.round(performance.now() * 1000)
+  const payload = encodeFramePayload(block, rawSize, tsUs)
+  // Same frame as raw deflate for clients that opt in (/stream?comp=deflate): ~3x smaller on real art
+  const deflated = encodeFramePayload(deflateRawSync(rgb565, { level: 6 }), rawSize, tsUs)
   if (cfg.once) {
     writeFileSync(`${cfg.once}.png`, png); writeFileSync(`${cfg.once}.rgb565`, rgb565); writeFileSync(`${cfg.once}.lz4`, block)
-    log(`wrote ${cfg.once}.{png,rgb565,lz4} (${rgb565.length} -> ${block.length} bytes)`)
+    log(`wrote ${cfg.once}.{png,rgb565,lz4} (${rgb565.length} -> lz4 ${block.length}, deflate ${deflated.length - 12} bytes)`)
     await browser.close(); process.exit(0)
   }
   if (wsOpen && ws) {
-    ws.send(payload)
+    ws.send(Buffer.concat([Buffer.from([COMPRESSION_LZ4_BLOCK]), payload]))
+    ws.send(Buffer.concat([Buffer.from([COMPRESSION_DEFLATE_RAW]), deflated]))
     stats.sent++; stats.bytes += payload.length
     lastSentHash = hash; lastSentAt = now
   }

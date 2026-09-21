@@ -7,6 +7,8 @@ export const MSG_CONFIG = 0x02
 export const MSG_FRAME_FULL = 0x10
 export const PIXEL_RGB565 = 0x01
 export const COMPRESSION_LZ4_BLOCK = 0x01
+/** Extension beyond the v1 handoff: raw deflate (zlib windowBits -15), ~3x smaller on real pixel art; opt-in via /stream?comp=deflate */
+export const COMPRESSION_DEFLATE_RAW = 0x02
 export const FRAME_FULL_HEADER_SIZE = 12
 
 function framed(type, payload) {
@@ -18,13 +20,13 @@ function framed(type, payload) {
 }
 
 /** CONFIG message: what the stream will carry. */
-export function encodeConfig({ width, height, maxFps }) {
+export function encodeConfig({ width, height, maxFps, compression = COMPRESSION_LZ4_BLOCK }) {
   const p = Buffer.allocUnsafe(7)
   p.writeUInt16LE(width, 0)
   p.writeUInt16LE(height, 2)
   p[4] = PIXEL_RGB565
   p[5] = maxFps
-  p[6] = COMPRESSION_LZ4_BLOCK
+  p[6] = compression
   return framed(MSG_CONFIG, p)
 }
 

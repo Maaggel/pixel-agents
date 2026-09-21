@@ -14,7 +14,11 @@ Open follow-ups:
 
 ---
 
-## NEXT: Legacy viewer for old Android (from Oriel / TabScreen)
+## IN PROGRESS: Legacy viewer for old Android (from Oriel / TabScreen)
+
+**Server side done 2026-09-21 (v1.7.0):** `/stream` live, renderer running here, verified against
+TabScreen's fixtures and FakeTablet. Waiting on: Plumbline adding an ECDSA CBC suite to the vhost
+(tablet has no AES-GCM), then Oriel's client app. Optional client upgrade: `comp=deflate`.
 
 Handoff in `docs/HANDOFF-from-TabScreen.md` (2026-09-21): the 2012 Galaxy Tab 2 cannot run the web
 UI, so it gets a tiny native app that decodes RGB565 + LZ4-block frames (client code proven on the

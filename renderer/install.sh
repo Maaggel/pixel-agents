@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Install the frame renderer as a user systemd service on the box that runs it (needs Node 22+,
+# and `npm install` in renderer/ once - puppeteer fetches its own Chrome). Same account as the
+# daemon: it reads the relay token from ~/.pixel-agents/daemon.json unless renderer.json sets one.
+#   renderer/install.sh            # install/upgrade + (re)start
+#   renderer/install.sh --uninstall
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNIT=pixel-agents-renderer
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+if [ "${1:-}" = "--uninstall" ]; then
+  systemctl --user disable --now $UNIT 2>/dev/null || true
+  rm -f "$HOME/.config/systemd/user/$UNIT.service"; systemctl --user daemon-reload
+  echo "removed $UNIT"; exit 0
+fi
+[ -d "$DIR/node_modules/puppeteer" ] || { echo "run 'npm install' in $DIR first (downloads Chrome for puppeteer)"; exit 1; }
+NODE_BIN="$(readlink -f "$(command -v node)")"
+mkdir -p "$HOME/.config/systemd/user"
+cat > "$HOME/.config/systemd/user/$UNIT.service" <<UNIT
+[Unit]
+Description=Pixel Agents frame renderer (legacy tablet stream)
+After=network-online.target pixel-agents-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$DIR
+ExecStart=$NODE_BIN $DIR/frame-publisher.mjs
+Restart=always
+RestartSec=10
+# Config: ~/.pixel-agents/renderer.json (viewerUrl, relayWs, token, width, height, maxFps, keyframeSec)
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable $UNIT >/dev/null
+systemctl --user restart $UNIT
+sleep 3
+systemctl --user is-active --quiet $UNIT && echo "$UNIT running (journalctl --user -u $UNIT -f)" || { echo "$UNIT failed:"; journalctl --user -u $UNIT -n 20 --no-pager; exit 1; }

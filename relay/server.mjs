@@ -15,7 +15,7 @@ import { join, extname, resolve } from 'path'
 import { PNG } from 'pngjs'
 import { WebSocketServer } from 'ws'
 import { URL } from 'url'
-import { encodeConfig, frameFull } from './legacyProtocol.mjs'
+import { encodeConfig, frameFull, COMPRESSION_LZ4_BLOCK, COMPRESSION_DEFLATE_RAW } from './legacyProtocol.mjs'
 
 // ── Config ──────────────────────────────────────────────────
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '7601', 10)
@@ -350,18 +350,22 @@ console.log(`  Furniture: ${cachedFurniture ? cachedFurniture.catalog.length + '
 // and receive CONFIG followed by every frame. Only the latest frame is kept.
 const STREAM_DEFAULT = { width: 1024, height: 600, maxFps: 5 }
 let streamConfig = { ...STREAM_DEFAULT }
-/** @type {Buffer|null} latest FRAME_FULL payload (timestamp + rawSize + lz4 block) */
-let lastFramePayload = null
+/** Latest FRAME_FULL payload per compression tag (0x01 lz4 block, 0x02 raw deflate) */
+const lastFramePayload = new Map()
 let lastFrameAt = 0
 let frameCount = 0
-/** @type {Set<import('http').ServerResponse>} */
+/** @type {Set<{res: import('http').ServerResponse, comp: number, minIntervalMs: number, lastSentAt: number}>} */
 const streamClients = new Set()
 
-function broadcastFrame(payload) {
+function broadcastFrame(comp, payload) {
   const msg = frameFull(payload)
-  for (const res of streamClients) {
-    if (res.writableEnded || res.destroyed) { streamClients.delete(res); continue }
-    res.write(msg)
+  const now = Date.now()
+  for (const c of streamClients) {
+    if (c.res.writableEnded || c.res.destroyed) { streamClients.delete(c); continue }
+    if (c.comp !== comp) continue
+    if (now - c.lastSentAt < c.minIntervalMs) continue // per-client fps cap (roaming tablets)
+    c.lastSentAt = now
+    c.res.write(msg)
   }
 }
 
@@ -1101,8 +1105,12 @@ const server = createServer((req, res) => {
   // Deploy helpers: what build is live, and tell every viewer to reload.
   // Flow after uploading a new dist/: curl -X POST -H 'Authorization: Bearer $TOKEN' .../api/reload
   // Legacy tablet stream: chunked body = CONFIG, then FRAME_FULL forever. Auth: Bearer or ?token=.
+  // Options: comp=lz4 (default, protocol v1) | deflate (raw, ~3x smaller); fps=1..maxFps (cap for roaming).
   if (pathname === '/stream' && req.method === 'GET') {
     if (!checkApiAuth(req, res)) return
+    const comp = url.searchParams.get('comp') === 'deflate' ? COMPRESSION_DEFLATE_RAW : COMPRESSION_LZ4_BLOCK
+    const fpsReq = parseInt(url.searchParams.get('fps') || '', 10)
+    const fps = Number.isFinite(fpsReq) && fpsReq > 0 ? Math.min(fpsReq, streamConfig.maxFps) : streamConfig.maxFps
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       'Cache-Control': 'no-cache, no-store',
@@ -1110,11 +1118,13 @@ const server = createServer((req, res) => {
       'Connection': 'keep-alive',
     })
     res.flushHeaders?.()
-    res.write(encodeConfig(streamConfig))
-    if (lastFramePayload) res.write(frameFull(lastFramePayload))
-    streamClients.add(res)
-    console.log(`[Relay] Stream client connected (total: ${streamClients.size})`)
-    const drop = () => { if (streamClients.delete(res)) console.log(`[Relay] Stream client disconnected (total: ${streamClients.size})`) }
+    res.write(encodeConfig({ ...streamConfig, maxFps: fps, compression: comp }))
+    const latest = lastFramePayload.get(comp)
+    if (latest) res.write(frameFull(latest))
+    const client = { res, comp, minIntervalMs: Math.floor(1000 / fps) - 20, lastSentAt: latest ? Date.now() : 0 }
+    streamClients.add(client)
+    console.log(`[Relay] Stream client connected (${comp === COMPRESSION_DEFLATE_RAW ? 'deflate' : 'lz4'} @${fps}fps, total: ${streamClients.size})`)
+    const drop = () => { if (streamClients.delete(client)) console.log(`[Relay] Stream client disconnected (total: ${streamClients.size})`) }
     req.on('close', drop)
     res.on('close', drop)
     res.on('error', drop)
@@ -1122,7 +1132,8 @@ const server = createServer((req, res) => {
   }
   if (pathname === '/api/stream' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!lastFramePayload, lastFrameAgeMs: lastFramePayload ? Date.now() - lastFrameAt : null, frameBytes: lastFramePayload ? lastFramePayload.length : 0, frames: frameCount, clients: streamClients.size }))
+    const lz = lastFramePayload.get(COMPRESSION_LZ4_BLOCK), df = lastFramePayload.get(COMPRESSION_DEFLATE_RAW)
+    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!lz, lastFrameAgeMs: lz ? Date.now() - lastFrameAt : null, frameBytesLz4: lz ? lz.length : 0, frameBytesDeflate: df ? df.length : 0, frames: frameCount, clients: streamClients.size }))
     return
   }
 
@@ -1302,12 +1313,16 @@ wss.on('connection', (ws, req) => {
     console.log(`[Relay] Publisher connected (total: ${publishers.size})`)
 
     ws.on('message', (raw, isBinary) => {
-      // Renderer frames arrive as binary WebSocket messages: the FRAME_FULL payload, unframed
+      // Renderer frames arrive as binary WebSocket messages: [compression tag u8][FRAME_FULL payload]
       if (isBinary) {
-        lastFramePayload = Buffer.from(raw)
+        const buf = Buffer.from(raw)
+        const comp = buf[0]
+        if (comp !== COMPRESSION_LZ4_BLOCK && comp !== COMPRESSION_DEFLATE_RAW) return
+        const payload = buf.subarray(1)
+        lastFramePayload.set(comp, payload)
         lastFrameAt = Date.now()
-        frameCount++
-        broadcastFrame(lastFramePayload)
+        if (comp === COMPRESSION_LZ4_BLOCK) frameCount++
+        broadcastFrame(comp, payload)
         return
       }
       try {

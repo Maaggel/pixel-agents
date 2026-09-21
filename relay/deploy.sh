@@ -102,7 +102,7 @@ echo "==> index.html live"
 # 4. Relay code (inactive until the service restarts)
 RELAY_CHANGED=0
 if [ "$UI_ONLY" = 0 ]; then
-  put relay/server.mjs relay/server.mjs
+  for f in relay/*.mjs; do put "$f" "$f"; done   # server.mjs and every module it imports
   put package.json package.json
   put relay/package.json relay/package.json
   RELAY_CHANGED=1

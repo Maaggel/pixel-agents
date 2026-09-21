@@ -492,16 +492,18 @@ function App() {
         />
       )}
 
-      {/* Vignette overlay */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'var(--pixel-vignette)',
-          pointerEvents: 'none',
-          zIndex: 40,
-        }}
-      />
+      {/* Vignette overlay - not in kiosk: smooth gradients are noise to the tablet stream's LZ4 */}
+      {!kiosk && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'var(--pixel-vignette)',
+            pointerEvents: 'none',
+            zIndex: 40,
+          }}
+        />
+      )}
 
       {!hideUi && viewOptions.showBottomBar && (
         <BottomToolbar

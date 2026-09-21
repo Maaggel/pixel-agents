@@ -9,3 +9,4 @@ node_modules
 .env
 /build
 .playbook.new
+renderer/node_modules

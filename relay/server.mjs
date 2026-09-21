@@ -15,6 +15,7 @@ import { join, extname, resolve } from 'path'
 import { PNG } from 'pngjs'
 import { WebSocketServer } from 'ws'
 import { URL } from 'url'
+import { encodeConfig, frameFull } from './legacyProtocol.mjs'
 
 // ── Config ──────────────────────────────────────────────────
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '7601', 10)
@@ -344,6 +345,26 @@ console.log(`  Floors: ${cachedFloors ? cachedFloors.length + ' patterns' : 'not
 console.log(`  Walls: ${cachedWalls ? cachedWalls.length + ' pieces' : 'not found'}`)
 console.log(`  Furniture: ${cachedFurniture ? cachedFurniture.catalog.length + ' items' : 'not found'}`)
 
+// ── Legacy frame stream (2012 tablet; docs/HANDOFF-from-TabScreen.md) ───────
+// A renderer connects as a publisher and sends binary FRAME_FULL payloads; tablets GET /stream
+// and receive CONFIG followed by every frame. Only the latest frame is kept.
+const STREAM_DEFAULT = { width: 1024, height: 600, maxFps: 5 }
+let streamConfig = { ...STREAM_DEFAULT }
+/** @type {Buffer|null} latest FRAME_FULL payload (timestamp + rawSize + lz4 block) */
+let lastFramePayload = null
+let lastFrameAt = 0
+let frameCount = 0
+/** @type {Set<import('http').ServerResponse>} */
+const streamClients = new Set()
+
+function broadcastFrame(payload) {
+  const msg = frameFull(payload)
+  for (const res of streamClients) {
+    if (res.writableEnded || res.destroyed) { streamClients.delete(res); continue }
+    res.write(msg)
+  }
+}
+
 // ── Relay state ─────────────────────────────────────────────
 /** @type {Map<string, object>} windowId → SyncWindowState */
 const publisherStates = new Map()
@@ -434,7 +455,8 @@ try {
   if (hashMatch) {
     VIEWER_TOKEN = decodeURIComponent(hashMatch[1]);
     localStorage.setItem('pa-relay-token', VIEWER_TOKEN);
-    history.replaceState(null, '', location.pathname + location.search);
+    var rest = location.hash.slice(1).split('&').filter(function (p) { return p && p.indexOf('token=') !== 0; }).join('&');
+    history.replaceState(null, '', location.pathname + location.search + (rest ? '#' + rest : ''));
   }
 } catch (e) {}
 
@@ -1078,6 +1100,32 @@ const server = createServer((req, res) => {
   // ── Backup API endpoints ──────────────────────────────────
   // Deploy helpers: what build is live, and tell every viewer to reload.
   // Flow after uploading a new dist/: curl -X POST -H 'Authorization: Bearer $TOKEN' .../api/reload
+  // Legacy tablet stream: chunked body = CONFIG, then FRAME_FULL forever. Auth: Bearer or ?token=.
+  if (pathname === '/stream' && req.method === 'GET') {
+    if (!checkApiAuth(req, res)) return
+    res.writeHead(200, {
+      'Content-Type': 'application/octet-stream',
+      'Cache-Control': 'no-cache, no-store',
+      'X-Accel-Buffering': 'no',
+      'Connection': 'keep-alive',
+    })
+    res.flushHeaders?.()
+    res.write(encodeConfig(streamConfig))
+    if (lastFramePayload) res.write(frameFull(lastFramePayload))
+    streamClients.add(res)
+    console.log(`[Relay] Stream client connected (total: ${streamClients.size})`)
+    const drop = () => { if (streamClients.delete(res)) console.log(`[Relay] Stream client disconnected (total: ${streamClients.size})`) }
+    req.on('close', drop)
+    res.on('close', drop)
+    res.on('error', drop)
+    return
+  }
+  if (pathname === '/api/stream' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!lastFramePayload, lastFrameAgeMs: lastFramePayload ? Date.now() - lastFrameAt : null, frameBytes: lastFramePayload ? lastFramePayload.length : 0, frames: frameCount, clients: streamClients.size }))
+    return
+  }
+
   if (pathname === '/api/build' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
     res.end(JSON.stringify({ version: VERSION, buildId: currentBuildId(), viewers: viewers.size, publishers: publishers.size }))
@@ -1253,9 +1301,23 @@ wss.on('connection', (ws, req) => {
     publishers.add(ws)
     console.log(`[Relay] Publisher connected (total: ${publishers.size})`)
 
-    ws.on('message', (raw) => {
+    ws.on('message', (raw, isBinary) => {
+      // Renderer frames arrive as binary WebSocket messages: the FRAME_FULL payload, unframed
+      if (isBinary) {
+        lastFramePayload = Buffer.from(raw)
+        lastFrameAt = Date.now()
+        frameCount++
+        broadcastFrame(lastFramePayload)
+        return
+      }
       try {
         const msg = JSON.parse(raw.toString())
+
+        if (msg.type === 'frameConfig' && msg.width && msg.height) {
+          streamConfig = { width: msg.width | 0, height: msg.height | 0, maxFps: (msg.maxFps | 0) || STREAM_DEFAULT.maxFps }
+          console.log(`[Relay] Renderer config ${streamConfig.width}x${streamConfig.height} @${streamConfig.maxFps}fps`)
+          return
+        }
 
         if (msg.type === 'sync' && msg.state) {
           const windowId = msg.state.windowId || 'unknown'

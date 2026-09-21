@@ -4,7 +4,7 @@ import type { EditorState } from '../editor/editorState.js'
 import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, RotateButtonBounds } from '../engine/renderer.js'
 import { startGameLoop } from '../engine/gameLoop.js'
 import { renderFrame } from '../engine/renderer.js'
-import { TILE_SIZE, EditTool } from '../types.js'
+import { TILE_SIZE, EditTool, TileType } from '../types.js'
 import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION, TOUCH_DOUBLE_TAP_MS, TOUCH_DOUBLE_TAP_MAX_DIST_PX } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
@@ -31,9 +31,11 @@ interface OfficeCanvasProps {
   showSunlight?: boolean
   debugLampLights?: boolean
   autoFollowOnFocus?: boolean
+  /** Kiosk/headless: keep the camera centred on the office's non-void tiles (overrides follow) */
+  fitCamera?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true, fitCamera = false }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -199,8 +201,26 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           }
         }
 
-        // Camera follow: smoothly center on followed agent
-        if (officeState.cameraFollowId !== null) {
+        // Kiosk: centre the office content (non-void tiles, plus the wall tops above the first row)
+        if (fitCamera) {
+          const layout = officeState.getLayout()
+          const tm = officeState.tileMap
+          let minC = layout.cols, maxC = -1, minR = layout.rows, maxR = -1
+          for (let r = 0; r < tm.length; r++) {
+            const row = tm[r]
+            for (let c = 0; c < row.length; c++) {
+              if (row[c] === TileType.VOID || !row[c]) continue
+              if (c < minC) minC = c; if (c > maxC) maxC = c; if (r < minR) minR = r; if (r > maxR) maxR = r
+            }
+          }
+          if (maxC >= 0) {
+            const mapW = layout.cols * TILE_SIZE * zoom
+            const mapH = layout.rows * TILE_SIZE * zoom
+            const cx = ((minC + maxC + 1) / 2) * TILE_SIZE
+            const cy = ((minR + maxR + 1) / 2) * TILE_SIZE - TILE_SIZE / 2 // wall tops extend one tile up
+            panRef.current = { x: mapW / 2 - cx * zoom, y: mapH / 2 - cy * zoom }
+          }
+        } else if (officeState.cameraFollowId !== null) {
           const followCh = officeState.characters.get(officeState.cameraFollowId)
           if (followCh) {
             const layout = officeState.getLayout()

@@ -30,6 +30,9 @@ import { PersonalityPanel } from './components/PersonalityPanel.js'
 const officeStateRef = { current: null as OfficeState | null }
 const editorState = new EditorState()
 
+/** `#kiosk` in the URL: display mode with no UI at all and the camera kept centred on the office */
+const KIOSK_MODE = typeof window !== 'undefined' && /(^#|[#&])kiosk(&|$)/.test(window.location.hash)
+
 function getOfficeState(): OfficeState {
   if (!officeStateRef.current) {
     officeStateRef.current = new OfficeState()
@@ -415,8 +418,10 @@ function App() {
     )
   }
 
-  // Display mode: only the canvas, in-world labels, and the "Show UI" button remain
-  const hideUi = viewOptions.hideUi
+  // Display mode: only the canvas, in-world labels, and the "Show UI" button remain.
+  // #kiosk (headless renderer, wall tablets): forced display mode, no restore button, camera fitted.
+  const kiosk = KIOSK_MODE
+  const hideUi = viewOptions.hideUi || kiosk
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
@@ -447,6 +452,7 @@ function App() {
         showSunlight={viewOptions.showSunlight}
         debugLampLights={viewOptions.debugLampLights}
         autoFollowOnFocus={viewOptions.autoFollowOnFocus}
+        fitCamera={kiosk}
       />
 
       {!hideUi && viewOptions.showZoom && (
@@ -566,7 +572,7 @@ function App() {
         )
       })()}
 
-      <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />
+      {!kiosk && <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />}
 
       {/* Personality panel open button */}
       {!hideUi && Object.keys(personalities).length > 0 && personalityPanelKey === null && (

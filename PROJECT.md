@@ -14,6 +14,35 @@ Open follow-ups:
 
 ---
 
+## NEXT: Legacy viewer for old Android (from Oriel / TabScreen)
+
+Handoff in `docs/HANDOFF-from-TabScreen.md` (2026-09-21): the 2012 Galaxy Tab 2 cannot run the web
+UI, so it gets a tiny native app that decodes RGB565 + LZ4-block frames (client code proven on the
+device, to be lifted from `github.com/Maaggel/TabScreen`). Decisions, replied to Oriel by mailbox:
+
+- Endpoint: chunked `GET https://apps.blommemix.dk/pixelagents/stream?w=1024&h=600`, body = `CONFIG`
+  then `FRAME_FULL` (protocol v1 from the handoff). Chunked HTTP because Apache already proxies
+  `/pixelagents/*`; only `/ws` is a WebSocket route.
+- Auth: the relay viewer key, `Authorization: Bearer <token>` (query `token=` fallback).
+- Cert: pin ISRG Root X2 (the leaf rotates every 90 days).
+- Renderer: headless Chromium on the thinkstation (not the Pi) loads the page at 1024x600,
+  screenshots on change (max 5 fps), encodes in Node, publishes frames over the existing publisher
+  WebSocket; the relay fans them out on `/stream`. Validate against the TabScreen fixtures first.
+- Open risk: the vhost is GCM-only and ECDSA; a 2012 TLS stack may not negotiate. Oriel tests a
+  plain `HttpsURLConnection` from the device first; fallback is a CBC suite via Plumbline or the
+  relay terminating TLS on its own port.
+
+## BACKLOG: Mailbox-driven scenes (idea from Oriel / TabScreen)
+
+When a sibling leaves another a note in `~/projects/Playbook/mailbox/`, the two avatars act it out:
+sender walks to the recipient's desk, subject line as the bubble caption. Read-only against the
+mailbox (Playbook section 17.4 is never touched), each message dramatised at most once (remembered
+in viewer/daemon state, not in the file), queued so scenes play one at a time, and silent when
+there is no mailbox. Natural reader is the daemon (it already maps sessions to avatars), publishing
+"mail events" to the relay like agent state.
+
+---
+
 ## FUTURE: Standalone-only architecture
 
 **Current situation**: The extension ships both a VS Code webview panel *and* a `standalone/server.mjs` that serves the same React UI in a browser. This creates duplication:

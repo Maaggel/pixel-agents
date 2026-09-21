@@ -14,27 +14,19 @@ Open follow-ups:
 
 ---
 
-## IN PROGRESS: Legacy viewer for old Android (from Oriel / TabScreen)
+## DONE: Legacy viewer for old Android (from Oriel / TabScreen)
 
-**Server side done 2026-09-21 (v1.7.0):** `/stream` live, renderer running here, verified against
-TabScreen's fixtures and FakeTablet. Waiting on: Plumbline adding an ECDSA CBC suite to the vhost
-(tablet has no AES-GCM), then Oriel's client app. Optional client upgrade: `comp=deflate`.
+Shipped 2026-09-21 (v1.7.2). The 2012 Galaxy Tab 2 shows the office at 15-20 fps over the internet:
+`renderer/` (headless Chrome on the thinkstation, in-page canvas capture, ~20 fps) -> relay
+`GET /stream` (LZ4 or deflate, per-client fps) -> `android/` app (Oriel's client stack + pinned-root
+TLS 1.2 HTTPS client). On-device: decode 11 ms, blit 14 ms per deflate frame. Plumbline's
+per-domain "allow legacy clients" panel setting provides the ECDSA CBC suite the tablet needs.
+Handoff and protocol: `docs/HANDOFF-from-TabScreen.md`.
 
-Handoff in `docs/HANDOFF-from-TabScreen.md` (2026-09-21): the 2012 Galaxy Tab 2 cannot run the web
-UI, so it gets a tiny native app that decodes RGB565 + LZ4-block frames (client code proven on the
-device, to be lifted from `github.com/Maaggel/TabScreen`). Decisions, replied to Oriel by mailbox:
-
-- Endpoint: chunked `GET https://apps.blommemix.dk/pixelagents/stream?w=1024&h=600`, body = `CONFIG`
-  then `FRAME_FULL` (protocol v1 from the handoff). Chunked HTTP because Apache already proxies
-  `/pixelagents/*`; only `/ws` is a WebSocket route.
-- Auth: the relay viewer key, `Authorization: Bearer <token>` (query `token=` fallback).
-- Cert: pin ISRG Root X2 (the leaf rotates every 90 days).
-- Renderer: headless Chromium on the thinkstation (not the Pi) loads the page at 1024x600,
-  screenshots on change (max 5 fps), encodes in Node, publishes frames over the existing publisher
-  WebSocket; the relay fans them out on `/stream`. Validate against the TabScreen fixtures first.
-- Open risk: the vhost is GCM-only and ECDSA; a 2012 TLS stack may not negotiate. Oriel tests a
-  plain `HttpsURLConnection` from the device first; fallback is a CBC suite via Plumbline or the
-  relay terminating TLS on its own port.
+Not done, by choice: the Android 4.1 nav bar cannot be hidden (no immersive mode before 4.4); the
+frame is letterboxed into 1024x552. Option if wanted later: render at 1024x552 to avoid scaling.
+Possible follow-ups: move the in-page LZ4 pass to a Node worker for the last stretch to 30 fps;
+FRAME_DIRTY for bandwidth on mobile data.
 
 ## BACKLOG: Mailbox-driven scenes (idea from Oriel / TabScreen)
 

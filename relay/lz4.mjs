@@ -16,10 +16,10 @@ function hash32(v) {
   return Math.imul(v, 2654435761) >>> (32 - HASH_BITS)
 }
 
-/** Compress `src` (Buffer/Uint8Array) into a new Buffer holding one LZ4 block. */
+/** Compress `src` (Uint8Array/Buffer) into a Uint8Array holding one LZ4 block (a Buffer when Buffer exists). */
 export function compressBlock(src) {
   const n = src.length
-  const out = Buffer.allocUnsafe(n + Math.ceil(n / 255) + 16) // worst case: incompressible
+  const out = typeof Buffer !== 'undefined' ? Buffer.allocUnsafe(n + Math.ceil(n / 255) + 16) : new Uint8Array(n + Math.ceil(n / 255) + 16) // worst case: incompressible
   let op = 0
   let anchor = 0
   const emit = (litEnd, matchLen, offset) => {
@@ -27,7 +27,7 @@ export function compressBlock(src) {
     const tokenPos = op++
     let token = (litLen >= 15 ? 15 : litLen) << 4
     if (litLen >= 15) { let r = litLen - 15; while (r >= 255) { out[op++] = 255; r -= 255 } out[op++] = r }
-    src.copy ? src.copy(out, op, anchor, litEnd) : out.set(src.subarray(anchor, litEnd), op)
+    out.set(src.subarray(anchor, litEnd), op)
     op += litLen
     if (matchLen > 0) {
       out[op++] = offset & 0xFF; out[op++] = offset >>> 8
@@ -69,9 +69,9 @@ export function compressBlock(src) {
   return out.subarray(0, op)
 }
 
-/** Decompress one LZ4 block into a Buffer of exactly `rawSize` bytes. Throws on a malformed block. */
+/** Decompress one LZ4 block into exactly `rawSize` bytes. Throws on a malformed block. */
 export function decompressBlock(src, rawSize) {
-  const dst = Buffer.allocUnsafe(rawSize)
+  const dst = typeof Buffer !== 'undefined' ? Buffer.allocUnsafe(rawSize) : new Uint8Array(rawSize)
   let s = 0, d = 0
   const sEnd = src.length
   for (;;) {

@@ -12,10 +12,12 @@ import { readFileSync, existsSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { homedir } from 'os'
 import { join } from 'path'
-import { PNG } from 'pngjs'
-import { deflateRawSync } from 'zlib'
+import { deflateRaw } from 'zlib'
+import { promisify } from 'util'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 import puppeteer from 'puppeteer'
-import { compressBlock } from '../relay/lz4.mjs'
+import { decompressBlock } from '../relay/lz4.mjs'
 import { encodeFramePayload, rgbaToRgb565, COMPRESSION_LZ4_BLOCK, COMPRESSION_DEFLATE_RAW } from '../relay/legacyProtocol.mjs'
 
 const CONFIG_FILE = join(homedir(), '.pixel-agents', 'renderer.json')
@@ -29,12 +31,14 @@ const cfg = {
   token: env.PIXEL_AGENTS_RENDERER_TOKEN || file.token || readJson(DAEMON_FILE).relayToken || '',
   width: Number(env.PIXEL_AGENTS_RENDERER_WIDTH || file.width || 1024),
   height: Number(env.PIXEL_AGENTS_RENDERER_HEIGHT || file.height || 600),
-  maxFps: Number(env.PIXEL_AGENTS_RENDERER_FPS || file.maxFps || 5),
+  maxFps: Math.min(30, Number(env.PIXEL_AGENTS_RENDERER_FPS || file.maxFps || 20)),
+  /** zlib level for the deflate encoding (3 = fast, 6 = small); runs on the thread pool */
+  deflateLevel: Number(env.PIXEL_AGENTS_RENDERER_DEFLATE_LEVEL || file.deflateLevel || 5),
   /** Resend an unchanged frame at least this often so a relay restart never leaves tablets blank */
   keyframeSec: Number(env.PIXEL_AGENTS_RENDERER_KEYFRAME_SEC || file.keyframeSec || 15),
   /** Reload the viewer if the picture has not changed for this long (the office is never still this long) */
   stallSec: Number(env.PIXEL_AGENTS_RENDERER_STALL_SEC || file.stallSec || 180),
-  /** Debug: write one frame as PNG + .rgb565 + .lz4 to this path prefix and exit */
+  /** Debug: write one frame as .rgb565 + .lz4 to this path prefix and exit */
   once: env.PIXEL_AGENTS_RENDERER_ONCE || null,
 }
 if (!cfg.token) { console.error('[Renderer] No relay token (renderer.json token / daemon.json relayToken / PIXEL_AGENTS_RENDERER_TOKEN)'); process.exit(1) }
@@ -61,6 +65,27 @@ function connectRelay() {
   ws.onmessage = () => {} // layout/idle messages are for the daemon, not us
 }
 function scheduleReconnect() { setTimeout(connectRelay, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000) }
+
+// ── In-page capture ──────────────────────────────────────────
+// Screenshots cost ~180 ms (PNG encode + decode). The office is one <canvas>, so the page reads its
+// own pixels (~4 ms), converts to RGB565 and LZ4-compresses them (~25 ms), and hands Node the block
+// as base64. Node reuses that block for LZ4 clients and deflates the raw pixels for the others.
+const here = dirname(fileURLToPath(import.meta.url))
+const lz4Source = readFileSync(join(here, '..', 'relay', 'lz4.mjs'), 'utf8').replace(/^export /gm, '')
+const captureScript = lz4Source + `
+window.__paCapture = function () {
+  var best = null
+  document.querySelectorAll('canvas').forEach(function (c) { if (!best || c.width * c.height > best.width * best.height) best = c })
+  if (!best) return null
+  var ctx = best.getContext('2d'); if (!ctx) return null
+  var img = ctx.getImageData(0, 0, best.width, best.height)
+  var d = img.data, n = best.width * best.height, raw = new Uint8Array(n * 2)
+  for (var i = 0, o = 0; o < raw.length; i += 4, o += 2) { var v = ((d[i] >> 3) << 11) | ((d[i + 1] >> 2) << 5) | (d[i + 2] >> 3); raw[o] = v & 255; raw[o + 1] = v >> 8 }
+  var block = compressBlock(raw)
+  var s = ''; for (var k = 0; k < block.length; k += 0x8000) s += String.fromCharCode.apply(null, block.subarray(k, k + 0x8000))
+  return { w: best.width, h: best.height, lz4: btoa(s) }
+}`
+const deflateRawAsync = promisify(deflateRaw)
 
 // ── Headless browser ────────────────────────────────────────
 const browser = await puppeteer.launch({
@@ -90,6 +115,7 @@ async function reloadPage(reason) {
   catch (e) { log(`reload failed: ${e.message}`) }
   finally { setTimeout(() => { reloading = false }, 5000) }
 }
+await page.evaluateOnNewDocument(captureScript)
 page.on('pageerror', (e) => { log(`page error: ${(e.stack || e.message || String(e)).split('\n').slice(0, 6).join(' | ')}`); void reloadPage('page error') })
 page.on('console', (m) => { if (m.type() === 'error') log(`console.error: ${m.text().slice(0, 300)}`) })
 await page.goto(kioskUrl, { waitUntil: 'networkidle2', timeout: 60000 })
@@ -103,31 +129,38 @@ let stats = { captured: 0, sent: 0, bytes: 0, since: Date.now() }
 const rawSize = cfg.width * cfg.height * 2
 
 async function captureAndSend() {
-  const png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: cfg.width, height: cfg.height }, captureBeyondViewport: false })
+  const cap = await page.evaluate(() => window.__paCapture())
   stats.captured++
-  const hash = createHash('sha1').update(png).digest('hex')
+  if (!cap) return // no canvas yet (page loading)
+  if (cap.w !== cfg.width || cap.h !== cfg.height) { if (stats.captured % 100 === 1) log(`canvas is ${cap.w}x${cap.h}, expected ${cfg.width}x${cfg.height}`); return }
+  const hash = createHash('sha1').update(cap.lz4).digest('hex')
   const now = Date.now()
   const unchanged = hash === lastSentHash
   if (!unchanged) lastChangeAt = now
   if (unchanged && now - lastSentAt < cfg.keyframeSec * 1000) return
-  const img = PNG.sync.read(png)
-  if (img.width !== cfg.width || img.height !== cfg.height) { log(`unexpected screenshot size ${img.width}x${img.height}`); return }
-  const rgb565 = rgbaToRgb565(img.data, img.width, img.height)
-  const block = compressBlock(rgb565)
+  lastSentHash = hash; lastSentAt = now
+  const block = Buffer.from(cap.lz4, 'base64')
+  // Encode + send off the capture path so the next capture overlaps zlib's thread-pool work;
+  // the promise chain keeps frames in order.
+  sendChain = sendChain.then(() => encodeAndSend(block)).catch((e) => log(`encode failed: ${e.message}`))
+}
+
+let sendChain = Promise.resolve()
+async function encodeAndSend(block) {
+  const rgb565 = decompressBlock(block, rawSize)
   const tsUs = Math.round(performance.now() * 1000)
   const payload = encodeFramePayload(block, rawSize, tsUs)
   // Same frame as raw deflate for clients that opt in (/stream?comp=deflate): ~3x smaller on real art
-  const deflated = encodeFramePayload(deflateRawSync(rgb565, { level: 6 }), rawSize, tsUs)
+  const deflated = encodeFramePayload(await deflateRawAsync(rgb565, { level: cfg.deflateLevel }), rawSize, tsUs)
   if (cfg.once) {
-    writeFileSync(`${cfg.once}.png`, png); writeFileSync(`${cfg.once}.rgb565`, rgb565); writeFileSync(`${cfg.once}.lz4`, block)
-    log(`wrote ${cfg.once}.{png,rgb565,lz4} (${rgb565.length} -> lz4 ${block.length}, deflate ${deflated.length - 12} bytes)`)
+    writeFileSync(`${cfg.once}.rgb565`, rgb565); writeFileSync(`${cfg.once}.lz4`, block)
+    log(`wrote ${cfg.once}.{rgb565,lz4} (${rgb565.length} -> lz4 ${block.length}, deflate ${deflated.length - 12} bytes)`)
     await browser.close(); process.exit(0)
   }
   if (wsOpen && ws) {
     ws.send(Buffer.concat([Buffer.from([COMPRESSION_LZ4_BLOCK]), payload]))
     ws.send(Buffer.concat([Buffer.from([COMPRESSION_DEFLATE_RAW]), deflated]))
     stats.sent++; stats.bytes += payload.length
-    lastSentHash = hash; lastSentAt = now
   }
 }
 

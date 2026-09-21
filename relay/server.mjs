@@ -348,7 +348,7 @@ console.log(`  Furniture: ${cachedFurniture ? cachedFurniture.catalog.length + '
 // ── Legacy frame stream (2012 tablet; docs/HANDOFF-from-TabScreen.md) ───────
 // A renderer connects as a publisher and sends binary FRAME_FULL payloads; tablets GET /stream
 // and receive CONFIG followed by every frame. Only the latest frame is kept.
-const STREAM_DEFAULT = { width: 1024, height: 600, maxFps: 5 }
+const STREAM_DEFAULT = { width: 1024, height: 600, maxFps: 15 }
 let streamConfig = { ...STREAM_DEFAULT }
 /** Latest FRAME_FULL payload per compression tag (0x01 lz4 block, 0x02 raw deflate) */
 const lastFramePayload = new Map()

@@ -32,6 +32,10 @@ public class MainActivity extends Activity {
     private static final String TAG = "PixelAgents";
     private static final String PREFS = "viewer";
     private static final String DEFAULT_BASE = "https://apps.blommemix.dk/pixelagents";
+    /** Preset instance key (Mix's call - this is a sideloaded personal app; rotate it here and in the relay together). */
+    private static final String DEFAULT_TOKEN = "Z*4jf79Ue#@Z7*dM&2Yf";
+    private static final int DEFAULT_FPS = 15;
+    private static final int MAX_FPS = 30;
 
     private DisplaySurfaceView display;
     private TextView statusView;
@@ -80,7 +84,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        if (prefs.getString("token", "").length() == 0) showSettings();
+        if (prefs.getString("token", DEFAULT_TOKEN).length() == 0) showSettings();
         else startClient();
     }
 
@@ -94,9 +98,9 @@ public class MainActivity extends Activity {
         stopClient();
         String base = prefs.getString("base", DEFAULT_BASE);
         String comp = prefs.getString("comp", "deflate");
-        int fps = prefs.getInt("fps", 4);
+        int fps = prefs.getInt("fps", DEFAULT_FPS);
         String url = base + "/stream?w=1024&h=600&comp=" + comp + "&fps=" + fps;
-        client = new HttpsFrameClient(this, url, prefs.getString("token", ""), display, new HttpsFrameClient.Listener() {
+        client = new HttpsFrameClient(this, url, prefs.getString("token", DEFAULT_TOKEN), display, new HttpsFrameClient.Listener() {
             @Override public void onStatus(String line) { setStatus(line); }
         });
         client.start();
@@ -117,16 +121,16 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(24, 16, 24, 0);
         final EditText base = field(box, "Relay URL", prefs.getString("base", DEFAULT_BASE), InputType.TYPE_TEXT_VARIATION_URI);
-        final EditText token = field(box, "Instance key", prefs.getString("token", ""), InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        final EditText token = field(box, "Instance key", prefs.getString("token", DEFAULT_TOKEN), InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD); // cleartext, no autocorrect
         final EditText comp = field(box, "Compression: deflate or lz4", prefs.getString("comp", "deflate"), InputType.TYPE_CLASS_TEXT);
-        final EditText fps = field(box, "Max fps (1-5)", String.valueOf(prefs.getInt("fps", 4)), InputType.TYPE_CLASS_NUMBER);
+        final EditText fps = field(box, "Max fps (1-" + MAX_FPS + ")", String.valueOf(prefs.getInt("fps", DEFAULT_FPS)), InputType.TYPE_CLASS_NUMBER);
         new AlertDialog.Builder(this)
                 .setTitle("Pixel Agents viewer")
                 .setView(box)
                 .setPositiveButton("Connect", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {
                         int f;
-                        try { f = Math.max(1, Math.min(5, Integer.parseInt(fps.getText().toString().trim()))); } catch (NumberFormatException e) { f = 4; }
+                        try { f = Math.max(1, Math.min(MAX_FPS, Integer.parseInt(fps.getText().toString().trim()))); } catch (NumberFormatException e) { f = DEFAULT_FPS; }
                         String c = comp.getText().toString().trim().toLowerCase();
                         prefs.edit()
                                 .putString("base", base.getText().toString().trim().replaceAll("/+$", ""))

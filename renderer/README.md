@@ -8,8 +8,10 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   `pixel-agents-renderer` (`renderer/install.sh`). Not the Pi - the office's game loop only exists
   in a browser, and headless Chrome is heavy.
 - **What it does:** puppeteer opens `https://apps.blommemix.dk/pixelagents/#kiosk` at exactly
-  1024x600 (UI hidden, camera fitted to the office), screenshots up to 5 times a second, and when
-  the picture changed converts to RGB565 little-endian and sends the relay two binary WebSocket
+  1024x600 (UI hidden, camera fitted to the office). Up to `maxFps` (default 20, max 30) times a
+  second an injected script reads the office `<canvas>` in the page, converts to RGB565
+  little-endian and LZ4-compresses it (~30 ms; screenshots cost 180 ms); Node deflates the raw
+  pixels on the thread pool and, when the picture changed, sends the relay two binary WebSocket
   messages per frame: `[0x01][FRAME_FULL payload, LZ4 block]` and `[0x02][FRAME_FULL payload, raw
   deflate]`. An unchanged picture is resent every 15 s so a restarted relay is never empty.
 - **What the tablet gets:** `GET /stream` (Bearer token or `?token=`), chunked body = `CONFIG`
@@ -21,5 +23,7 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
 - **Tests:** `npm test` in `renderer/` - LZ4 + framing against the TabScreen fixtures (including
   Oriel's Java `Lz4Decoder`) and a full HELLO/CONFIG/FRAME_FULL session against `FakeTablet`.
   Needs `~/projects/TabScreen` (or `TABSCREEN_DIR`) and a JDK.
-- **Measured (2026-09-21):** real frames ~140-175 KB LZ4 / ~40-60 KB deflate; 4 fps LZ4 = ~540 KB/s,
-  deflate = ~155 KB/s, `comp=deflate&fps=2` = ~63 KB/s.
+- **Measured (2026-09-21):** real frames ~140-180 KB LZ4 / ~40-70 KB deflate. Delivered ~19.5 fps
+  at a 30 cap on the thinkstation (the in-page capture is the floor); deflate at 30 = ~980 KB/s,
+  at 15 = ~680 KB/s, at 5 = ~235 KB/s, `comp=deflate&fps=2` = ~63 KB/s. HTML overlays are not part
+  of a canvas capture (only the activity labels, which are off in kiosk mode).

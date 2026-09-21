@@ -29,7 +29,7 @@ adb shell am start -n dk.mix.pixelagents.viewer/.MainActivity
 adb logcat -s PixelAgents:V        # what the client is doing
 ```
 
-First launch asks for the relay URL (prefilled), the instance key, compression (`deflate`,
+First launch shows the relay URL and instance key (both prefilled), compression (`deflate`,
 ~3x smaller than `lz4`; both decode on the device) and an fps cap. Long-press the screen to change
 them; tap the status line to dim it. The status line shows the receiver's per-second stats
 (`fps= recv= decode= blit=`) once frames arrive, or the reason it cannot connect.

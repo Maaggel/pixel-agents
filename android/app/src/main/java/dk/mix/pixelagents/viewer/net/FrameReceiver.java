@@ -27,6 +27,10 @@ public final class FrameReceiver {
     private int rawSize;
     private int compression = Protocol.COMPRESSION_LZ4_BLOCK;
     private Inflater inflater;
+    private DataInputStream in;
+    /** If at least this many bytes are already waiting behind a frame, that frame is stale: skip its decode. */
+    private static final int BEHIND_THRESHOLD_BYTES = 32 * 1024;
+    private int skipped;
 
     // Per-second counters, mirrored to the status overlay and the log.
     private long windowStart;
@@ -44,9 +48,14 @@ public final class FrameReceiver {
         return lastStatus;
     }
 
+    /** Release native zlib state. Call when the session is over; the receiver is not reusable after this. */
+    public void close() {
+        if (inflater != null) { inflater.end(); inflater = null; }
+    }
+
     /** Runs the session on the current thread; returns when the host goes away. */
     public void run(InputStream rawIn, OutputStream out) throws IOException {
-        DataInputStream in = new DataInputStream(rawIn);
+        in = new DataInputStream(rawIn);
         Protocol.writeHello(out, sink.screenWidth(), sink.screenHeight(), Protocol.PIXEL_FORMAT_RGB565, 0);
         log.log("HELLO sent (" + sink.screenWidth() + "x" + sink.screenHeight() + "), waiting for CONFIG");
 
@@ -88,6 +97,11 @@ public final class FrameReceiver {
         if (msg.length < Protocol.FRAME_FULL_HEADER_SIZE) throw new IOException("FRAME_FULL too short");
         int declared = Protocol.frameRawSize(msg.payload, 0);
         if (declared != rawSize) throw new IOException("FRAME_FULL rawSize " + declared + " but CONFIG implies " + rawSize);
+
+        // Behind the stream (a link that stalled and recovered): present only the newest frame rather
+        // than replaying the backlog in fast-forward. A skipped frame costs nothing - the next one
+        // carries the whole picture.
+        if (in.available() >= BEHIND_THRESHOLD_BYTES) { skipped++; return; }
 
         long t0 = System.nanoTime();
         int blockOff = Protocol.FRAME_FULL_HEADER_SIZE;
@@ -136,7 +150,8 @@ public final class FrameReceiver {
             line = "fps=" + Math.round(frames / secs)
                     + "  recv=" + (long) (bytes / secs / 1024) + "KB/s"
                     + "  decode=" + String.format("%.1f", decodeNs / 1e6 / frames) + "ms"
-                    + "  blit=" + String.format("%.1f", blitNs / 1e6 / frames) + "ms";
+                    + "  blit=" + String.format("%.1f", blitNs / 1e6 / frames) + "ms"
+                    + (skipped > 0 ? "  skip=" + skipped : "");
         }
         lastStatus = line;
         log.log(line);
@@ -146,5 +161,6 @@ public final class FrameReceiver {
         bytes = 0;
         decodeNs = 0;
         blitNs = 0;
+        skipped = 0;
     }
 }

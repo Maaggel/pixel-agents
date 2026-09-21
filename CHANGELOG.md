@@ -4,6 +4,12 @@
 
 - Playbook adopted (vendored v1.20.1, `npm run sync-playbook`); `CLAUDE.md` now carries the bootstrap pointer, house rules, versioning table and server map. Versioning and the branch rule apply from here forward; earlier history is not renumbered. `relay/deploy.sh` refuses a code deploy without a version bump.
 
+## v1.8.0
+
+- **Kiosk display settings** - View dropdown gains "Apply to kiosk displays": nameplates, sunlight, dynamic items, lamp lights and weather from this browser are stored on the relay and pushed live to every `#kiosk` viewer (the tablet renderer, wall screens). Also `GET/POST /api/kiosk`.
+- Stream no longer "catches up": the relay drops a frame for a client whose previous frame is still queued, and the app skips decoding frames it is behind on (`skip=` in the status line).
+- Viewer app hardening from Oriel's review: backoff resets after a healthy session, `Inflater` released per session, a rejected key stops retrying and says so, non-200 responses are disconnected, TLS factory built once.
+
 ## v1.7.2
 
 - Stream up to 30 fps: the renderer reads the office canvas inside the page instead of screenshotting (5x cheaper), encodes off the main thread; ~20 fps delivered from the thinkstation. Relay default cap 15, per-client `fps=` up to the renderer's cap.

@@ -21,6 +21,8 @@ export interface ViewOptions {
 interface ViewOptionsPanelProps {
   options: ViewOptions
   onChange: (options: ViewOptions) => void
+  /** Send the current look (these options + weather) to every #kiosk display via the relay */
+  onApplyToKiosk?: () => void
 }
 
 const labelStyle: React.CSSProperties = {
@@ -40,7 +42,7 @@ const checkboxStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
+export function ViewOptionsPanel({ options, onChange, onApplyToKiosk }: ViewOptionsPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
@@ -175,6 +177,25 @@ export function ViewOptionsPanel({ options, onChange }: ViewOptionsPanelProps) {
             <input type="checkbox" checked={options.debugLampLights} onChange={() => toggle('debugLampLights')} style={checkboxStyle} />
             Debug lamp lights
           </label>
+          {onApplyToKiosk && (
+            <button
+              onClick={onApplyToKiosk}
+              title="Kiosk displays (the tablet, wall screens) get this browser's nameplates, sunlight, dynamic items, lamp lights and weather"
+              style={{
+                marginTop: 6,
+                background: 'var(--pixel-btn-bg)',
+                border: '2px solid var(--pixel-border)',
+                borderRadius: 0,
+                padding: '4px 8px',
+                cursor: 'pointer',
+                fontSize: '18px',
+                color: 'var(--pixel-text)',
+                boxShadow: 'var(--pixel-shadow)',
+              }}
+            >
+              Apply to kiosk displays
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -282,6 +282,34 @@ function App() {
     try { localStorage.setItem('pixel-agents-weather', mode) } catch { /* ignore */ }
   }, [])
 
+  // Kiosk display options: what #kiosk viewers (the tablet renderer, wall screens) show.
+  // Any normal viewer can push its look to them ("Apply to kiosk displays"); the relay stores it
+  // and pushes it to every viewer, and only kiosk viewers act on it.
+  const handleApplyToKiosk = useCallback(() => {
+    const v = viewOptionsRef.current
+    vscode.postMessage({ type: 'kioskOptions', options: {
+      showNametags: v.showNametags, showSunlight: v.showSunlight, dynamicItems: v.dynamicItems,
+      debugLampLights: v.debugLampLights, weather: weatherMode,
+    } })
+    addBehaviourEntry({ agentId: 0, agentName: 'System', message: 'Look applied to kiosk displays', type: 'info' })
+  }, [weatherMode])
+  useEffect(() => {
+    if (!KIOSK_MODE) return
+    const handler = (event: MessageEvent) => {
+      const msg = event.data as { type?: string; options?: Partial<ViewOptions> & { weather?: string } }
+      if (msg?.type !== 'kioskOptions' || !msg.options) return
+      const { weather, ...flags } = msg.options
+      const allowed: Partial<ViewOptions> = {}
+      for (const k of ['showNametags', 'showSunlight', 'dynamicItems', 'debugLampLights'] as const) {
+        if (typeof flags[k] === 'boolean') allowed[k] = flags[k]
+      }
+      if (Object.keys(allowed).length > 0) handleViewOptionsChangeRef.current({ ...viewOptionsRef.current, ...allowed })
+      if (typeof weather === 'string') handleSetWeather(weather)
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [handleSetWeather])
+
   const handleStartVacuum = useCallback((uid: string) => {
     officeStateRef.current?.triggerVacuumCycle(uid)
   }, [])
@@ -574,7 +602,7 @@ function App() {
         )
       })()}
 
-      {!kiosk && <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} />}
+      {!kiosk && <ViewOptionsPanel options={viewOptions} onChange={handleViewOptionsChange} onApplyToKiosk={handleApplyToKiosk} />}
 
       {/* Personality panel open button */}
       {!hideUi && Object.keys(personalities).length > 0 && personalityPanelKey === null && (

@@ -30,6 +30,7 @@ const ASSETS_ROOT = existsSync(ASSETS_DIR) ? join(PROJECT_ROOT, 'dist') : join(P
 const DEFAULT_LAYOUT = join(ASSETS_ROOT, 'assets', 'default-layout.json')
 const LAYOUT_DIR = join(PROJECT_ROOT, 'data')
 const SAVED_LAYOUT = join(LAYOUT_DIR, 'layout.json')
+const KIOSK_OPTIONS_FILE = join(LAYOUT_DIR, 'kiosk-options.json')
 const BACKUP_DIR = join(LAYOUT_DIR, 'backups')
 const MAX_BACKUPS = 168 // 7 days of hourly backups
 const BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -345,6 +346,17 @@ console.log(`  Floors: ${cachedFloors ? cachedFloors.length + ' patterns' : 'not
 console.log(`  Walls: ${cachedWalls ? cachedWalls.length + ' pieces' : 'not found'}`)
 console.log(`  Furniture: ${cachedFurniture ? cachedFurniture.catalog.length + ' items' : 'not found'}`)
 
+// ── Kiosk display options ─────────────────────────────────────
+// What #kiosk viewers (the tablet renderer, wall displays) show: nameplates, sunlight, weather...
+// Set from any normal viewer's View dropdown ("Apply to kiosk displays"), stored here, pushed to
+// every viewer; kiosk viewers apply them, others ignore them.
+let kioskOptions = null
+try { if (existsSync(KIOSK_OPTIONS_FILE)) kioskOptions = JSON.parse(readFileSync(KIOSK_OPTIONS_FILE, 'utf-8')) } catch { /* start empty */ }
+function saveKioskOptions(opts) {
+  kioskOptions = opts
+  try { mkdirSync(LAYOUT_DIR, { recursive: true }); writeFileSync(KIOSK_OPTIONS_FILE, JSON.stringify(opts, null, 2)) } catch (err) { console.log(`[Relay] Could not save kiosk options: ${err.message}`) }
+}
+
 // ── Legacy frame stream (2012 tablet; docs/HANDOFF-from-TabScreen.md) ───────
 // A renderer connects as a publisher and sends binary FRAME_FULL payloads; tablets GET /stream
 // and receive CONFIG followed by every frame. Only the latest frame is kept.
@@ -364,6 +376,10 @@ function broadcastFrame(comp, payload) {
     if (c.res.writableEnded || c.res.destroyed) { streamClients.delete(c); continue }
     if (c.comp !== comp) continue
     if (now - c.lastSentAt < c.minIntervalMs) continue // per-client fps cap (roaming tablets)
+    // Never queue behind a slow link: if the previous frame is still in our buffers, drop this one.
+    // Queued frames would replay too fast when the link recovers ("catch-up"); a dropped frame is
+    // invisible because the next one carries the whole picture.
+    if (c.res.writableLength > 0 || (c.res.socket && c.res.socket.writableLength > 0)) { c.dropped++; continue }
     c.lastSentAt = now
     c.res.write(msg)
   }
@@ -521,6 +537,9 @@ window.acquireVsCodeApi = function() {
         sendToRelay({ type: 'saveLayout', layout: msg.layout });
       }
       if (msg.type === 'idleInteraction') {
+        sendToRelay(msg);
+      }
+      if (msg.type === 'kioskOptions') {
         sendToRelay(msg);
       }
       if (msg.type === 'exportLayout') {
@@ -776,6 +795,9 @@ function connectRelay() {
         if (msg.windows && msg.windows.length > 0) {
           reconcileAgents(msg.windows);
         }
+        if (msg.kioskOptions) dispatch({ type: 'kioskOptions', options: msg.kioskOptions });
+      } else if (msg.type === 'kioskOptions') {
+        dispatch({ type: 'kioskOptions', options: msg.options });
       } else if (msg.type === 'sync') {
         reconcileAgents(msg.windows || []);
       } else if (msg.type === 'layoutUpdate') {
@@ -1121,13 +1143,38 @@ const server = createServer((req, res) => {
     res.write(encodeConfig({ ...streamConfig, maxFps: fps, compression: comp }))
     const latest = lastFramePayload.get(comp)
     if (latest) res.write(frameFull(latest))
-    const client = { res, comp, minIntervalMs: Math.floor(1000 / fps) - 20, lastSentAt: latest ? Date.now() : 0 }
+    const client = { res, comp, minIntervalMs: Math.floor(1000 / fps) - 20, lastSentAt: latest ? Date.now() : 0, dropped: 0 }
+    res.socket?.setNoDelay(true)
     streamClients.add(client)
     console.log(`[Relay] Stream client connected (${comp === COMPRESSION_DEFLATE_RAW ? 'deflate' : 'lz4'} @${fps}fps, total: ${streamClients.size})`)
-    const drop = () => { if (streamClients.delete(client)) console.log(`[Relay] Stream client disconnected (total: ${streamClients.size})`) }
+    const drop = () => { if (streamClients.delete(client)) console.log(`[Relay] Stream client disconnected (dropped ${client.dropped} frames to slow link, total: ${streamClients.size})`) }
     req.on('close', drop)
     res.on('close', drop)
     res.on('error', drop)
+    return
+  }
+  if (pathname === '/api/kiosk' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+    res.end(JSON.stringify({ options: kioskOptions }))
+    return
+  }
+  if (pathname === '/api/kiosk' && req.method === 'POST') {
+    if (!checkApiAuth(req, res)) return
+    let body = ''
+    req.on('data', (d) => { body += d; if (body.length > 65536) req.destroy() })
+    req.on('end', () => {
+      try {
+        const opts = JSON.parse(body)
+        if (!opts || typeof opts !== 'object') throw new Error('expected a JSON object')
+        saveKioskOptions({ ...(kioskOptions || {}), ...opts })
+        broadcastToViewers({ type: 'kioskOptions', options: kioskOptions })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, options: kioskOptions }))
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: err.message }))
+      }
+    })
     return
   }
   if (pathname === '/api/stream' && req.method === 'GET') {
@@ -1386,6 +1433,7 @@ wss.on('connection', (ws, req) => {
       furniture: cachedFurniture,
       layout: lastLayout,
       windows: getAllWindowStates(),
+      kioskOptions,
     }
 
     // Split init into chunks if needed (assets can be large)
@@ -1416,6 +1464,13 @@ wss.on('connection', (ws, req) => {
         // Forward idle interaction events to publishers (personality engine)
         if (msg.type === 'idleInteraction') {
           broadcastToPublishers(msg)
+        }
+
+        // A viewer sets what kiosk displays show
+        if (msg.type === 'kioskOptions' && msg.options && typeof msg.options === 'object') {
+          saveKioskOptions(msg.options)
+          broadcastToViewers({ type: 'kioskOptions', options: msg.options })
+          console.log(`[Relay] Kiosk options updated: ${JSON.stringify(msg.options)}`)
         }
 
         // Screenshot response for backup system

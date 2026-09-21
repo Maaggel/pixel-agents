@@ -4,6 +4,12 @@
 
 - Playbook adopted (vendored v1.20.1, `npm run sync-playbook`); `CLAUDE.md` now carries the bootstrap pointer, house rules, versioning table and server map. Versioning and the branch rule apply from here forward; earlier history is not renumbered. `relay/deploy.sh` refuses a code deploy without a version bump.
 
+## v1.7.1
+
+- Fix: an idle agent visiting furniture placed on a half tile crashed the game loop (`tileMap[4.5]`), freezing the office until reload. Found by the headless renderer running the office nonstop.
+- **Legacy viewer app** (`android/`): the Android 4.1 client for the frame stream - Oriel's proven decoder/receiver/surface, plus a pinned-root TLS 1.2 HTTPS client, deflate support and a settings dialog. `build/pixel-agents-viewer-<version>-debug.apk`.
+- Renderer reloads the page properly after an error (`page.reload`, not a same-URL `goto`).
+
 ## v1.7.0
 
 - **Legacy tablet stream** - the relay serves `GET /stream` (chunked; `CONFIG` then `FRAME_FULL`, RGB565 + LZ4 block, protocol v1 from `docs/HANDOFF-from-TabScreen.md`) fed by a new `renderer/` process that renders the viewer headlessly and publishes frames over the publisher WebSocket. `GET /api/stream` reports its state. LZ4 codec and framing verified against TabScreen's fixtures and its Java client stack (`renderer/test`).

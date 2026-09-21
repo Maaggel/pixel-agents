@@ -85,7 +85,8 @@ async function reloadPage(reason) {
   if (reloading) return
   reloading = true
   log(`reloading viewer: ${reason}`)
-  try { await page.goto(kioskUrl, { waitUntil: 'networkidle2', timeout: 60000 }); lastSentHash = null; log('viewer reloaded') }
+  // page.reload(), not goto(): goto to the same URL (only the hash differs) is a same-document navigation and leaves the dead page in place
+  try { await page.reload({ waitUntil: 'networkidle2', timeout: 60000 }); lastSentHash = null; lastChangeAt = Date.now(); log('viewer reloaded') }
   catch (e) { log(`reload failed: ${e.message}`) }
   finally { setTimeout(() => { reloading = false }, 5000) }
 }

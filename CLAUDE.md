@@ -30,6 +30,7 @@ then one plain line: detail from before may be lost, you trust this file and mem
 ## Server map (compaction-critical)
 
 - **Claude Code + daemon:** this box (thinkstation, 192.168.0.212). `pixel-agents-daemon` runs as a user systemd unit (`systemctl --user`, needs `XDG_RUNTIME_DIR=/run/user/1000` in non-login shells); bundle in `~/.local/share/pixel-agents-daemon/`, config `~/.pixel-agents/daemon.json`.
+- **Legacy viewer app:** `android/` (Gradle, minSdk 16; `android/README.md`). Build with the SDK at `~/Android/sdk` and `JAVA_HOME=~/.local/jdk`; APK lands in `build/`. Sideloaded over adb.
 - **Frame renderer (legacy tablet):** also this box, user unit `pixel-agents-renderer` (`renderer/install.sh`; `renderer/README.md`). Feeds the relay's `GET /stream`.
 - **Relay + web UI:** the Blommemix Pi, 192.168.0.51 (`apps.blommemix.dk` / `admin.blommemix.dk`), `https://apps.blommemix.dk/pixelagents`, root `/var/www/blommemix.dk/subdomains/apps/public_html/pixelagents`, system unit `pixel-agents-relay`. `data/` there (layout + backups) is live state, root-owned, never written by us. Furniture sprites and the catalog live only there (gitignored here); patch the catalog over FTP, never delete under `dist/assets`.
 - **Deploy:** `source ~/.pixel-agents/deploy.env && npm run deploy` (everything) or `npm run deploy:ui` (webview only). FTP via `~/.pixel-agents/relay-ftp.netrc`; relay restart through the SSH gate `pixelagents-deploy` (`ssh pixelagents-deploy commands` lists what it allows; one command per connection). Viewers reload themselves via the build id.

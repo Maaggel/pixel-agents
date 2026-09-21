@@ -249,43 +249,32 @@ function findAdjacentWalkableTile(
   const candidates: Array<{ col: number; row: number; facingDir: Direction; side: UseSide }> = []
   const rows = tileMap.length
   const cols = rows > 0 ? tileMap[0].length : 0
+  // Half-tile items have fractional col/row (e.g. 3.5); tile lookups need whole tiles or
+  // tileMap[4.5] is undefined and the next index throws (this crashed the game loop before the guard).
+  const walkable = (c: number, r: number) => r >= 0 && r < rows && c >= 0 && c < cols
+    && !blockedTiles.has(`${c},${r}`) && tileMap[r] !== undefined && tileMap[r][c] > 0 && tileMap[r][c] !== 8
+  furniture = { ...furniture, col: Math.floor(furniture.col), row: Math.floor(furniture.row) }
 
   // Check tiles around the furniture footprint
   for (let dc = 0; dc < footprintW; dc++) {
     // Below furniture
     const belowRow = furniture.row + footprintH
     const belowCol = furniture.col + dc
-    if (belowRow >= 0 && belowRow < rows && belowCol >= 0 && belowCol < cols) {
-      if (!blockedTiles.has(`${belowCol},${belowRow}`) && tileMap[belowRow][belowCol] > 0 && tileMap[belowRow][belowCol] !== 8) {
-        candidates.push({ col: belowCol, row: belowRow, facingDir: Direction.UP, side: 'front' })
-      }
-    }
+    if (walkable(belowCol, belowRow)) candidates.push({ col: belowCol, row: belowRow, facingDir: Direction.UP, side: 'front' })
     // Above furniture
     const aboveRow = furniture.row - 1
     const aboveCol = furniture.col + dc
-    if (aboveRow >= 0 && aboveRow < rows && aboveCol >= 0 && aboveCol < cols) {
-      if (!blockedTiles.has(`${aboveCol},${aboveRow}`) && tileMap[aboveRow][aboveCol] > 0 && tileMap[aboveRow][aboveCol] !== 8) {
-        candidates.push({ col: aboveCol, row: aboveRow, facingDir: Direction.DOWN, side: 'back' })
-      }
-    }
+    if (walkable(aboveCol, aboveRow)) candidates.push({ col: aboveCol, row: aboveRow, facingDir: Direction.DOWN, side: 'back' })
   }
   for (let dr = 0; dr < footprintH; dr++) {
     // Left of furniture
     const leftCol = furniture.col - 1
     const leftRow = furniture.row + dr
-    if (leftRow >= 0 && leftRow < rows && leftCol >= 0 && leftCol < cols) {
-      if (!blockedTiles.has(`${leftCol},${leftRow}`) && tileMap[leftRow][leftCol] > 0 && tileMap[leftRow][leftCol] !== 8) {
-        candidates.push({ col: leftCol, row: leftRow, facingDir: Direction.RIGHT, side: 'left' })
-      }
-    }
+    if (walkable(leftCol, leftRow)) candidates.push({ col: leftCol, row: leftRow, facingDir: Direction.RIGHT, side: 'left' })
     // Right of furniture
     const rightCol = furniture.col + footprintW
     const rightRow = furniture.row + dr
-    if (rightRow >= 0 && rightRow < rows && rightCol >= 0 && rightCol < cols) {
-      if (!blockedTiles.has(`${rightCol},${rightRow}`) && tileMap[rightRow][rightCol] > 0 && tileMap[rightRow][rightCol] !== 8) {
-        candidates.push({ col: rightCol, row: rightRow, facingDir: Direction.LEFT, side: 'right' })
-      }
-    }
+    if (walkable(rightCol, rightRow)) candidates.push({ col: rightCol, row: rightRow, facingDir: Direction.LEFT, side: 'right' })
   }
 
   if (candidates.length === 0) return null

@@ -1,0 +1,39 @@
+plugins {
+    id "com.android.application"
+}
+
+// The repo's package.json is the single source of truth for the version (CLAUDE.md, Versioning).
+def pkg = new groovy.json.JsonSlurper().parse(rootProject.file("../package.json"))
+def repoVersion = pkg.version as String
+def repoVersionCode = repoVersion.tokenize(".").withIndex().collect { part, i -> (part as int) * [10000, 100, 1][i] }.sum()
+
+// Legacy viewer for the 2012 Galaxy Tab 2: minSdk/targetSdk 16 are deliberate, as is no AndroidX
+// (docs/HANDOFF-from-TabScreen.md, Android 4.1.2 lessons). API 16 also needs a v1 APK signature.
+android {
+    namespace "dk.mix.pixelagents.viewer"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "dk.mix.pixelagents.viewer"
+        minSdk 16
+        targetSdk 16
+        versionCode repoVersionCode
+        versionName repoVersion
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug   // sideloaded over adb; a keystore can be wired like TabScreen's if it ever ships
+        }
+    }
+
+    lint {
+        disable "ExpiredTargetSdkVersion", "OldTargetApi"
+    }
+}

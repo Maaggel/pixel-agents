@@ -29,6 +29,9 @@ WorkingDirectory=$DIR
 ExecStart=$NODE_BIN $DIR/frame-publisher.mjs
 Restart=always
 RestartSec=10
+Nice=10
+# One physical core's hyperthread pair (i3-4150T: cores 0+2 and 1+3); the other core stays free for the owner's sessions
+CPUAffinity=1 3
 # Config: ~/.pixel-agents/renderer.json (viewerUrl, relayWs, token, width, height, maxFps, keyframeSec)
 
 [Install]

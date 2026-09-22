@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "pngjs": "^7.0.0",
-    "puppeteer": "^24.0.0"
+    "puppeteer": "^24.0.0",
+    "ws": "^8.21.3"
   }
 }

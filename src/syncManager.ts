@@ -20,7 +20,9 @@ export interface SyncManager {
 export function createSyncManager(
 	windowId: string,
 	onRemoteChange: (windows: SyncWindowState[]) => void,
+	options: { /** Watch + poll the shared dir for other windows' files. Off for headless backends: with N of them each writing once a second, every write woke every watcher and each re-read every file (>1000 reads/s at 11 backends). */ readOthers?: boolean } = {},
 ): SyncManager {
+	const readOthers = options.readOthers !== false;
 	const syncDir = getSyncDir();
 	const ownFile = path.join(syncDir, `${windowId}.json`);
 	let disposed = false;
@@ -103,8 +105,8 @@ export function createSyncManager(
 	// Clean up stale files from dead processes on startup
 	cleanupStaleFiles();
 
-	// Start watching sync directory
-	try {
+	// Start watching sync directory (write-only managers skip this entirely)
+	if (readOthers) try {
 		if (fs.existsSync(syncDir)) {
 			fsWatcher = fs.watch(syncDir, () => check());
 			fsWatcher.on('error', () => {
@@ -115,7 +117,7 @@ export function createSyncManager(
 	} catch { /* ignore */ }
 
 	// Polling backup
-	pollTimer = setInterval(() => {
+	if (readOthers) pollTimer = setInterval(() => {
 		if (disposed) return;
 		if (!fsWatcher) {
 			try {

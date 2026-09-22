@@ -23,6 +23,13 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
 - **Tests:** `npm test` in `renderer/` - LZ4 + framing against the TabScreen fixtures (including
   Oriel's Java `Lz4Decoder`) and a full HELLO/CONFIG/FRAME_FULL session against `FakeTablet`.
   Needs `~/projects/TabScreen` (or `TABSCREEN_DIR`) and a JDK.
+- **Sharing the box (2026-09-22):** headless Chrome compositing a 1024x600 canvas costs ~0.6 core and
+  Node ~0.4 at 15 fps, and on the i3-4150T (2 physical cores, hyperthreaded) `nice` alone does not
+  protect the owner's sessions from a sibling hyperthread. So: the unit is pinned to one core's pair
+  (`CPUAffinity=1 3`) at `Nice=10`, the page is CPU-throttled 8x and captured at 0.5 fps whenever
+  `/api/stream` reports no clients, the page only reads+converts pixels (raw RGB565 over a local
+  binary WebSocket to Node), deflate runs on the thread pool at level 3, LZ4 only when someone asks
+  for it. Interference measured with a nice-0 benchmark: 2x slower before, 5-15% after.
 - **Measured (2026-09-21):** real frames ~140-180 KB LZ4 / ~40-70 KB deflate. Delivered ~19.5 fps
   at a 30 cap on the thinkstation (the in-page capture is the floor); deflate at 30 = ~980 KB/s,
   at 15 = ~680 KB/s, at 5 = ~235 KB/s, `comp=deflate&fps=2` = ~63 KB/s. HTML overlays are not part

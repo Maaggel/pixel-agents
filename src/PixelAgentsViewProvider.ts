@@ -545,7 +545,7 @@ export class PixelAgentsBackend {
 		if (this.syncManager) return;
 		this.syncManager = createSyncManager(this.windowId, (_windows) => {
 			// Remote window changes - standalone viewer reads sync files directly
-		});
+		}, { readOthers: this.host.discovery() !== 'registry' }); // headless: write for the local viewer, never read back
 		// Initialize remote relay if configured
 		const { url: relayUrl, token: relayToken } = this.host.relaySettings();
 		if (relayUrl && relayToken) {

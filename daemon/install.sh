@@ -142,6 +142,9 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$NODE_BIN $INSTALL_DIR/$BUNDLE
 Restart=always
 RestartSec=5
+Nice=5
+# One physical core's hyperthread pair (i3-4150T: cores 0+2 and 1+3); the other core stays free for the owner's sessions
+CPUAffinity=1 3
 # Config lives in $CONFIG_FILE; env vars here override it.
 #Environment=PIXEL_AGENTS_RELAY_URL=wss://host/pixelagents/ws
 #Environment=PIXEL_AGENTS_RELAY_TOKEN=secret

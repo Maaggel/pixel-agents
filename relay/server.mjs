@@ -1180,7 +1180,9 @@ const server = createServer((req, res) => {
   if (pathname === '/api/stream' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
     const lz = lastFramePayload.get(COMPRESSION_LZ4_BLOCK), df = lastFramePayload.get(COMPRESSION_DEFLATE_RAW)
-    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!lz, lastFrameAgeMs: lz ? Date.now() - lastFrameAt : null, frameBytesLz4: lz ? lz.length : 0, frameBytesDeflate: df ? df.length : 0, frames: frameCount, clients: streamClients.size }))
+    let clientsLz4 = 0, clientsDeflate = 0
+    for (const c of streamClients) { if (c.comp === COMPRESSION_DEFLATE_RAW) clientsDeflate++; else clientsLz4++ }
+    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!(lz || df), lastFrameAgeMs: (lz || df) ? Date.now() - lastFrameAt : null, frameBytesLz4: lz ? lz.length : 0, frameBytesDeflate: df ? df.length : 0, frames: frameCount, clients: streamClients.size, clientsLz4, clientsDeflate }))
     return
   }
 
@@ -1368,7 +1370,7 @@ wss.on('connection', (ws, req) => {
         const payload = buf.subarray(1)
         lastFramePayload.set(comp, payload)
         lastFrameAt = Date.now()
-        if (comp === COMPRESSION_LZ4_BLOCK) frameCount++
+        if (comp === COMPRESSION_DEFLATE_RAW) frameCount++
         broadcastFrame(comp, payload)
         return
       }

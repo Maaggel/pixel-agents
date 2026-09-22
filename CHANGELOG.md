@@ -4,6 +4,11 @@
 
 - Playbook adopted (vendored v1.20.1, `npm run sync-playbook`); `CLAUDE.md` now carries the bootstrap pointer, house rules, versioning table and server map. Versioning and the branch rule apply from here forward; earlier history is not renumbered. `relay/deploy.sh` refuses a code deploy without a version bump.
 
+## v1.8.1
+
+- Fix: the headless daemon burned ~50% of a core re-reading every sync file on every write (11 backends watching each other for a VS Code multi-window feature nothing headless uses). Headless backends now write sync files but never read them back (~4%).
+- Renderer cost brought under control on the 2-core thinkstation it shares with the owner's sessions: idles when no tablet is connected (page CPU-throttled 8x, 0.5 fps keyframes, wakes within 5 s); raw pixels leave the page over a local binary WebSocket and all compression happens in Node (thread pool), LZ4 only when an LZ4 client exists; `#fps=N` caps the office's animation loop; both services run at `Nice=` and are pinned to one physical core's hyperthreads (`CPUAffinity=1 3`). Measured: a normal-priority job is slowed 5-15% while the tablet watches, down from 2x.
+
 ## v1.8.0
 
 - **Kiosk display settings** - View dropdown gains "Apply to kiosk displays": nameplates, sunlight, dynamic items, lamp lights and weather from this browser are stored on the relay and pushed live to every `#kiosk` viewer (the tablet renderer, wall screens). Also `GET/POST /api/kiosk`.

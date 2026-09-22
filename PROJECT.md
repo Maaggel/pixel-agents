@@ -17,7 +17,7 @@ Open follow-ups:
 ## DONE: Legacy viewer for old Android (from Oriel / TabScreen)
 
 Shipped 2026-09-21 (v1.7.2). The 2012 Galaxy Tab 2 shows the office at 15-20 fps over the internet:
-`renderer/` (headless Chrome on the thinkstation, in-page canvas capture, ~20 fps) -> relay
+`renderer/` (native Node + Skia on the thinkstation, no browser, 15 fps) -> relay
 `GET /stream` (LZ4 or deflate, per-client fps) -> `android/` app (Oriel's client stack + pinned-root
 TLS 1.2 HTTPS client). On-device: decode 11 ms, blit 14 ms per deflate frame. Plumbline's
 per-domain "allow legacy clients" panel setting provides the ECDSA CBC suite the tablet needs.

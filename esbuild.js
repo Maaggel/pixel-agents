@@ -5,6 +5,7 @@ const path = require("path");
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 const daemonOnly = process.argv.includes('--daemon-only');
+const headlessOnly = process.argv.includes('--headless-only');
 
 /**
  * Copy assets folder to dist/assets
@@ -56,7 +57,7 @@ async function bundleStandalone() {
 
 /**
  * Bundle the headless daemon into dist/pixel-agents-daemon.cjs.
- * 'vscode' is deliberately NOT external here — if any backend module
+ * 'vscode' is deliberately NOT external here - if any backend module
  * imports it, this build fails, which is the guard we want.
  * 'ws' IS bundled so the file is fully self-contained on Node 18/20
  * (Node 22+ uses the global WebSocket and never touches it).
@@ -76,6 +77,27 @@ async function bundleDaemon() {
 	});
 	fs.chmodSync('dist/pixel-agents-daemon.cjs', 0o755);
 	console.log('✓ Bundled src/daemon.ts → dist/pixel-agents-daemon.cjs');
+}
+
+/**
+ * Bundle the office engine for the native renderer (renderer/native/engine.mjs):
+ * the same TypeScript the browser runs, as one ESM file with no React and no
+ * DOM beyond what the renderer shims (canvas, localStorage, window).
+ */
+async function bundleHeadlessEngine() {
+	await esbuild.build({
+		entryPoints: ['webview-ui/src/headless/entry.ts'],
+		bundle: true,
+		format: 'esm',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'neutral',
+		target: 'node20',
+		outfile: 'renderer/native/engine.mjs',
+		logLevel: 'silent',
+	});
+	console.log('✓ Bundled webview-ui/src/headless/entry.ts → renderer/native/engine.mjs');
 }
 
 /**
@@ -101,6 +123,10 @@ const esbuildProblemMatcherPlugin = {
 async function main() {
 	if (daemonOnly) {
 		await bundleDaemon();
+		return;
+	}
+	if (headlessOnly) {
+		await bundleHeadlessEngine();
 		return;
 	}
 	const ctx = await esbuild.context({
@@ -129,6 +155,7 @@ async function main() {
 		// Bundle standalone server + daemon, copy assets after extension build
 		await bundleStandalone();
 		await bundleDaemon();
+		await bundleHeadlessEngine();
 		copyAssets();
 	}
 }

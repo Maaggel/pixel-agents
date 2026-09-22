@@ -115,6 +115,52 @@ export function renderTileGrid(
 
 }
 
+/**
+ * Optional cache for the tile pass. The floor + wall base colours only change with the layout,
+ * the camera or the zoom, yet the pass is ~1000 small blits a frame. A caller that renders the
+ * same view every frame (the native renderer) passes one of these and gets a single blit of a
+ * prerendered layer instead; the layer is rebuilt when the tile map, colours or geometry change.
+ */
+export interface TileLayerCache {
+  canvas: HTMLCanvasElement | null
+  key: string
+  tileMap: TileTypeVal[][] | null
+  tileColors: Array<FloorColor | null> | null | undefined
+}
+
+export function createTileLayerCache(): TileLayerCache {
+  return { canvas: null, key: '', tileMap: null, tileColors: null }
+}
+
+function renderTileGridCached(
+  ctx: CanvasRenderingContext2D,
+  cache: TileLayerCache,
+  canvasWidth: number,
+  canvasHeight: number,
+  tileMap: TileTypeVal[][],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  tileColors: Array<FloorColor | null> | undefined,
+  cols: number,
+): void {
+  const key = `${canvasWidth}x${canvasHeight}@${offsetX},${offsetY}z${zoom}c${cols}`
+  if (!cache.canvas || cache.key !== key || cache.tileMap !== tileMap || cache.tileColors !== tileColors) {
+    const layer = cache.canvas ?? document.createElement('canvas')
+    layer.width = canvasWidth
+    layer.height = canvasHeight
+    const lctx = layer.getContext('2d')!
+    lctx.imageSmoothingEnabled = false
+    lctx.clearRect(0, 0, canvasWidth, canvasHeight)
+    renderTileGrid(lctx, tileMap, offsetX, offsetY, zoom, tileColors, cols)
+    cache.canvas = layer
+    cache.key = key
+    cache.tileMap = tileMap
+    cache.tileColors = tileColors
+  }
+  ctx.drawImage(cache.canvas, 0, 0)
+}
+
 interface ZDrawable {
   zY: number
   draw: (ctx: CanvasRenderingContext2D) => void
@@ -780,6 +826,12 @@ function renderVacuumSpeechBubbles(
 
 // ── Nametags ─────────────────────────────────────────────────
 
+/** Nametag font override: the native renderer draws tags with the pixel font at its native size */
+let nametagFont: ((zoom: number) => { px: number; family: string }) | null = null
+export function setNametagFont(font: ((zoom: number) => { px: number; family: string }) | null): void {
+  nametagFont = font
+}
+
 export function renderNametags(
   ctx: CanvasRenderingContext2D,
   characters: Character[],
@@ -787,6 +839,7 @@ export function renderNametags(
   offsetY: number,
   zoom: number,
 ): void {
+  const font = nametagFont?.(zoom)
   for (const ch of characters) {
     if (!ch.nametag) continue
     if (ch.matrixEffect === 'despawn') continue
@@ -796,8 +849,8 @@ export function renderNametags(
       label = label.slice(0, NAMETAG_MAX_CHARS - 1) + '\u2026'
     }
 
-    const fontSize = Math.max(7, Math.round(zoom * 3.5))
-    ctx.font = `${fontSize}px sans-serif`
+    const fontSize = font?.px ?? Math.max(7, Math.round(zoom * 3.5))
+    ctx.font = `${fontSize}px ${font?.family ?? 'sans-serif'}`
     const metrics = ctx.measureText(label)
     const textW = metrics.width
     const textH = fontSize
@@ -989,6 +1042,7 @@ export function renderFrame(
   vacuumOverlays?: VacuumOverlay[],
   exteriorWall?: { style: import('../types.js').ExteriorWallStyle; color: FloorColor; height: number },
   debugLampLights?: boolean,
+  tileLayer?: TileLayerCache,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -1075,7 +1129,8 @@ export function renderFrame(
   }
 
   // Draw tiles (floor + wall base color)
-  renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols)
+  if (tileLayer) renderTileGridCached(ctx, tileLayer, canvasWidth, canvasHeight, tileMap, offsetX, offsetY, zoom, tileColors, cols)
+  else renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols)
 
   // Draw interior floor behind exterior window glass sections.
   // Wall tiles have no floor underneath, so we sample the nearest interior

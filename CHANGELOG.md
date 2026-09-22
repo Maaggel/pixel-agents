@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.9.0
+
+- **Native renderer for the tablet stream** - the office is now rendered in Node with Skia (`@napi-rs/canvas`), no browser. The same engine TypeScript the web viewer runs is bundled for Node (`webview-ui/src/headless/entry.ts` -> `renderer/native/engine.mjs`) and fed straight from the relay's viewer WebSocket. Sprites are blitted as immutable images (6x cheaper than Skia's picture replay of a canvas source), the floor is a cached layer, the scene is drawn at half resolution and doubled (identical pixel art), nameplates and bubbles are drawn on a full-resolution overlay with the pixel font at its native 16 px (crisp; emoji prefixes stripped, `nametagEmoji: true` keeps them). ~8 ms CPU per frame at 15 fps against ~1 core and 1.5 GB for headless Chrome. `renderer/install.sh` installs it by default; `--chrome` is the fallback.
+- `renderFrame` gains an opt-in `TileLayerCache` and `setNametagFont`; the browser's rendering is unchanged.
+
 ## Unreleased
 
 - Playbook adopted (vendored v1.20.1, `npm run sync-playbook`); `CLAUDE.md` now carries the bootstrap pointer, house rules, versioning table and server map. Versioning and the branch rule apply from here forward; earlier history is not renumbered. `relay/deploy.sh` refuses a code deploy without a version bump.

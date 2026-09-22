@@ -1,14 +1,17 @@
 {
   "name": "pixel-agents-renderer",
   "version": "1.0.0",
-  "description": "Renders the Pixel Agents viewer headlessly and publishes RGB565+LZ4 frames to the relay for the legacy tablet viewer",
+  "description": "Renders the Pixel Agents office without a browser and publishes RGB565 frames to the relay for the legacy tablet viewer",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node frame-publisher.mjs",
+    "start": "node native-publisher.mjs",
+    "start:chrome": "node frame-publisher.mjs",
+    "bench": "node test/bench-native.mjs",
     "test": "node test/lz4-fixtures.mjs && node test/fake-tablet.mjs"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
     "pngjs": "^7.0.0",
     "puppeteer": "^24.0.0",
     "ws": "^8.21.3"

@@ -116,7 +116,13 @@ const deflateRawAsync = promisify(deflateRaw)
 // ── Headless browser ────────────────────────────────────────
 const browser = await puppeteer.launch({
   headless: true,
-  args: ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--autoplay-policy=no-user-gesture-required', `--window-size=${cfg.width},${cfg.height}`],
+  args: [
+    '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', `--window-size=${cfg.width},${cfg.height}`,
+    // Lean software rendering: ~10% less renderer CPU on the shared box (measured 40% -> 36% of a core at 15 fps)
+    '--num-raster-threads=1', '--disable-accelerated-2d-canvas', '--disable-gpu-compositing', '--disable-lcd-text',
+    '--disable-features=PaintHolding,AudioServiceOutOfProcess', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
+    '--disable-extensions', '--mute-audio',
+  ],
 })
 const page = await browser.newPage()
 // #kiosk: display mode with no UI and the camera centred on the office

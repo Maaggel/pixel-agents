@@ -9,6 +9,7 @@
     "start:chrome": "node frame-publisher.mjs",
     "bench": "node test/bench-native.mjs",
     "bench:latency": "node test/latency-bench.mjs",
+    "test:dirty": "node test/dirty-rects.mjs",
     "test": "node test/lz4-fixtures.mjs && node test/fake-tablet.mjs"
   },
   "dependencies": {

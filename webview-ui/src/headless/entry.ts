@@ -27,8 +27,8 @@ import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { TileType, TILE_SIZE } from '../office/types.js'
-import type { OfficeLayout } from '../office/types.js'
-import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS } from '../constants.js'
+import type { OfficeLayout, Character, SpriteData, FurnitureInstance } from '../office/types.js'
+import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS, BUBBLE_FADE_DURATION_SEC } from '../constants.js'
 
 export interface HeadlessOptions {
   width: number
@@ -44,6 +44,13 @@ export interface HeadlessOptions {
   nametagFont?: { px: number; family: string }
   /** Drop emoji and other pictographs from nametags (the icons the owner prefixes names with) */
   nametagStripEmoji?: boolean
+  /** Redraw the whole frame at least this often even when nothing is known to have changed (seconds) */
+  fullRedrawSec?: number
+  /**
+   * Painted behind the office where no tile is drawn. Applied inside render(), so a damaged
+   * redraw fills only its own rectangles rather than the whole canvas.
+   */
+  background?: string
   /** Optional sink for the same one-line events the browser's dev console shows */
   log?: (line: string) => void
 }
@@ -58,6 +65,40 @@ export interface KioskFlags {
 
 const DEFAULT_FLAGS: KioskFlags = { showNametags: true, showSunlight: true, dynamicItems: true, debugLampLights: false }
 const DEFAULT_EXTERIOR_WALL = { style: 'brick_small' as const, color: { h: 10, s: 50, b: -15, c: 10 }, height: 0 }
+
+// ── Damage tracking ───────────────────────────────────────────
+// How far around a character's anchor point anything belonging to it can be drawn, in sprite
+// pixels: the sprite is 16x32 drawn bottom-anchored, plus held items, selection outline, the
+// speech bubble above the head and the skill aura. Deliberately generous - test/dirty-rects.mjs
+// compares damaged rendering against full rendering frame by frame and a box that is too small
+// shows up there immediately.
+const CHAR_DAMAGE_LEFT = 24
+const CHAR_DAMAGE_RIGHT = 24
+const CHAR_DAMAGE_UP = 68
+const CHAR_DAMAGE_DOWN = 12
+/** Extra margin when a skill aura is drawn around the character */
+const CHAR_DAMAGE_AURA = 40
+/** Furniture and props: the sprite's own box plus a little, since sprites are drawn on integers */
+const FURNITURE_DAMAGE_MARGIN = 2
+/** Lamps also paint a light pool well beyond their sprite */
+const LAMP_DAMAGE_MARGIN = 40
+/** Vacuums draw a sprite, a trail and an overlay label */
+const VACUUM_DAMAGE_MARGIN = 32
+const DEFAULT_FULL_REDRAW_SEC = 2
+/** Merging two damage rects may not inflate the drawn area by more than this factor */
+const MERGE_MAX_WASTE = 1.25
+/** Above this many rects, merge more eagerly: each rect costs a clip edge and a readback */
+const MERGE_MAX_RECTS = 12
+const MERGE_GIVE_UP_WASTE = 8
+// The sun sweeps a full cycle in SUN_CYCLE_DURATION_SEC (300 s), so its angle, intensity and
+// colour change every single frame - and beams cover half the office, so any change means a full
+// redraw. Quantising the values the renderer uses makes the picture change in steps that are
+// invisible at this scale (0.01 rad is ~0.6 degrees) but let whole seconds of frames be identical.
+const SUN_ANGLE_STEP = 0.01
+const SUN_INTENSITY_STEP = 0.02
+const SUN_REACH_STEP = 0.05
+const WEATHER_SEVERITY_STEP = 0.05
+const quantise = (v: number, step: number) => Math.round(v / step) * step
 
 // Same as useExtensionMessages.projectColorFromFolder
 function projectColorFromFolder(folder: string): string {
@@ -132,11 +173,27 @@ interface PendingAgent {
 }
 
 export interface OverlayRect { x: number; y: number; w: number; h: number }
+export type DamageRect = OverlayRect
 
 export interface HeadlessOffice {
   handleRelayMessage(msg: Record<string, unknown>): void
   tick(dt: number): void
   render(ctx: CanvasRenderingContext2D): void
+   /**
+   * Render a frame and report which rectangles of it can differ from the previous one, in canvas
+   * pixels. Returns null when that cannot be narrowed down (first frame, layout or agent change,
+   * the sun stepping, the periodic full redraw) and an empty array when nothing changed at all.
+   *
+   * The scene itself is still drawn in full: clipping the draw to the damaged rectangles was
+   * tried and made it five times slower, because every draw call then tests against a multi-rect
+   * clip. The value is downstream - the caller converts and sends only these rectangles, which is
+   * where the per-frame megabyte of writes was.
+   *
+   * `extra` rectangles are reported as damaged too; the native renderer passes the areas its
+   * full-resolution nametag overlay painted last frame and this frame, so the scene underneath a
+   * tag that moved is converted again.
+   */
+  renderDamaged(ctx: CanvasRenderingContext2D, extra?: DamageRect[]): DamageRect[] | null
   /**
    * Draw the nametags and speech bubbles of the last rendered frame onto ctx at `scale` times
    * the frame's resolution (nametagOverlay mode only). Bubbles are drawn again here, on top of
@@ -396,6 +453,226 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     }
   }
 
+  // ── Damage tracking state ─────────────────────────────────────
+  // Everything the scene draws is either (a) a character, (b) a furniture instance (props and
+  // active-state sprite swaps included - OfficeState replaces the whole array when any of them
+  // changes), (c) a vacuum, (d) sunlight beams, (e) weather inside windows, or (f) the static
+  // background. Each frame we build the union of the boxes whose inputs changed, plus the boxes
+  // they occupied last frame, and clip the redraw to that.
+  const charSigs = new Map<number, string>()
+  const charBoxes = new Map<number, DamageRect>()
+  const vacuumSigs = new Map<string, string>()
+  const vacuumBoxes = new Map<string, DamageRect>()
+  let prevFurnitureBoxes = new Map<string, DamageRect>()
+  const prevSpriteByKey = new Map<string, SpriteData>()
+  let prevSunKey = ''
+  let lastFullRedrawAt = 0
+  let damageValid = false
+
+  const fullRedrawSec = opts.fullRedrawSec ?? DEFAULT_FULL_REDRAW_SEC
+
+  /** Sun and weather as the renderer uses them: stepped, so identical frames stay identical */
+  function steppedSun(): { angle: number; intensity: number; reach: number; color: [number, number, number]; weather: number } {
+    const { angle, intensity, reach, color } = getSunState()
+    return {
+      angle: quantise(angle, SUN_ANGLE_STEP),
+      intensity: quantise(intensity, SUN_INTENSITY_STEP),
+      reach: quantise(reach, SUN_REACH_STEP),
+      color: [Math.round(color[0]), Math.round(color[1]), Math.round(color[2])],
+      weather: quantise(getWeatherSeverity(), WEATHER_SEVERITY_STEP),
+    }
+  }
+
+  function charSignature(ch: Character): string {
+    // Anything that changes a character's pixels. bubbleTimer is included while a bubble is
+    // fading (its alpha changes every frame) but not once it is stable.
+    const fading = ch.bubbleType && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC ? ch.bubbleTimer.toFixed(3) : ''
+    return `${Math.round(ch.x * zoom)},${Math.round(ch.y * zoom)},${ch.state},${ch.dir},${ch.frame},${ch.bubbleType ?? ''},${ch.bubbleItemType ?? ''},${fading},${ch.heldItem ?? ''},${ch.matrixEffect ?? ''},${ch.matrixEffect ? ch.matrixEffectTimer.toFixed(3) : ''},${ch.activeSkill ? 'skill' : ''},${ch.nametag ?? ''}`
+  }
+
+  function charBox(ch: Character): DamageRect {
+    const m = ch.activeSkill ? CHAR_DAMAGE_AURA : 0
+    const cx = lastOffset.x + ch.x * zoom
+    const cy = lastOffset.y + ch.y * zoom
+    return {
+      x: cx - (CHAR_DAMAGE_LEFT + m) * zoom,
+      y: cy - (CHAR_DAMAGE_UP + m) * zoom,
+      w: (CHAR_DAMAGE_LEFT + CHAR_DAMAGE_RIGHT + 2 * m) * zoom,
+      h: (CHAR_DAMAGE_UP + CHAR_DAMAGE_DOWN + 2 * m) * zoom,
+    }
+  }
+
+  function furnitureBox(f: FurnitureInstance): DamageRect {
+    const w = Math.max(f.sprite[0]?.length ?? 0, f.footprintW * TILE_SIZE)
+    const h = f.sprite.length
+    const m = f.isLamp ? LAMP_DAMAGE_MARGIN : FURNITURE_DAMAGE_MARGIN
+    return {
+      x: lastOffset.x + f.x * zoom - m * zoom,
+      y: lastOffset.y + f.y * zoom - m * zoom,
+      w: (w + 2 * m) * zoom,
+      h: (h + 2 * m) * zoom,
+    }
+  }
+
+  /** Only the glass of a window changes every frame, not the whole frame sprite around it */
+  function glassBoxes(f: FurnitureInstance, out: DamageRect[]): void {
+    for (const sec of f.glassSections ?? []) {
+      addRect(out, {
+        x: lastOffset.x + (f.x + sec.x) * zoom - zoom,
+        y: lastOffset.y + (f.y + sec.y) * zoom - zoom,
+        w: (sec.w + 2) * zoom,
+        h: (sec.h + 2) * zoom,
+      })
+    }
+  }
+
+  /** Union of two rects (both already in canvas pixels) */
+  function addRect(list: DamageRect[], r: DamageRect): void {
+    const x = Math.max(0, Math.floor(r.x))
+    const y = Math.max(0, Math.floor(r.y))
+    const x2 = Math.min(width, Math.ceil(r.x + r.w))
+    const y2 = Math.min(height, Math.ceil(r.y + r.h))
+    if (x2 <= x || y2 <= y) return
+    list.push({ x, y, w: x2 - x, h: y2 - y })
+  }
+
+  /**
+   * Merge rects that overlap or nearly do. Two distant rects merge into a bounding box far larger
+   * than both, so a merge only happens when it costs little area; when there are too many rects
+   * for a cheap clip, the threshold is relaxed until the count fits.
+   */
+  function mergeRects(rects: DamageRect[], waste = MERGE_MAX_WASTE): DamageRect[] {
+    const out: DamageRect[] = []
+    for (const r of rects) {
+      let cur = r
+      let merged = true
+      while (merged) {
+        merged = false
+        for (let i = 0; i < out.length; i++) {
+          const o = out[i]
+          const ox2 = o.x + o.w, oy2 = o.y + o.h
+          const cx2 = cur.x + cur.w, cy2 = cur.y + cur.h
+          const x = Math.min(o.x, cur.x), y = Math.min(o.y, cur.y)
+          const w = Math.max(ox2, cx2) - x, h = Math.max(oy2, cy2) - y
+          const overlaps = cur.x <= ox2 && o.x <= cx2 && cur.y <= oy2 && o.y <= cy2
+          if (overlaps || w * h <= (o.w * o.h + cur.w * cur.h) * waste) {
+            cur = { x, y, w, h }
+            out.splice(i, 1)
+            merged = true
+            break
+          }
+        }
+      }
+      out.push(cur)
+    }
+    return out.length > MERGE_MAX_RECTS && waste < MERGE_GIVE_UP_WASTE ? mergeRects(out, waste * 2) : out
+  }
+
+  function collectDamage(extra?: DamageRect[]): DamageRect[] | null {
+    const rects: DamageRect[] = []
+    if (extra) for (const r of extra) addRect(rects, r)
+
+    // Characters: new box and old box for anything whose pixels can differ
+    const seen = new Set<number>()
+    for (const ch of os.getCharacters()) {
+      seen.add(ch.id)
+      const sig = charSignature(ch)
+      const box = charBox(ch)
+      if (charSigs.get(ch.id) !== sig) {
+        addRect(rects, box)
+        const old = charBoxes.get(ch.id)
+        if (old) addRect(rects, old)
+        charSigs.set(ch.id, sig)
+      }
+      charBoxes.set(ch.id, box)
+    }
+    for (const id of [...charSigs.keys()]) {
+      if (seen.has(id)) continue
+      const old = charBoxes.get(id)
+      if (old) addRect(rects, old)
+      charSigs.delete(id)
+      charBoxes.delete(id)
+    }
+
+    // Furniture and props. OfficeState replaces the whole array when items appear or change
+    // state, but the work/meeting/interaction cycle animations mutate the instance in place, so
+    // every instance is checked by the sprite it would draw, not by array identity.
+    const fBoxes = new Map<string, DamageRect>()
+    for (const f of os.furniture) {
+      const key = f.uid ?? `${f.col},${f.row},${f.zY}`
+      const box = furnitureBox(f)
+      fBoxes.set(key, box)
+      const sprite = f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
+      const before = prevFurnitureBoxes.get(key)
+      if (!before || prevSpriteByKey.get(key) !== sprite) {
+        addRect(rects, box)
+        if (before) addRect(rects, before)
+      }
+      prevSpriteByKey.set(key, sprite)
+    }
+    for (const [key, before] of prevFurnitureBoxes) {
+      if (!fBoxes.has(key)) { addRect(rects, before); prevSpriteByKey.delete(key) }
+    }
+    prevFurnitureBoxes = fBoxes
+
+    // Vacuums: sprite, trail and overlay all move with them
+    const vacSeen = new Set<string>()
+    for (const v of os.getVacuumRenderData()) {
+      const key = `${Math.round(v.zY)}:${v.x.toFixed(0)}:${v.y.toFixed(0)}`
+      vacSeen.add(key)
+      const box = {
+        x: lastOffset.x + v.x * zoom - VACUUM_DAMAGE_MARGIN * zoom,
+        y: lastOffset.y + v.y * zoom - VACUUM_DAMAGE_MARGIN * zoom,
+        w: (TILE_SIZE + 2 * VACUUM_DAMAGE_MARGIN) * zoom,
+        h: (TILE_SIZE + 2 * VACUUM_DAMAGE_MARGIN) * zoom,
+      }
+      addRect(rects, box)
+      vacuumBoxes.set(key, box)
+    }
+    for (const [key, box] of [...vacuumBoxes]) {
+      if (!vacSeen.has(key)) { addRect(rects, box); vacuumBoxes.delete(key); vacuumSigs.delete(key) }
+    }
+    // Trails and speech fade continuously while a vacuum is out
+    if (os.getVacuumTrails().length > 0 || os.getVacuumSpeechBubbles().length > 0) return null
+
+    // Sunlight beams sweep across large areas; when they step, redraw everything
+    if (flags.showSunlight) {
+      const sun = steppedSun()
+      const key = `${sun.angle}:${sun.intensity}:${sun.reach}:${sun.color.join(',')}:${sun.weather}`
+      if (key !== prevSunKey) {
+        prevSunKey = key
+        return null
+      }
+      // Windows are repainted every frame: the glass tint blends with the weather transition and
+      // the sun's colour on a finer scale than the steps above, and rain and snow animate inside
+      // the glass. They are a small part of the canvas, so this is cheap insurance.
+      for (const f of os.furniture) {
+        if (f.glassSections?.length) glassBoxes(f, rects)
+      }
+    }
+
+    return mergeRects(rects)
+  }
+
+  function renderDamaged(ctx: CanvasRenderingContext2D, extra?: DamageRect[]): DamageRect[] | null {
+    const now = Date.now()
+    const due = now - lastFullRedrawAt >= fullRedrawSec * 1000
+    let rects: DamageRect[] | null = null
+    if (damageValid && !due) {
+      rects = collectDamage(extra)
+    } else {
+      // Full redraw: refresh every signature so the next frame damages only real changes
+      collectDamage(extra)
+    }
+    render(ctx)
+    if (rects === null) {
+      lastFullRedrawAt = now
+      damageValid = true
+      return null
+    }
+    return rects
+  }
+
   function render(ctx: CanvasRenderingContext2D): void {
     ctx.imageSmoothingEnabled = false
     fitCamera()
@@ -411,11 +688,11 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     let sunBeamColor: [number, number, number] | undefined
     let sunIntensity: number | undefined
     if (flags.showSunlight) {
-      const { angle, intensity, reach, color } = getSunState()
+      const { angle, intensity, reach, color, weather } = steppedSun()
       sunBeamColor = color
       sunIntensity = intensity
       if (intensity > 0) {
-        const beamIntensity = intensity * (1 - getWeatherSeverity() * 0.85)
+        const beamIntensity = intensity * (1 - weather * 0.85)
         sunBeams = computeSunBeams(os.furniture, os.tileMap, angle, beamIntensity, reach)
       }
     }
@@ -441,6 +718,13 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       tileLayer,
     )
     lastOffset = { x: offsetX, y: offsetY }
+    if (opts.background) {
+      // Behind everything drawn above, and clipped with it when this is a damaged redraw
+      ctx.globalCompositeOperation = 'destination-over'
+      ctx.fillStyle = opts.background
+      ctx.fillRect(0, 0, width, height)
+      ctx.globalCompositeOperation = 'source-over'
+    }
   }
 
   function renderNametagOverlay(ctx: CanvasRenderingContext2D, scale: number): OverlayRect[] {
@@ -481,6 +765,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     tick,
     render,
     renderNametagOverlay,
+    renderDamaged,
     setFlags,
     getFlags: () => ({ ...flags }),
     isReady: () => layoutReady,

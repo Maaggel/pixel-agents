@@ -19,6 +19,25 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   `[0x01][FRAME_FULL]` only while an LZ4 client is connected. An unchanged picture is resent
   every 15 s so a restarted relay is never empty. `--chrome` installs the old puppeteer
   renderer (`frame-publisher.mjs`) instead; it still works and is the fallback.
+- **Damage tracking (since v1.10.0):** `renderDamaged()` in `entry.ts` reports the rectangles of
+  the frame that can differ from the previous one, and the publisher converts and sends only
+  those. Sources it tracks: every character (position, animation frame, direction, bubble, held
+  item, matrix effect, skill aura, name), every furniture instance *by the sprite it would draw*
+  (the work/meeting/interaction cycles mutate instances in place, so array identity is not
+  enough), props, vacuums, and window glass every frame (its tint blends with the weather
+  transition). Anything it cannot localise - a layout or agent change, the sun stepping, a vacuum
+  trail - returns null, meaning "assume everything". It also forces a full frame every
+  `fullRedrawSec` (2), which bounds any mistake to two seconds. `npm run test:dirty` checks the
+  invariant against the live office: every pixel that changes between frames must lie inside a
+  reported rectangle, compared in RGB565 because that is what the tablet is sent.
+  - The *drawing* is deliberately NOT clipped to those rectangles. That was tried: it made
+    rendering five times slower (3.7 ms -> 18.4 ms a frame), because every draw call then has to
+    test against a multi-rect clip. Reading each rectangle back separately was also slower than
+    one full read (every `getImageData` allocates and flushes Skia). The win is entirely in the
+    conversion: 6.5 ms -> 0.5 ms, and it was 14.8 ms under load, where it hurt most.
+  - The sun's angle, intensity, reach and colour are quantised into small steps. A cycle is 300 s,
+    so those values change every frame and the beams cover half the office; without stepping,
+    every frame would be a full redraw. The steps are invisible at this scale.
 - **Why it is cheap:** (1) the engine caches every sprite as a small canvas; in Skia a canvas
   source is a recorded picture replayed on every blit, so the shim snapshots each one into an
   immutable Image the first time it is drawn (6x cheaper blits). (2) The floor + wall base pass
@@ -32,8 +51,8 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   `nametagEmoji: true`. (4) Two RGB565 buffers alternate between drawing and encoding, no
   per-frame allocation except Skia's readback. (5) With no stream client on the relay
   (`/api/stream` clients = 0) the simulation ticks at 10 Hz and a frame is drawn every 2 s.
-- **Cost (2026-09-22, 14 agents, 15 fps):** ~8 ms CPU per frame in a warm loop = ~12% of one
-  thread, plus ~3 ms deflate on a worker; ~250 MB RSS. The Chrome renderer was ~1 core and
+- **Cost (2026-09-22, 14 agents, 10 fps):** 8.2 ms a frame (render 4.1, readback 2.1, convert
+  0.5), ~19% of one thread including deflate on a worker; ~250 MB RSS. The Chrome renderer was ~1 core and
   ~1.5 GB. Note the box's `schedutil` governor: a frame that costs 4 ms in a tight loop costs
   ~11 ms when the core wakes from idle for it, so `top` shows 40-60% for this process when the
   box is otherwise quiet and much less when the owner's sessions keep the clock up. `npm run

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.10.0
+
+- **Damage tracking in the native renderer**: each frame reports which rectangles can differ from the last one, and only those are converted to RGB565 and upscaled. That stage was writing a megabyte per frame and cost 6.5 ms on an idle box but 14.8 ms under load, because it thrashed the cache exactly when the owner's sessions needed it; it is now 0.5 ms. A frame costs 8.2 ms instead of 12.8, and the service uses 19% of one thread instead of 29% at 10 fps. Default frame rate is now 10 (was 20).
+- Clipping the *drawing* to the damaged rectangles was tried and reverted: it made rendering five times slower (3.7 ms -> 18.4 ms), because every draw call then tests against a multi-rect clip. The scene is still drawn in full; the win is downstream.
+- The headless renderer quantises the sun's angle, intensity and colour into small steps. It sweeps a full cycle in 300 s, so every frame differed slightly and nothing could ever be reused; the steps are invisible at this scale.
+- `renderer/test/dirty-rects.mjs` (`npm run test:dirty`) checks the invariant against live relay state: every pixel that changes between frames must lie inside a reported rectangle, compared in RGB565 because that is what the tablet is sent.
+
 ## v1.9.2
 
 - The renderer no longer competes with the owner's Claude sessions: the unit runs at `CPUSchedulingPolicy=idle` and is no longer pinned to CPUs 1,3. The pinning was a Chrome-era setting that forced the renderer onto one physical core *and its hyperthread*, so any session work landing there ran at ~60% speed; SCHED_IDLE makes anything else preempt it outright. Short-burst latency with the renderer running went from 2-3x the idle-box baseline to indistinguishable from it. The daemon unit is unpinned for the same reason (it keeps `Nice=5`).

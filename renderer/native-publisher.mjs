@@ -47,7 +47,7 @@ const cfg = {
   nametagFont: env.PIXEL_AGENTS_RENDERER_NAMETAG_FONT || file.nametagFont || '"FS Pixel Sans Unicode", "Noto Color Emoji"',
   /** Behind the office where there are no tiles (the browser capture gave black there too) */
   background: env.PIXEL_AGENTS_RENDERER_BACKGROUND || file.background || '#000000',
-  maxFps: Math.min(30, Number(env.PIXEL_AGENTS_RENDERER_FPS || file.maxFps || 20)),
+  maxFps: Math.min(30, Number(env.PIXEL_AGENTS_RENDERER_FPS || file.maxFps || 10)),
   /** zlib level for the deflate encoding (3 = fast, 6 = small); runs on the thread pool */
   deflateLevel: Number(env.PIXEL_AGENTS_RENDERER_DEFLATE_LEVEL || file.deflateLevel || 3),
   /** Resend an unchanged frame at least this often so a relay restart never leaves tablets blank */
@@ -57,6 +57,10 @@ const cfg = {
   idleFps: Number(env.PIXEL_AGENTS_RENDERER_IDLE_FPS || file.idleFps || 0.5),
   /** Simulation rate while idle: the engine caps dt at 0.1 s, so 10 Hz keeps the office in real time (cheap, no drawing) */
   idleSimHz: Number(env.PIXEL_AGENTS_RENDERER_IDLE_SIM_HZ || file.idleSimHz || 10),
+  /** Redraw the whole frame this often even when nothing is known to have changed (seconds) */
+  fullRedrawSec: Number(env.PIXEL_AGENTS_RENDERER_FULL_REDRAW_SEC || file.fullRedrawSec || 2),
+  /** Damage tracking: draw, read back and convert only what changed. false = every pixel, every frame */
+  dirtyRects: (env.PIXEL_AGENTS_RENDERER_DIRTY_RECTS || String(file.dirtyRects ?? 'true')) === 'true',
   /** Debug: draw one frame (after the relay's init arrived) as .png/.rgb565/.lz4/.deflate and exit */
   once: env.PIXEL_AGENTS_RENDERER_ONCE || null,
   /** Debug: seconds of simulation before the once-frame is taken (spawn effects take a moment) */
@@ -87,6 +91,8 @@ const office = createHeadlessOffice({
   nametagOverlay: useOverlay,
   nametagFont: { px: useOverlay ? cfg.nametagPx : cfg.nametagPx / cfg.upscale, family: cfg.nametagFont },
   nametagStripEmoji: !cfg.nametagEmoji,
+  background: cfg.background,
+  fullRedrawSec: cfg.fullRedrawSec,
 })
 const canvas = createCanvas(drawW, drawH)
 const ctx = useSnapshots(canvas.getContext('2d'))
@@ -144,59 +150,94 @@ let lastSentAt = 0
 let stats = { ticks: 0, drawn: 0, sent: 0, dropped: 0, bytes: 0, drawMs: 0, snapshots: 0, since: Date.now() }
 const rawSize = cfg.width * cfg.height * 2
 const pixelCount = cfg.width * cfg.height
-// Two RGB565 buffers: one is being encoded on the thread pool while the next frame is drawn
-// into the other, with no per-frame allocation. If encoding is still busy when the next frame
-// is ready, that frame is dropped rather than queued (the tablet skips frames anyway).
-const rgb565Buffers = [Buffer.allocUnsafe(rawSize), Buffer.allocUnsafe(rawSize)]
-let drawIndex = 0
+// The frame the tablet is looking at, kept between frames: a damaged frame rewrites only the
+// regions that changed, so this is the only complete copy of the picture. `encodeBuffer` is
+// handed to zlib on the thread pool, so it gets its own copy and this one can keep being updated.
+const rgb565 = Buffer.allocUnsafe(rawSize)
+const encodeBuffer = Buffer.allocUnsafe(rawSize)
+const frame16 = new Uint16Array(rgb565.buffer, rgb565.byteOffset, pixelCount)
 let encoding = false
+let prevOverlayRects = []
 
-const timing = { render: 0, readback: 0, rgb565: 0 }
+const timing = { render: 0, readback: 0, rgb565: 0, area: 0 }
+
+/**
+ * Convert one region of the scene canvas into the RGB565 frame, upscaled.
+ *
+ * `src` is the whole canvas read back once: reading each region separately was measured slower
+ * than one full read plus this, because every getImageData call allocates and flushes Skia.
+ */
+function convertRegion(src, x, y, w, h) {
+  const up = cfg.upscale
+  const W = cfg.width
+  for (let sy = 0; sy < h; sy++) {
+    const rowStart = (y + sy) * up * W + x * up
+    let di = rowStart
+    for (let sx = 0, si = (y + sy) * drawW + x; sx < w; sx++, si++) {
+      const p = src[si]
+      const v = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19)
+      for (let k = 0; k < up; k++) frame16[di++] = v
+    }
+    for (let r = 1; r < up; r++) frame16.copyWithin(rowStart + r * W, rowStart, rowStart + w * up)
+  }
+  timing.area += w * h
+}
+
 function drawFrame() {
   const t0 = performance.now()
-  office.render(ctx)
-  // The engine clears to transparent where there are no tiles; put the background behind it
-  ctx.globalCompositeOperation = 'destination-over'
-  ctx.fillStyle = cfg.background
-  ctx.fillRect(0, 0, drawW, drawH)
-  ctx.globalCompositeOperation = 'source-over'
-  const t1 = performance.now()
-  const rgba = canvas.data() // RGBA8, row-major, no padding (also where Skia rasterises the frame)
-  const t2 = performance.now()
-  const src = new Uint32Array(rgba.buffer, rgba.byteOffset, drawW * drawH) // little-endian: A B G R
-  const out = rgb565Buffers[drawIndex]
-  const dst = new Uint16Array(out.buffer, out.byteOffset, pixelCount)
-  const up = cfg.upscale
-  if (up === 1) {
-    for (let i = 0; i < pixelCount; i++) {
-      const p = src[i]
-      dst[i] = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19)
-    }
-  } else {
-    // Nearest-neighbour upscale: convert one source row into the first output row, then copy it
-    const W = cfg.width
-    for (let sy = 0, si = 0; sy < drawH; sy++) {
-      const rowStart = sy * up * W
-      for (let sx = 0, di = rowStart; sx < drawW; sx++, si++) {
-        const p = src[si]
-        const v = ((p & 0xF8) << 8) | ((p & 0xFC00) >> 5) | ((p & 0xF80000) >> 19)
-        for (let k = 0; k < up; k++) dst[di++] = v
-      }
-      for (let r = 1; r < up; r++) dst.copyWithin(rowStart + r * W, rowStart, rowStart + W)
-    }
+  // The nametag overlay is drawn first and at full resolution: its rectangles tell the scene pass
+  // what to repaint underneath, both where a tag is now and where it was last frame.
+  let overlayRects = []
+  if (overlayCtx) {
+    overlayCtx.clearRect(0, 0, cfg.width, cfg.height)
+    overlayRects = office.renderNametagOverlay(overlayCtx, cfg.upscale)
   }
-  if (overlayCtx) compositeNametags(dst)
-  const t3 = performance.now()
-  timing.render += t1 - t0; timing.readback += t2 - t1; timing.rgb565 += t3 - t2
+  const up = cfg.upscale
+  const extra = []
+  for (const list of [prevOverlayRects, overlayRects]) {
+    for (const r of list) extra.push({ x: r.x / up, y: r.y / up, w: r.w / up, h: r.h / up })
+  }
+
+  const rects = cfg.dirtyRects ? office.renderDamaged(ctx, extra) : (office.render(ctx), null)
+  const t1 = performance.now()
+  timing.render += t1 - t0
+
+  const unchanged = rects !== null && rects.length === 0 && overlayRects.length === 0 && stats.drawn > 0
+  if (!unchanged) {
+    const rgba = canvas.data() // RGBA8, row-major, no padding (also where Skia rasterises the frame)
+    const t2 = performance.now()
+    timing.readback += t2 - t1
+    const src = new Uint32Array(rgba.buffer, rgba.byteOffset, drawW * drawH) // little-endian: A B G R
+    if (rects === null) convertRegion(src, 0, 0, drawW, drawH)
+    else for (const r of rects) convertRegion(src, r.x, r.y, r.w, r.h)
+    timing.rgb565 += performance.now() - t2
+    if (overlayCtx) compositeNametags(overlayRects)
+  }
+  prevOverlayRects = overlayRects
+
   stats.drawn++
-  stats.drawMs += t3 - t0
-  return out
+  stats.drawMs += performance.now() - t0
+  // Nothing moved and no tag was painted: the frame is byte-for-byte the last one
+  return unchanged
+}
+
+/** Dedupe, then encode off the draw path. */
+function publishFrame(unchanged) {
+  const now = Date.now()
+  const keyframeDue = now - lastSentAt >= cfg.keyframeSec * 1000
+  if (unchanged && !keyframeDue) return
+  const hash = crc32(rgb565)
+  if (hash === lastSentHash && !keyframeDue) return
+  if (encoding) { stats.dropped++; return }
+  lastSentHash = hash; lastSentAt = now
+  encoding = true
+  rgb565.copy(encodeBuffer)
+  encodeAndSend(encodeBuffer).catch((e) => log(`encode failed: ${e.message}`)).finally(() => { encoding = false })
 }
 
 /** Draw the tags at full resolution and blend the painted rectangles over the RGB565 frame. */
-function compositeNametags(dst) {
-  overlayCtx.clearRect(0, 0, cfg.width, cfg.height)
-  const rects = office.renderNametagOverlay(overlayCtx, cfg.upscale)
+function compositeNametags(rects) {
+  const dst = frame16
   const W = cfg.width, H = cfg.height
   for (const r of rects) {
     const x0 = Math.max(0, r.x), y0 = Math.max(0, r.y)
@@ -219,18 +260,6 @@ function compositeNametags(dst) {
       }
     }
   }
-}
-
-/** Dedupe, then encode off the draw path. */
-function publishFrame(pixels) {
-  const hash = crc32(pixels)
-  const now = Date.now()
-  if (hash === lastSentHash && now - lastSentAt < cfg.keyframeSec * 1000) return
-  if (encoding) { stats.dropped++; return }
-  lastSentHash = hash; lastSentAt = now
-  encoding = true
-  drawIndex ^= 1
-  encodeAndSend(pixels).catch((e) => log(`encode failed: ${e.message}`)).finally(() => { encoding = false })
 }
 
 /** Which encodings anyone is actually consuming (from the relay's /api/stream); no client, no work. */
@@ -285,7 +314,7 @@ function scheduleLoop() {
         if (cfg.once) {
           if (!readyAt) readyAt = now
           if (now - readyAt < cfg.onceAfterSec * 1000) return
-          void encodeAndSend(Buffer.from(drawFrame())); clearInterval(loopTimer); return
+          drawFrame(); void encodeAndSend(Buffer.from(rgb565)); clearInterval(loopTimer); return
         }
         publishFrame(drawFrame())
       }
@@ -322,8 +351,8 @@ setInterval(pollClients, cfg.clientPollSec * 1000)
 void pollClients()
 setInterval(() => {
   const s = (Date.now() - stats.since) / 1000
-  const avg = stats.drawn ? `${(stats.drawMs / stats.drawn).toFixed(1)} ms each: render ${(timing.render / stats.drawn).toFixed(1)}, readback ${(timing.readback / stats.drawn).toFixed(1)}, rgb565 ${(timing.rgb565 / stats.drawn).toFixed(1)}` : '-'
-  timing.render = timing.readback = timing.rgb565 = 0
+  const avg = stats.drawn ? `${(stats.drawMs / stats.drawn).toFixed(1)} ms each: render ${(timing.render / stats.drawn).toFixed(1)}, readback ${(timing.readback / stats.drawn).toFixed(1)}, rgb565 ${(timing.rgb565 / stats.drawn).toFixed(1)}, ${(timing.area / stats.drawn / (drawW * drawH) * 100).toFixed(0)}% of the canvas` : '-'
+  timing.render = timing.readback = timing.rgb565 = timing.area = 0
   log(`${stats.ticks} ticks, ${stats.drawn} drawn (${avg}; ${snapshotsMade() - stats.snapshots} new sprite snapshots), ${stats.sent} frames sent, ${stats.dropped} dropped (${(stats.bytes / 1024).toFixed(0)} KB, ${(stats.bytes / s / 1024).toFixed(1)} KB/s) in ${s.toFixed(0)}s`)
   stats = { ticks: 0, drawn: 0, sent: 0, dropped: 0, bytes: 0, drawMs: 0, snapshots: snapshotsMade(), since: Date.now() }
 }, 60000)

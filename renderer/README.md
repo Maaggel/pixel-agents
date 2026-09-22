@@ -57,7 +57,7 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   (`CPUAffinity=1 3`) at `Nice=10`, the page is CPU-throttled 8x and captured at 0.5 fps whenever
   `/api/stream` reports no clients, the page only reads+converts pixels (raw RGB565 over a local
   binary WebSocket to Node), deflate runs on the thread pool at level 3, LZ4 only when someone asks
-  for it. Interference measured with a nice-0 benchmark: 2x slower before, 5-15% after.
+  for it. Interference measured with a nice-0 benchmark: 2x slower before, 5-15% after; 0-9% (mean ~4%, within noise) with the native renderer on 2026-09-22.
 - **Measured (2026-09-21):** real frames ~140-180 KB LZ4 / ~40-70 KB deflate. Delivered ~19.5 fps
   at a 30 cap on the thinkstation (the in-page capture is the floor); deflate at 30 = ~980 KB/s,
   at 15 = ~680 KB/s, at 5 = ~235 KB/s, `comp=deflate&fps=2` = ~63 KB/s. HTML overlays are not part

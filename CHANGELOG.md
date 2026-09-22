@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.9.1
+
+- Fix: every relay restart (each deploy) made all viewers despawn and respawn every agent, because the relay broadcast each partial state while the daemon's publishers reconnected one by one. The relay now holds agent state for 20 s after starting (viewers keep what they have) and then sends one full sync.
+- Interference re-measured with the native renderer: a normal-priority CPU job runs 0-9% slower (mean ~4%, inside the noise of the other sessions) while the tablet watches; was 2x with Chrome.
+
 ## v1.9.0
 
 - **Native renderer for the tablet stream** - the office is now rendered in Node with Skia (`@napi-rs/canvas`), no browser. The same engine TypeScript the web viewer runs is bundled for Node (`webview-ui/src/headless/entry.ts` -> `renderer/native/engine.mjs`) and fed straight from the relay's viewer WebSocket. Sprites are blitted as immutable images (6x cheaper than Skia's picture replay of a canvas source), the floor is a cached layer, the scene is drawn at half resolution and doubled (identical pixel art), nameplates and bubbles are drawn on a full-resolution overlay with the pixel font at its native 16 px (crisp; emoji prefixes stripped, `nametagEmoji: true` keeps them). ~8 ms CPU per frame at 15 fps against ~1 core and 1.5 GB for headless Chrome. `renderer/install.sh` installs it by default; `--chrome` is the fallback.

@@ -1335,6 +1335,17 @@ const server = createServer((req, res) => {
 
 // ── WebSocket Server ────────────────────────────────────────
 const WS_PING_INTERVAL_MS = 25000 // Keep connections alive through proxies
+// After a restart the publishers (daemon backends, one per project) reconnect one by one over
+// several seconds. Broadcasting every partial state made viewers despawn and respawn every
+// agent on each deploy. So for the first SETTLE_MS viewers get no agent state at all (they keep
+// what they had), then one full sync.
+const STARTED_AT = Date.now()
+const SETTLE_MS = 20000
+const settling = () => Date.now() - STARTED_AT < SETTLE_MS
+setTimeout(() => {
+  if (viewers.size > 0) broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
+  console.log(`[Relay] Settled: ${publisherStates.size} publisher window(s), ${viewers.size} viewer(s) synced`)
+}, SETTLE_MS)
 const wss = new WebSocketServer({ server, path: '/ws' })
 
 // Ping all clients periodically to keep connections alive through reverse proxies
@@ -1387,8 +1398,8 @@ wss.on('connection', (ws, req) => {
           const windowId = msg.state.windowId || 'unknown'
           publisherWindowId = windowId
           publisherStates.set(windowId, msg.state)
-          // Broadcast updated state to all viewers
-          broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
+          // Broadcast updated state to all viewers (held back while settling after a restart)
+          if (!settling()) broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
         }
 
         if (msg.type === 'layout' && msg.layout) {
@@ -1412,7 +1423,7 @@ wss.on('connection', (ws, req) => {
       if (publisherWindowId) {
         publisherStates.delete(publisherWindowId)
         // Notify viewers that agents from this window are gone
-        broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
+        if (!settling()) broadcastToViewers({ type: 'sync', windows: getAllWindowStates() })
       }
       console.log(`[Relay] Publisher disconnected (code=${code} reason="${reason}") (total: ${publishers.size})`)
     })
@@ -1434,7 +1445,8 @@ wss.on('connection', (ws, req) => {
       walls: cachedWalls,
       furniture: cachedFurniture,
       layout: lastLayout,
-      windows: getAllWindowStates(),
+      // An empty list means "no state yet": the bridge keeps the agents it already has
+      windows: settling() ? [] : getAllWindowStates(),
       kioskOptions,
     }
 

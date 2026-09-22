@@ -37,9 +37,15 @@ WorkingDirectory=$DIR
 ExecStart=$NODE_BIN $DIR/$SCRIPT
 Restart=always
 RestartSec=10
-Nice=10
-# One physical core's hyperthread pair (i3-4150T: cores 0+2 and 1+3); the other core stays free for the owner's sessions
-CPUAffinity=1 3
+# The owner's Claude sessions share this box and must not wait for frames. SCHED_IDLE means the
+# renderer only ever gets cycles no other process wants: anything else preempts it immediately,
+# and the frame loop drops frames instead of queueing them, so the tablet degrades rather than
+# the sessions. Nice is ignored under this policy; CPUWeight deprioritises the cgroup too.
+CPUSchedulingPolicy=idle
+CPUWeight=1
+# Deliberately NOT pinned: pinning to one core's hyperthread pair (the Chrome-era CPUAffinity=1 3)
+# forced a shared physical core whenever the owner's work landed there. Unpinned, the scheduler
+# puts them on different cores.
 # Config: ~/.pixel-agents/renderer.json (viewerUrl, relayWs, token, width, height, maxFps, upscale, nametag*, keyframeSec)
 
 [Install]

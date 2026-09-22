@@ -143,8 +143,8 @@ ExecStart=$NODE_BIN $INSTALL_DIR/$BUNDLE
 Restart=always
 RestartSec=5
 Nice=5
-# One physical core's hyperthread pair (i3-4150T: cores 0+2 and 1+3); the other core stays free for the owner's sessions
-CPUAffinity=1 3
+# Deliberately NOT pinned: pinning to one core's hyperthread pair made the owner's work share a
+# physical core with this one whenever it landed there. Unpinned, the scheduler separates them.
 # Config lives in $CONFIG_FILE; env vars here override it.
 #Environment=PIXEL_AGENTS_RELAY_URL=wss://host/pixelagents/ws
 #Environment=PIXEL_AGENTS_RELAY_TOKEN=secret

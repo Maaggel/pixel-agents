@@ -8,6 +8,7 @@
     "start": "node native-publisher.mjs",
     "start:chrome": "node frame-publisher.mjs",
     "bench": "node test/bench-native.mjs",
+    "bench:latency": "node test/latency-bench.mjs",
     "test": "node test/lz4-fixtures.mjs && node test/fake-tablet.mjs"
   },
   "dependencies": {

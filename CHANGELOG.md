@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.9.2
+
+- The renderer no longer competes with the owner's Claude sessions: the unit runs at `CPUSchedulingPolicy=idle` and is no longer pinned to CPUs 1,3. The pinning was a Chrome-era setting that forced the renderer onto one physical core *and its hyperthread*, so any session work landing there ran at ~60% speed; SCHED_IDLE makes anything else preempt it outright. Short-burst latency with the renderer running went from 2-3x the idle-box baseline to indistinguishable from it. The daemon unit is unpinned for the same reason (it keeps `Nice=5`).
+- `renderer/test/latency-bench.mjs` (`npm run bench:latency`): measures what a background service costs interactive work, which the old throughput benchmark could not see (it reported 4% where bursts were 2-3x slower).
+
 ## v1.9.1
 
 - Fix: every relay restart (each deploy) made all viewers despawn and respawn every agent, because the relay broadcast each partial state while the daemon's publishers reconnected one by one. The relay now holds agent state for 20 s after starting (viewers keep what they have) and then sends one full sync.

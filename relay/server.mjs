@@ -1389,8 +1389,17 @@ wss.on('connection', (ws, req) => {
         const msg = JSON.parse(raw.toString())
 
         if (msg.type === 'frameConfig' && msg.width && msg.height) {
+          const prev = streamConfig
           streamConfig = { width: msg.width | 0, height: msg.height | 0, maxFps: (msg.maxFps | 0) || STREAM_DEFAULT.maxFps }
           console.log(`[Relay] Renderer config ${streamConfig.width}x${streamConfig.height} @${streamConfig.maxFps}fps`)
+          // A client is told the frame size once, in the CONFIG that opens its stream, and sizes
+          // its bitmap from it. If the renderer changes size, every connected client is holding
+          // the wrong one, so end their streams and let them reconnect and read the new CONFIG.
+          if (prev.width !== streamConfig.width || prev.height !== streamConfig.height) {
+            const stale = [...streamClients]
+            for (const c of stale) { streamClients.delete(c); try { c.res.end() } catch { /* already gone */ } }
+            if (stale.length > 0) console.log(`[Relay] Frame size changed ${prev.width}x${prev.height} -> ${streamConfig.width}x${streamConfig.height}, ended ${stale.length} stream client(s) to re-send CONFIG`)
+          }
           return
         }
 

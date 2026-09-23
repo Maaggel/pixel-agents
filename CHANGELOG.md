@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.11.0
+
+- **The tablet stream is sent at the office's own resolution (512x300) instead of being upscaled to 1024x600 first.** The viewer app already scales frames to fit with filtering off, which is the same nearest-neighbour doubling the renderer was doing, so the picture is pixel-identical - but the frame is a quarter of the bytes: less conversion, a quarter of the compression work and of the network (about 600 KB/s -> 150 KB/s), and a quarter of the tablet's decode. Set with `width`/`height`/`zoom`/`upscale` in `~/.pixel-agents/renderer.json`.
+- Relay: when the renderer's frame size changes, connected stream clients are ended so they reconnect and read the new CONFIG. A client is told the size once, when its stream opens, and sizes its bitmap from it, so without this it would decode the new frames into the old bitmap.
+- Note: half resolution and crisp nameplates are mutually exclusive. Nameplate text cannot survive being doubled, which is what the full-resolution overlay existed for; with the stream at 512x300 there is no overlay, so turning `showNametags` back on for kiosk displays means blocky labels. Raise `width`/`height`/`upscale` back to 1024x600/2 if you want them.
+
 ## v1.10.2
 
 - **The renderer no longer paints a full-resolution overlay when nameplates are off.** It was clearing a 1024x600 canvas and redrawing every speech bubble on it each frame - bubbles the scene had already drawn - which a profile put at 47% of the renderer's entire CPU. With nameplates off (the kiosk default now), a frame costs 2.6 ms of rendering instead of 5.6, and 13.9 ms of CPU instead of 22.

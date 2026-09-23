@@ -369,6 +369,9 @@ function checkFrameCost(drawn) {
   cpuAtLastReport = process.cpuUsage()
   if (!drawn) return null
   const perFrame = (used.user + used.system) / 1000 / drawn
+  // Idle minutes are not comparable: the office is still simulated at full rate while only a
+  // couple of keyframes are drawn, so the cost per frame is mostly simulation and would trip this.
+  if (!watched || drawn < cfg.maxFps * 20) return perFrame
   if (baselineCpuPerFrame === 0) { baselineCpuPerFrame = perFrame; return perFrame }
   baselineCpuPerFrame = Math.min(baselineCpuPerFrame, perFrame) // the best minute seen is "healthy"
   const limit = Math.max(cfg.watchdogFloorMs, baselineCpuPerFrame * cfg.watchdogFactor)

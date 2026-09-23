@@ -65,6 +65,7 @@ export const IdleActionType = {
   EATING: 'eating',
   FETCH_ITEM: 'fetch_item',
   TIDY_UP: 'tidy_up',
+  WATER_PLANTS: 'water_plants',
 } as const
 export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
 
@@ -277,7 +278,11 @@ export interface FurnitureCatalogEntry {
   /** Where it is disposed of, same syntax (e.g. `SINK`, `BIN`, `*BOOKSHELF*`) */
   utensilDisposal?: string
   /** 'drink'/'item': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
-  utensilUse?: 'drink' | 'food' | 'item'
+  utensilUse?: 'drink' | 'food' | 'item' | 'water'
+  /** What a 'water' utensil is used on (asset-name spec, e.g. '*PLANT*') */
+  utensilTargets?: string
+  /** How many targets one fill covers before going back to the source */
+  utensilUses?: number
   /** Asset name this utensil turns into once consumed (food → empty plate). The result should itself be a utensil with a disposal. */
   utensilEmpty?: string
   /** Side characters stand on to use/visit this item. Default: 'front' (below), or the rotation `orientation`. */
@@ -453,6 +458,8 @@ export interface Character {
   itemTargetUid: string | null
   /** The uid of the origin furniture being used to fetch an item, so others queue rather than overlap */
   fetchOriginUid: string | null
+  /** Plants this canful of water still stretches to; 0 means a trip back to the tap */
+  wateringLeft: number
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
   /** Project name (used for per-project look memory) */

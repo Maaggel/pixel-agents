@@ -1,5 +1,5 @@
 import { CharacterState, Direction, IdleActionType } from '../types.js'
-import type { Character, PlacedFurniture, PlacedProp, Seat, TileType as TileTypeVal } from '../types.js'
+import type { Character, PlacedFurniture, PlacedProp, Seat, TileType as TileTypeVal, FloorColor } from '../types.js'
 import { directionBetween, isSittingState } from './characters.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import {
@@ -35,6 +35,8 @@ import {
   OFFICE_MEAL_HOURS,
   OFFICE_DRINK_HOURS,
   NEAREST_PATH_CANDIDATES,
+  WATER_PLANT_SEC,
+  WATERING_CAN_DEFAULT_USES,
 } from '../../constants.js'
 import { getCatalogEntry, getCatalogTypesMatching, getUtensilEntries } from '../layout/furnitureCatalog.js'
 import { getOfficeHour } from './sunlight.js'
@@ -64,6 +66,7 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
   { type: IdleActionType.FETCH_ITEM, weight: 25, needsDynamicItems: true },
   { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
+  { type: IdleActionType.WATER_PLANTS, weight: 12, needsDynamicItems: true },
 ]
 
 /**
@@ -114,9 +117,10 @@ function findFetchableUtensils(ctx: IdleActionContext, want: 'food' | 'break'): 
   for (const entry of getUtensilEntries()) {
     if (!entry.utensilOrigin) continue
     const use = entry.utensilUse ?? 'drink'
+    if (use === 'water') continue // the watering can has its own errand
     if (want === 'food' ? use !== 'food' : use === 'food') continue
     const origins = findFurnitureByAssetName(ctx, entry.utensilOrigin)
-    if (origins.length > 0) out.push({ type: entry.type, label: entry.label, use, origins })
+    if (origins.length > 0) out.push({ type: entry.type, label: entry.label, use: use as FetchableUtensil['use'], origins })
   }
   return out
 }
@@ -172,16 +176,54 @@ function isPropInUse(prop: PlacedProp, ctx: IdleActionContext): boolean {
 }
 
 /** Props old enough to be tidied, not in use, and not currently targeted by someone else */
-function findStaleProps(ctx: IdleActionContext): PlacedProp[] {
+/** The watering can, if the layout has one along with somewhere to fill it */
+function findWateringCan(ctx: IdleActionContext): FetchableUtensil | null {
+  for (const entry of getUtensilEntries()) {
+    if (entry.utensilUse !== 'water' || !entry.utensilOrigin) continue
+    const origins = findFurnitureByAssetName(ctx, entry.utensilOrigin)
+    if (origins.length > 0) return { type: entry.type, label: entry.label, use: 'drink', origins }
+  }
+  return null
+}
+
+/** Plants that have not had a drink lately, nearest first */
+function findThirstyPlants(ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
+  const can = getCatalogEntry(findWateringCan(ctx)?.type ?? '')
+  if (!can?.utensilTargets) return []
+  const targeted = new Set<string>()
+  for (const other of ctx.characters.values()) if (other.itemTargetUid) targeted.add(other.itemTargetUid)
+  const dry = findFurnitureByAssetName(ctx, can.utensilTargets).filter((f) => {
+    if (!f.uid || targeted.has(f.uid) || !ctx.isPlantThirsty(f.uid)) return false
+    // one on a shelf or boxed in by desks cannot be reached, so it never counts as thirsty
+    const fp = ctx.getFurnitureFootprint(f.type)
+    return !!findAdjacentWalkableTile(f, fp?.w ?? 1, fp?.h ?? 1, ctx.tileMap, ctx.blockedTiles, useSideFor(f.type))
+  })
+  return nearestFirst(dry, ch, ctx)
+}
+
+/** Something lying about that someone could carry to the sink: a left mug, or one the owner placed */
+interface TidyTarget { uid: string; kind: string; col: number; row: number }
+
+function findStaleProps(ctx: IdleActionContext): TidyTarget[] {
   const now = performance.now()
   const targeted = new Set<string>()
   for (const other of ctx.characters.values()) {
     if (other.itemTargetUid) targeted.add(other.itemTargetUid)
   }
-  return ctx.props.filter(p => !targeted.has(p.uid)
-    && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC
-    && !!getCatalogEntry(p.kind)?.utensilDisposal
-    && !isPropInUse(p, ctx))
+  const out: TidyTarget[] = ctx.props
+    .filter(p => !targeted.has(p.uid)
+      && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC
+      && !!getCatalogEntry(p.kind)?.utensilDisposal
+      && !isPropInUse(p, ctx))
+    .map(p => ({ uid: p.uid, kind: p.kind, col: p.col, row: p.row }))
+  // Cups, plates and glasses from the layout count too: they are exactly the things someone would
+  // clear away, and hiding one only lasts until the layout is loaded again.
+  for (const item of ctx.tidyableFurniture) {
+    if (!item.uid || targeted.has(item.uid)) continue
+    if (isPropInUse({ col: item.col, row: item.row } as PlacedProp, ctx)) continue
+    out.push({ uid: item.uid, kind: item.type, col: item.col, row: item.row })
+  }
+  return out
 }
 
 /** Is any stale, unused prop within TIDY_NEAR_DISTANCE_TILES of the character? */
@@ -476,6 +518,14 @@ export interface IdleActionContext {
   props: PlacedProp[]
   /** Remove a prop (picked up). Returns it, or null if it was already gone. */
   takeProp: (uid: string) => PlacedProp | null
+  /** Has this plant gone long enough without water to be worth a trip? */
+  isPlantThirsty: (uid: string) => boolean
+  /** Remember that a plant has just been watered */
+  markPlantWatered: (uid: string) => void
+  /** Cups and plates placed in the editor, which agents may also clear away */
+  tidyableFurniture: PlacedFurniture[]
+  /** Clear one of those away (hidden until the layout reloads), returning what was carried off */
+  takeLayoutItem: (uid: string) => { kind: string; color: FloorColor | null } | null
   /** Food props next to the character turn into their "empty" variant (finished eating) */
   finishFoodNear: (ch: Character) => void
 }
@@ -503,6 +553,9 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsDynamicItems) {
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
       if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'break').length === 0)) continue
+      if (entry.type === IdleActionType.WATER_PLANTS) {
+        if (!findWateringCan(ctx) || findThirstyPlants(ch, ctx).length === 0) continue
+      }
       if (entry.type === IdleActionType.TIDY_UP) {
         if (findStaleProps(ctx).length === 0) continue
         // Walking past a stray mug/plate: much more likely to grab it
@@ -771,6 +824,17 @@ export function initIdleAction(
       return true
     }
 
+    case IdleActionType.WATER_PLANTS: {
+      // Fetch the can from the tap, then do the rounds of the thirsty plants
+      const can = findWateringCan(ctx)
+      if (!can || !startFetch(ch, can, ctx)) return false
+      ch.conversationPhase = 'leaving' // the filling leg
+      ch.wateringLeft = 0
+      showItemBubble(ch, can.type)
+      logIdle(ch, 'going to fill the watering can')
+      return true
+    }
+
     default:
       return false
   }
@@ -800,6 +864,8 @@ export function updateIdleAction(
       return updateFetchItem(ch, dt, ctx)
     case IdleActionType.TIDY_UP:
       return updateTidyUp(ch, dt, ctx)
+    case IdleActionType.WATER_PLANTS:
+      return updateWaterPlants(ch, dt, ctx)
     default:
       return false
   }
@@ -831,6 +897,92 @@ function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boo
 }
 
 /**
+ * Watering the plants: fill the can at the tap, walk the thirsty plants in turn, and go back for
+ * more water when the can runs dry. When nothing is left to water the can goes back where it came
+ * from rather than being left on a desk.
+ */
+function updateWaterPlants(ch: Character, dt: number, ctx: IdleActionContext): boolean {
+  if (!ctx.dynamicItems) { ch.heldItem = null; ch.itemTargetUid = null; ch.fetchOriginUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
+
+  // At the tap: wait your turn, fill up, then head for the nearest thirsty plant
+  if (ch.conversationPhase === 'leaving') {
+    if (!arrivedAtFurniture(ch)) return true
+    if (someoneIsUsing(ch, ctx)) return true
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer > 0) return true
+    const canType = ch.itemTargetUid ?? ch.heldItem
+    ch.heldItem = canType
+    ch.itemTargetUid = null
+    ch.fetchOriginUid = null // filled; the tap is free again
+    ch.wateringLeft = getCatalogEntry(canType ?? '')?.utensilUses ?? WATERING_CAN_DEFAULT_USES
+    if (startWateringNextPlant(ch, ctx)) return true
+    return startReturningCan(ch, ctx) // nothing to water after all
+  }
+
+  // Walking to a plant, then standing over it
+  if (ch.conversationPhase === 'approaching') {
+    if (!arrivedAtFurniture(ch)) return true
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer > 0) return true
+    if (ch.itemTargetUid) {
+      ctx.markPlantWatered(ch.itemTargetUid)
+      logIdle(ch, 'watered a plant')
+      ch.itemTargetUid = null
+      ch.wateringLeft = Math.max(0, ch.wateringLeft - 1)
+    }
+    if (ch.wateringLeft > 0 && startWateringNextPlant(ch, ctx)) return true
+    return startReturningCan(ch, ctx) // out of water, or out of plants
+  }
+
+  // Back at the tap with the can
+  if (ch.conversationPhase === 'talking') {
+    if (!arrivedAtFurniture(ch)) return true
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer > 0) return true
+    if (findThirstyPlants(ch, ctx).length > 0) {
+      ch.wateringLeft = getCatalogEntry(ch.heldItem ?? '')?.utensilUses ?? WATERING_CAN_DEFAULT_USES
+      logIdle(ch, 'refilling the watering can')
+      if (startWateringNextPlant(ch, ctx)) return true
+    }
+    ch.heldItem = null // the can goes back where it lives
+    ch.fetchOriginUid = null
+    clearItemBubble(ch)
+    logIdle(ch, 'put the watering can back')
+    clearIdleAction(ch)
+    return false
+  }
+  return false
+}
+
+/** Head for the nearest plant that wants water; false when there is none to walk to */
+function startWateringNextPlant(ch: Character, ctx: IdleActionContext): boolean {
+  for (const plant of findThirstyPlants(ch, ctx)) {
+    if (!walkToFurniture(ch, plant, ctx)) continue
+    ch.itemTargetUid = plant.uid ?? null
+    ch.conversationPhase = 'approaching'
+    ch.idleActionTimer = WATER_PLANT_SEC
+    return true
+  }
+  return false
+}
+
+/** Carry the can back to where it was filled */
+function startReturningCan(ch: Character, ctx: IdleActionContext): boolean {
+  const can = findWateringCan(ctx)
+  for (const origin of can ? nearestFirst(can.origins, ch, ctx) : []) {
+    if (!walkToFurniture(ch, origin, ctx)) continue
+    ch.fetchOriginUid = origin.uid ?? null
+    ch.conversationPhase = 'talking'
+    ch.idleActionTimer = ITEM_DISPOSE_SEC
+    return true
+  }
+  ch.heldItem = null // nowhere to put it back, so do not carry it round the office forever
+  clearItemBubble(ch)
+  clearIdleAction(ch)
+  return false
+}
+
+/**
  * Someone else is at this machine right now, rather than merely heading for it.
  *
  * "At it" means still holding the claim: a fetcher waiting for their drink, or someone at the
@@ -853,11 +1005,13 @@ function updateTidyUp(ch: Character, dt: number, ctx: IdleActionContext): boolea
   if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
   if (ch.conversationPhase === 'approaching') {
     if (!arrivedAtFurniture(ch)) return true
-    const prop = ch.itemTargetUid ? ctx.takeProp(ch.itemTargetUid) : null
+    const uid = ch.itemTargetUid
+    const taken = uid ? (ctx.takeProp(uid) ?? ctx.takeLayoutItem(uid)) : null
     ch.itemTargetUid = null
-    if (!prop) { clearItemBubble(ch); clearIdleAction(ch); return false } // someone else took it
+    if (!taken) { clearItemBubble(ch); clearIdleAction(ch); return false } // someone else took it
+    const prop = { kind: taken.kind, color: taken.color ?? null }
     ch.heldItem = prop.kind
-    ch.itemColor = prop.color ?? null
+    ch.itemColor = prop.color
     // Carry it to the nearest reachable disposal furniture (from the utensil's catalog entry)
     for (const target of findDisposalFor(prop.kind, ch, ctx)) {
       if (walkToFurniture(ch, target, ctx)) {

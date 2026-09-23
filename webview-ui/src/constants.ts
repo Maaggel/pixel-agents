@@ -364,6 +364,12 @@ export const EAT_MAX_DURATION_SEC = 35.0
 export const ITEM_FETCH_SEC = 2.5
 /** Seconds standing at the disposal furniture (sink, bin...) to drop an item off */
 export const ITEM_DISPOSE_SEC = 1.0
+/** Standing over a plant with the can */
+export const WATER_PLANT_SEC = 2.0
+/** A plant is worth watering again this long after its last drink (seconds) */
+export const PLANT_DRY_AFTER_SEC = 600
+/** Plants one canful stretches to before a trip back to the tap, if the can says nothing else */
+export const WATERING_CAN_DEFAULT_USES = 3
 /** A prop must lie around at least this long before someone tidies it away */
 export const PROP_MIN_AGE_SEC = 90
 /** Tidy-up is much more likely when a stale, unused prop lies within this many tiles (Manhattan) of the agent */

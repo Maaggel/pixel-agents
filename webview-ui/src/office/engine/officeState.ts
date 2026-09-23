@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -151,6 +151,7 @@ export class OfficeState {
    *  @param shift Optional pixel shift to apply when grid expands left/up */
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
     this.layout = layout
+    this.clearedLayoutUids.clear() // a fresh layout brings the cups and plates back
     this.cachedMeetingRooms = null
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
@@ -321,6 +322,13 @@ export class OfficeState {
       dynamicItems: this.dynamicItemsEnabled,
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
+      isPlantThirsty: (uid: string) => {
+        const last = this.plantWateredAt.get(uid)
+        return last === undefined || (performance.now() - last) / 1000 >= PLANT_DRY_AFTER_SEC
+      },
+      markPlantWatered: (uid: string) => { this.plantWateredAt.set(uid, performance.now()) },
+      tidyableFurniture: this.tidyableFurniture(),
+      takeLayoutItem: (uid: string) => this.takeLayoutItem(uid),
       finishFoodNear: (ch: Character) => this.finishFoodNear(ch),
       onIdleEvent: (type: string, agentIds: number[]) => {
         this.onIdleEvent?.({ type: type as IdleEventType, agentIds })
@@ -1494,6 +1502,41 @@ export class OfficeState {
     return prop
   }
 
+  /**
+   * Cups, plates and glasses placed in the editor that agents have cleared away.
+   *
+   * They are only hidden, never removed from the layout: the office is not allowed to edit what
+   * the owner drew, so reloading the layout brings them all back. Books and paper are left alone
+   * because they are decoration rather than something someone would carry to the sink.
+   */
+  private clearedLayoutUids = new Set<string>()
+
+  /** When each plant was last watered, so nobody waters the same one twice in a row */
+  private plantWateredAt = new Map<string, number>()
+
+  /** Layout-placed utensils that could be cleared away: anything drinkable or edible, with a home to go to */
+  tidyableFurniture(): PlacedFurniture[] {
+    const out: PlacedFurniture[] = []
+    for (const item of this.layout.furniture) {
+      if (!item.uid || this.clearedLayoutUids.has(item.uid)) continue
+      const entry = getCatalogEntry(item.type)
+      if (!entry?.utensil || !entry.utensilDisposal) continue
+      // books and paper are decoration; the watering can is equipment, not litter
+      if (entry.utensilUse === 'item' || entry.utensilUse === 'water') continue
+      out.push(item)
+    }
+    return out
+  }
+
+  /** Clear a layout-placed cup or plate away; it stays gone until the layout is reloaded. */
+  takeLayoutItem(uid: string): { kind: string; color: FloorColor | null } | null {
+    const item = this.layout.furniture.find((f) => f.uid === uid)
+    if (!item || this.clearedLayoutUids.has(uid)) return null
+    this.clearedLayoutUids.add(uid)
+    this.rebuildFurnitureInstances()
+    return { kind: item.type, color: item.color ?? null }
+  }
+
   takeProp(uid: string): PlacedProp | null {
     const prop = this.props.get(uid)
     if (!prop) return null
@@ -1709,13 +1752,17 @@ export class OfficeState {
     const anyLampOn = this.lampsOn || this.lampIndividualOn.size > 0
 
     const propItems = this.propsAsFurniture()
+    // Anything an agent has carried off to the sink is left out until the layout is reloaded
+    const placed = this.clearedLayoutUids.size === 0
+      ? this.layout.furniture
+      : this.layout.furniture.filter((f) => !f.uid || !this.clearedLayoutUids.has(f.uid))
     if (autoOnTiles.size === 0 && !anyLampOn) {
-      this.furniture = layoutToFurnitureInstances(propItems.length ? [...this.layout.furniture, ...propItems] : this.layout.furniture, this.layout)
+      this.furniture = layoutToFurnitureInstances(propItems.length ? [...placed, ...propItems] : placed, this.layout)
       return
     }
 
     // Build modified furniture list with auto-state applied
-    const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
+    const modifiedFurniture: PlacedFurniture[] = placed.map((item) => {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
 

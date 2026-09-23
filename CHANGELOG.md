@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.14.0
+
+- **Someone waters the plants.** An agent fetches the watering can from a sink or water cooler, does the rounds of the plants that have not had a drink lately, and goes back for more water after a few of them - then puts the can away. Driven by catalog data like the other utensils: a new `utensilUse: "water"` with `utensilTargets` (what it is used on) and `utensilUses` (plants per fill). Plants on shelves or boxed in by desks are not counted, since nobody can stand next to them.
+- **Cups and plates you placed yourself get cleared away too.** Anything drinkable or edible from the layout is fair game for tidying; books and paper are left alone as decoration, and so is the watering can. They are only hidden, never removed from your layout, so reloading brings them all back.
+- New sprite: `renderer/tools/make-watering-can.mjs` draws the can in the same style as the mug.
+
 ## v1.13.0
 
 - **The office keeps office hours.** Meals peak around noon and drinks in the first hours of the day, both thin out overnight, and everything still happens at its normal rate in between (`OFFICE_MEAL_HOURS`, `OFFICE_DRINK_HOURS`). Measured over 40 office days: 12 meals in the lunch hours against 1 overnight.

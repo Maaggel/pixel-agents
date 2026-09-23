@@ -34,6 +34,8 @@ export interface LoadedAssetData {
     utensilOrigin?: string
     utensilDisposal?: string
     utensilUse?: string
+    utensilTargets?: string
+    utensilUses?: number
     utensilEmpty?: string
     useSide?: string
     surface?: boolean
@@ -217,7 +219,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.interactable ? { interactable: true } : {}),
       ...(asset.surface || asset.isDesk ? { isSurface: true } : {}),
       ...(asset.useSide ? { useSide: asset.useSide as 'front' | 'back' | 'left' | 'right' } : {}),
-      ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal, utensilUse: asset.utensilUse === 'food' ? 'food' : asset.utensilUse === 'item' ? 'item' : 'drink', ...(asset.utensilEmpty ? { utensilEmpty: asset.utensilEmpty } : {}) } : {}),
+      ...(asset.utensil ? { utensil: true, utensilOrigin: asset.utensilOrigin, utensilDisposal: asset.utensilDisposal, utensilUse: asset.utensilUse === 'food' ? 'food' : asset.utensilUse === 'item' ? 'item' : asset.utensilUse === 'water' ? 'water' : 'drink', ...(asset.utensilTargets ? { utensilTargets: asset.utensilTargets } : {}), ...(asset.utensilUses ? { utensilUses: asset.utensilUses } : {}), ...(asset.utensilEmpty ? { utensilEmpty: asset.utensilEmpty } : {}) } : {}),
       ...(asset.isSeat ? { isSeat: true } : {}),
       ...(asset.sunlight ? { sunlight: true } : {}),
       ...(asset.sunlightInset !== undefined ? { sunlightInset: asset.sunlightInset } : {}),

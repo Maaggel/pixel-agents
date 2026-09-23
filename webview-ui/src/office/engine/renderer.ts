@@ -61,6 +61,7 @@ import {
   VACUUM_TRAIL_COLOR,
   EXTERIOR_GLASS_TINT_COLOR,
   EXTERIOR_GLASS_TINT_OPACITY,
+  WALL_MOUNTED_Z_EPSILON,
 } from '../../constants.js'
 
 /** Track unknown tool names to log each only once (for future sprite creation) */
@@ -1290,6 +1291,33 @@ export function renderFrame(
       if (overlapping.length > 0) {
         w.clipExclusions = overlapping
       }
+    }
+  }
+
+  /**
+   * Lift wall-mounted items in front of the wall they hang on.
+   *
+   * A wall sprite is drawn a tile taller than its tile (the 3D face), and sorts by the bottom of
+   * that tile, so the wall *below* a mounted item - a pillar, or the lower half of a thick wall -
+   * paints straight over it, and so does its own wall once the item is nudged up a half tile.
+   * Walls are never walkable, so nothing can legitimately stand between the item and them: it is
+   * safe to sort such an item in front of every wall sprite whose face overlaps it. Items hanging
+   * over open floor keep their own sort, so furniture and characters in the room still occlude them.
+   */
+  if (wallInstances.length > 0) {
+    for (const f of furniture) {
+      if (!f.onWall) continue
+      const spriteRows = f.sprite.length / TILE_SIZE
+      let lifted = f.zY
+      for (let r = Math.floor(f.row); r <= Math.floor(f.row + spriteRows); r++) {
+        if (r < 0 || r >= tileMap.length) continue
+        for (let c = f.col; c < f.col + f.footprintW; c++) {
+          if (tileMap[r]?.[c] !== TileType.WALL) continue
+          const wallZY = (r + 1) * TILE_SIZE + WALL_MOUNTED_Z_EPSILON
+          if (wallZY > lifted) lifted = wallZY
+        }
+      }
+      f.zY = lifted
     }
   }
 

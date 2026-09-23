@@ -114,6 +114,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       ...(entry.sunlightInset !== undefined ? { sunlightInset: entry.sunlightInset } : {}),
       ...(entry.glassSections ? { glassSections: entry.glassSections } : {}),
       ...(entry.isLamp ? { isLamp: true } : {}),
+      ...(entry.canPlaceOnWalls ? { onWall: true } : {}),
       ...(entry.lightRadius !== undefined ? { lightRadius: entry.lightRadius } : {}),
       ...(entry.lightColor ? { lightColor: entry.lightColor } : {}),
       ...(entry.isCeiling ? { isCeiling: true } : {}),

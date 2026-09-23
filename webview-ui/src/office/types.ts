@@ -146,6 +146,8 @@ export interface FurnitureInstance {
   glassSections?: GlassSection[]
   /** Whether this furniture is a lamp that casts light pools */
   isLamp?: boolean
+  /** Placed on a wall (catalog `canPlaceOnWalls`), so it must draw in front of the wall it hangs on */
+  onWall?: boolean
   /** Light radius in tiles */
   lightRadius?: number
   /** Light color [r, g, b] */

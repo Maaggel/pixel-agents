@@ -343,6 +343,9 @@ export const TIDY_NEAR_WEIGHT = 70
 export const MAX_PROPS = 12
 /** Props are drawn this many sprite px above the tile bottom so they sit on the tabletop, not its front edge */
 export const PROP_SURFACE_LIFT_PX = 5
+
+/** How far in front of a wall sprite a wall-mounted item sorts (z units, half a pixel) */
+export const WALL_MOUNTED_Z_EPSILON = 0.5
 /** Safety timeout for fetch/tidy bubbles - the action clears them earlier when it finishes */
 export const ITEM_BUBBLE_MAX_SEC = 60
 /** Random look given to a fetched utensil (adjust-mode hue shifts, like the editor's furniture color sliders).

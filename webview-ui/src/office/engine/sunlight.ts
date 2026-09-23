@@ -216,8 +216,8 @@ export function computeSunBeams(
 
     // Left edge: use whichever origin (top or bottom of window) drifts further left
     // Right edge: use whichever origin drifts further right
-    const leftExtra = Math.min(0, topExtra)   // negative or zero — extends left
-    const rightExtra = Math.max(0, topExtra)   // positive or zero — extends right
+    const leftExtra = Math.min(0, topExtra)   // negative or zero - extends left
+    const rightExtra = Math.max(0, topExtra)   // positive or zero - extends right
 
     const startDriftBase = tan * startDistPx
     const endDriftBase = tan * (startDistPx + totalDistPx)
@@ -286,7 +286,7 @@ export function renderSunBeams(
   ctx.save()
 
   // Clip to exclude wall areas: wall tiles themselves + the tile above each wall
-  // (wall sprites are 2×TILE_SIZE tall — the face extends one tile upward)
+  // (wall sprites are 2×TILE_SIZE tall - the face extends one tile upward)
   if (tileMap && tileMap.length > 0) {
     const s = TILE_SIZE * zoom
     const rows = tileMap.length
@@ -296,7 +296,7 @@ export function renderSunBeams(
       for (let col = 0; col < cols; col++) {
         const tile = tileMap[row][col]
         if (tile === TileType.WALL || tile === TileType.VOID) continue
-        // Skip floor tiles directly above a wall — the wall face covers this area
+        // Skip floor tiles directly above a wall - the wall face covers this area
         const belowIsWall = row + 1 < rows && tileMap[row + 1][col] === TileType.WALL
         if (belowIsWall) continue
         ctx.rect(offsetX + col * s, offsetY + row * s, s, s)

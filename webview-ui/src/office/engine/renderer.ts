@@ -832,6 +832,51 @@ export function setNametagFont(font: ((zoom: number) => { px: number; family: st
   nametagFont = font
 }
 
+/**
+ * Rendered nametag text, cached per label.
+ *
+ * Shaping and filling text is by far the most expensive thing on the canvas, it is the same
+ * handful of labels every frame, and in the headless renderer's Skia it also degrades badly over
+ * a long run (a 19 hour old process spent 96 ms a frame on fourteen names that cost 1.4 ms when
+ * it started). Each label is drawn once into its own canvas and blitted from then on.
+ */
+interface NametagText { canvas: HTMLCanvasElement; width: number; height: number }
+const nametagTextCache = new Map<string, NametagText>()
+/** Distinct labels are few (one per agent); the cap only bounds a pathological run of renames */
+const NAMETAG_TEXT_CACHE_MAX = 256
+
+function getNametagText(ctx: CanvasRenderingContext2D, label: string, font: string, color: string, fontSize: number): NametagText {
+  const key = `${font}|${color}|${label}`
+  const hit = nametagTextCache.get(key)
+  if (hit) {
+    // Refresh recency so the cap evicts labels nobody draws any more
+    nametagTextCache.delete(key)
+    nametagTextCache.set(key, hit)
+    return hit
+  }
+  ctx.font = font
+  const width = Math.max(1, Math.ceil(ctx.measureText(label).width))
+  const height = Math.ceil(fontSize * 2)
+  const canvas = document.createElement('canvas')
+  canvas.width = width + 2
+  canvas.height = height
+  const c = canvas.getContext('2d')!
+  c.font = font
+  c.fillStyle = color
+  c.textAlign = 'left'
+  c.textBaseline = 'bottom'
+  // Baseline sits at BASELINE_FRACTION of the canvas so descenders fit below it
+  c.fillText(label, 1, height * NAMETAG_TEXT_BASELINE)
+  const entry: NametagText = { canvas, width, height }
+  nametagTextCache.set(key, entry)
+  if (nametagTextCache.size > NAMETAG_TEXT_CACHE_MAX) {
+    nametagTextCache.delete(nametagTextCache.keys().next().value!)
+  }
+  return entry
+}
+/** Where the text baseline sits inside a cached label canvas */
+const NAMETAG_TEXT_BASELINE = 0.75
+
 export function renderNametags(
   ctx: CanvasRenderingContext2D,
   characters: Character[],
@@ -850,9 +895,10 @@ export function renderNametags(
     }
 
     const fontSize = font?.px ?? Math.max(7, Math.round(zoom * 3.5))
-    ctx.font = `${fontSize}px ${font?.family ?? 'sans-serif'}`
-    const metrics = ctx.measureText(label)
-    const textW = metrics.width
+    const fontSpec = `${fontSize}px ${font?.family ?? 'sans-serif'}`
+    const textColor = ch.isSubagent ? NAMETAG_SUB_TEXT_COLOR : NAMETAG_TEXT_COLOR
+    const text = getNametagText(ctx, label, fontSpec, textColor, fontSize)
+    const textW = text.width
     const textH = fontSize
 
     // Project dot dimensions
@@ -884,12 +930,14 @@ export function renderNametags(
       ctx.fill()
     }
 
-    ctx.fillStyle = ch.isSubagent ? NAMETAG_SUB_TEXT_COLOR : NAMETAG_TEXT_COLOR
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'bottom'
     // Offset text right by half the dot space so it centers in remaining area
     const textCx = cx + dotExtra / 2
-    ctx.fillText(label, textCx, cy + NAMETAG_PADDING_V * zoom / 4)
+    const baselineY = cy + NAMETAG_PADDING_V * zoom / 4
+    ctx.drawImage(
+      text.canvas,
+      Math.round(textCx - textW / 2) - 1,
+      Math.round(baselineY - text.height * NAMETAG_TEXT_BASELINE),
+    )
     ctx.restore()
   }
 }

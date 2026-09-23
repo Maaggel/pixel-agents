@@ -38,6 +38,16 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   - The sun's angle, intensity, reach and colour are quantised into small steps. A cycle is 300 s,
     so those values change every frame and the beams cover half the office; without stepping,
     every frame would be a full redraw. The steps are invisible at this scale.
+- **Text is cached, and watched (v1.10.1):** drawing text is the most expensive thing on the
+  canvas and Skia's text path *degrades over a long run* - a 19 hour old renderer spent 96 ms a
+  frame on the same fourteen nametags that cost 1.4 ms at startup, which starved the stream to
+  2 fps. `renderNametags` now draws each label once into its own canvas and blits it. The
+  watchdog (`watchdogFactor`, default 4, floor `watchdogFloorMs` 25) exits when a frame costs
+  more than that multiple of the healthiest minute seen, and systemd restarts in seconds; it
+  compares CPU per frame, not wall time, so a busy box under SCHED_IDLE never trips it. If the
+  stream is ever slow again, the per-minute log line carries `ms cpu` per frame - compare it with
+  a fresh process (`npm run bench`), and profile the live one by sending it SIGUSR1 and attaching
+  to the inspector on 127.0.0.1:9229.
 - **Why it is cheap:** (1) the engine caches every sprite as a small canvas; in Skia a canvas
   source is a recorded picture replayed on every blit, so the shim snapshots each one into an
   immutable Image the first time it is drawn (6x cheaper blits). (2) The floor + wall base pass

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.1
+
+- **Fix: the tablet dribbled at 2 fps after the renderer had been up overnight.** Skia's text rendering degrades over a long run: a 19 hour old process spent 96 ms a frame drawing the same fourteen nametags that cost 1.4 ms when it started, which starved the frame loop and dropped 400 frames a minute. Nametag text is now rendered once per label into a small canvas and blitted from then on (`renderNametags`), which takes that path out of the loop entirely and also makes a healthy frame ~28% cheaper (render 5.0 ms -> 3.6 ms). The browser viewer gets the same caching.
+- A watchdog restarts the renderer if a frame ever costs more than four times its healthy CPU (floor 25 ms), since the root cause is inside the native canvas and this is not the only path through it. It measures CPU per frame, not wall time, so a busy box under SCHED_IDLE never trips it.
+
 ## v1.10.0
 
 - **Damage tracking in the native renderer**: each frame reports which rectangles can differ from the last one, and only those are converted to RGB565 and upscaled. That stage was writing a megabyte per frame and cost 6.5 ms on an idle box but 14.8 ms under load, because it thrashed the cache exactly when the owner's sessions needed it; it is now 0.5 ms. A frame costs 8.2 ms instead of 12.8, and the service uses 19% of one thread instead of 29% at 10 fps. Default frame rate is now 10 (was 20).

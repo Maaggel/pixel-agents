@@ -59,6 +59,16 @@ const cfg = {
   idleSimHz: Number(env.PIXEL_AGENTS_RENDERER_IDLE_SIM_HZ || file.idleSimHz || 10),
   /** Redraw the whole frame this often even when nothing is known to have changed (seconds) */
   fullRedrawSec: Number(env.PIXEL_AGENTS_RENDERER_FULL_REDRAW_SEC || file.fullRedrawSec || 2),
+  /**
+   * Restart when a frame costs this many times its healthy CPU cost (0 disables). Skia's text
+   * rendering was measured degrading ~67x over a 19 hour run - the same fourteen nametags going
+   * from 1.4 ms to 96 ms a frame - which starved the stream down to 2 fps. Nametag text is now
+   * cached as images, which takes that path out of the loop, but the underlying cause is in the
+   * native canvas and this is the insurance: systemd restarts the service in a few seconds.
+   */
+  watchdogFactor: Number(env.PIXEL_AGENTS_RENDERER_WATCHDOG_FACTOR || file.watchdogFactor || 4),
+  /** Never restart for a frame cheaper than this, however fast the baseline was (ms of CPU) */
+  watchdogFloorMs: Number(env.PIXEL_AGENTS_RENDERER_WATCHDOG_FLOOR_MS || file.watchdogFloorMs || 25),
   /** Damage tracking: draw, read back and convert only what changed. false = every pixel, every frame */
   dirtyRects: (env.PIXEL_AGENTS_RENDERER_DIRTY_RECTS || String(file.dirtyRects ?? 'true')) === 'true',
   /** Debug: draw one frame (after the relay's init arrived) as .png/.rgb565/.lz4/.deflate and exit */
@@ -349,11 +359,32 @@ connectRelay()
 scheduleLoop()
 setInterval(pollClients, cfg.clientPollSec * 1000)
 void pollClients()
+// ── Frame cost watchdog ──────────────────────────────────────
+// CPU per frame, not wall time: under SCHED_IDLE a busy box stretches wall time by design, and
+// restarting for that would be wrong. Real degradation shows up as more CPU for the same work.
+let baselineCpuPerFrame = 0
+let cpuAtLastReport = process.cpuUsage()
+function checkFrameCost(drawn) {
+  const used = process.cpuUsage(cpuAtLastReport)
+  cpuAtLastReport = process.cpuUsage()
+  if (!drawn) return null
+  const perFrame = (used.user + used.system) / 1000 / drawn
+  if (baselineCpuPerFrame === 0) { baselineCpuPerFrame = perFrame; return perFrame }
+  baselineCpuPerFrame = Math.min(baselineCpuPerFrame, perFrame) // the best minute seen is "healthy"
+  const limit = Math.max(cfg.watchdogFloorMs, baselineCpuPerFrame * cfg.watchdogFactor)
+  if (cfg.watchdogFactor > 0 && perFrame > limit) {
+    log(`frames cost ${perFrame.toFixed(1)} ms of CPU each, over the ${limit.toFixed(1)} ms limit (healthy: ${baselineCpuPerFrame.toFixed(1)}) - restarting`)
+    setTimeout(() => process.exit(1), 100) // systemd Restart=always brings it straight back
+  }
+  return perFrame
+}
+
 setInterval(() => {
   const s = (Date.now() - stats.since) / 1000
   const avg = stats.drawn ? `${(stats.drawMs / stats.drawn).toFixed(1)} ms each: render ${(timing.render / stats.drawn).toFixed(1)}, readback ${(timing.readback / stats.drawn).toFixed(1)}, rgb565 ${(timing.rgb565 / stats.drawn).toFixed(1)}, ${(timing.area / stats.drawn / (drawW * drawH) * 100).toFixed(0)}% of the canvas` : '-'
   timing.render = timing.readback = timing.rgb565 = timing.area = 0
-  log(`${stats.ticks} ticks, ${stats.drawn} drawn (${avg}; ${snapshotsMade() - stats.snapshots} new sprite snapshots), ${stats.sent} frames sent, ${stats.dropped} dropped (${(stats.bytes / 1024).toFixed(0)} KB, ${(stats.bytes / s / 1024).toFixed(1)} KB/s) in ${s.toFixed(0)}s`)
+  const cpu = checkFrameCost(stats.drawn)
+  log(`${stats.ticks} ticks, ${stats.drawn} drawn (${avg}${cpu ? `, ${cpu.toFixed(1)} ms cpu` : ''}; ${snapshotsMade() - stats.snapshots} new sprite snapshots), ${stats.sent} frames sent, ${stats.dropped} dropped (${(stats.bytes / 1024).toFixed(0)} KB, ${(stats.bytes / s / 1024).toFixed(1)} KB/s) in ${s.toFixed(0)}s`)
   stats = { ticks: 0, drawn: 0, sent: 0, dropped: 0, bytes: 0, drawMs: 0, snapshots: snapshotsMade(), since: Date.now() }
 }, 60000)
 

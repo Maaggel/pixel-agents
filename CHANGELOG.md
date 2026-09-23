@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.2
+
+- **The renderer no longer paints a full-resolution overlay when nameplates are off.** It was clearing a 1024x600 canvas and redrawing every speech bubble on it each frame - bubbles the scene had already drawn - which a profile put at 47% of the renderer's entire CPU. With nameplates off (the kiosk default now), a frame costs 2.6 ms of rendering instead of 5.6, and 13.9 ms of CPU instead of 22.
+- Fix: with nameplates off the overlay pass still drew them, so the kiosk setting had no effect on the tablet.
+
 ## v1.10.1
 
 - **Fix: the tablet dribbled at 2 fps after the renderer had been up overnight.** Skia's text rendering degrades over a long run: a 19 hour old process spent 96 ms a frame drawing the same fourteen nametags that cost 1.4 ms when it started, which starved the frame loop and dropped 400 frames a minute. Nametag text is now rendered once per label into a small canvas and blitted from then on (`renderNametags`), which takes that path out of the loop entirely and also makes a healthy frame ~28% cheaper (render 5.0 ms -> 3.6 ms). The browser viewer gets the same caching.

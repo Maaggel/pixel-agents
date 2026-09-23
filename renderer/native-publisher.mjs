@@ -198,7 +198,7 @@ function drawFrame() {
   // The nametag overlay is drawn first and at full resolution: its rectangles tell the scene pass
   // what to repaint underneath, both where a tag is now and where it was last frame.
   let overlayRects = []
-  if (overlayCtx) {
+  if (overlayCtx && office.getFlags().showNametags) {
     overlayCtx.clearRect(0, 0, cfg.width, cfg.height)
     overlayRects = office.renderNametagOverlay(overlayCtx, cfg.upscale)
   }
@@ -221,7 +221,7 @@ function drawFrame() {
     if (rects === null) convertRegion(src, 0, 0, drawW, drawH)
     else for (const r of rects) convertRegion(src, r.x, r.y, r.w, r.h)
     timing.rgb565 += performance.now() - t2
-    if (overlayCtx) compositeNametags(overlayRects)
+    if (overlayRects.length > 0) compositeNametags(overlayRects)
   }
   prevOverlayRects = overlayRects
 

@@ -729,7 +729,10 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
 
   function renderNametagOverlay(ctx: CanvasRenderingContext2D, scale: number): OverlayRect[] {
     const rects: OverlayRect[] = []
-    if (!opts.nametagOverlay) return rects
+    // With nametags off there is nothing this pass is for: bubbles are already drawn in the
+    // scene, and redrawing them here at full resolution (plus clearing a full-size canvas every
+    // frame) was measured at 47% of the whole renderer's CPU.
+    if (!opts.nametagOverlay || !flags.showNametags) return rects
     // Every tag starts with its background fillRect and every bubble is one drawImage; recording
     // those gives the painted areas without duplicating the geometry here. Text can overhang the
     // box by a pixel or two, hence the margin.
@@ -747,11 +750,10 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     try {
       const chars = os.getCharacters()
       const ox = lastOffset.x * scale, oy = lastOffset.y * scale, z = zoom * scale
-      if (flags.showNametags) {
-        // renderNametags only reads the characters, so shallow copies with cleaned labels are enough
-        const tagged = opts.nametagStripEmoji ? chars.map((ch) => (ch.nametag ? { ...ch, nametag: stripEmoji(ch.nametag) } : ch)) : chars
-        renderNametags(ctx, tagged, ox, oy, z)
-      }
+      // renderNametags only reads the characters, so shallow copies with cleaned labels are enough
+      const tagged = opts.nametagStripEmoji ? chars.map((ch) => (ch.nametag ? { ...ch, nametag: stripEmoji(ch.nametag) } : ch)) : chars
+      renderNametags(ctx, tagged, ox, oy, z)
+      // Bubbles again on top of the tags, so they overlap the way the browser draws them
       renderBubbles(ctx, chars, ox, oy, z)
     } finally {
       ctx.fillRect = fillRect

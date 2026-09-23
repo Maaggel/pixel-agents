@@ -38,6 +38,10 @@ to the 2012 Galaxy Tab 2 app on `GET /pixelagents/stream`. Background and wire p
   - The sun's angle, intensity, reach and colour are quantised into small steps. A cycle is 300 s,
     so those values change every frame and the beams cover half the office; without stepping,
     every frame would be a full redraw. The steps are invisible at this scale.
+- **The full-resolution overlay only runs when nameplates are on.** Its whole purpose is crisp
+  text; bubbles are already drawn in the scene at the office's own resolution. Clearing a
+  1024x600 canvas and redrawing every bubble on it was 47% of the renderer's CPU, for nothing,
+  whenever `showNametags` was off (which is how the tablet runs).
 - **Text is cached, and watched (v1.10.1):** drawing text is the most expensive thing on the
   canvas and Skia's text path *degrades over a long run* - a 19 hour old renderer spent 96 ms a
   frame on the same fourteen nametags that cost 1.4 ms at startup, which starved the stream to

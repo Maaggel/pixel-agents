@@ -148,6 +148,8 @@ export interface FurnitureInstance {
   isLamp?: boolean
   /** Placed on a wall (catalog `canPlaceOnWalls`), so it must draw in front of the wall it hangs on */
   onWall?: boolean
+  /** The dial frame a clock is currently showing */
+  activeTimeSprite?: SpriteData | null
   /** Light radius in tiles */
   lightRadius?: number
   /** Light color [r, g, b] */
@@ -188,6 +190,8 @@ export interface FurnitureInstance {
   activeInteractionSprite?: SpriteData | null
   /** Cycle frame sprites for idle animation. Always runs when no other cycle is active. */
   idleCycleSprites?: SpriteData[]
+  /** Clock dial frames, one per half hour, chosen by the office's time of day */
+  timeCycleSprites?: SpriteData[]
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -316,6 +320,8 @@ export interface FurnitureCatalogEntry {
   interactionCycleIntervalMax?: number
   /** Resolved cycle frame sprites for idle animation (always runs when no other cycle is active). */
   idleCycleSprites?: SpriteData[]
+  /** Clock dial frames, one per half hour, chosen by the office's time of day */
+  timeCycleSprites?: SpriteData[]
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number

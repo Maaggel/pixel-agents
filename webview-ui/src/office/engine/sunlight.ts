@@ -11,6 +11,8 @@ import {
   SUN_ANGLE_MAX_RAD,
   SUN_BEAM_DEFAULT_INSET,
   SUN_BEAM_MIN_LENGTH,
+  OFFICE_SUNRISE_HOUR,
+  OFFICE_SUNSET_HOUR,
 } from '../../constants.js'
 
 // ── Sun cycle state ─────────────────────────────────────────────
@@ -29,7 +31,7 @@ export function resetSunCycle(): void {
 
 /**
  * Get the sun cycle phase for display purposes.
- * Returns dayProgress (0–1 through the day, -1 if night) and
+ * Returns dayProgress (0-1 through the day, -1 if night) and
  * a label: 'sunrise', 'morning', 'midday', 'afternoon', 'sunset', 'night'.
  */
 export function getSunPhase(): { dayProgress: number; phase: 'sunrise' | 'morning' | 'midday' | 'afternoon' | 'sunset' | 'night' } {
@@ -46,8 +48,28 @@ export function getSunPhase(): { dayProgress: number; phase: 'sunrise' | 'mornin
 }
 
 /**
+ * The office's own time of day, as a fraction of a twelve hour dial (0 = twelve o'clock).
+ *
+ * The wall clocks are driven from this rather than from the real time, so they agree with the
+ * daylight in the windows. The sun's day phase is read as SUNRISE_HOUR to SUNSET_HOUR and its
+ * night phase as the hours back round to sunrise.
+ */
+export function getOfficeDialFraction(): number {
+  const dayDuration = SUN_CYCLE_DURATION_SEC * (1 - SUN_NIGHT_FRACTION)
+  let hour: number
+  if (sunCycleTime < dayDuration) {
+    hour = OFFICE_SUNRISE_HOUR + (sunCycleTime / dayDuration) * (OFFICE_SUNSET_HOUR - OFFICE_SUNRISE_HOUR)
+  } else {
+    const nightDuration = SUN_CYCLE_DURATION_SEC - dayDuration
+    const t = (sunCycleTime - dayDuration) / nightDuration
+    hour = OFFICE_SUNSET_HOUR + t * (24 - OFFICE_SUNSET_HOUR + OFFICE_SUNRISE_HOUR)
+  }
+  return (hour % 12) / 12
+}
+
+/**
  * Compute current sun angle, intensity and beam reach from cycle time.
- * `reach` is the beam length in tiles — longer at sunrise/sunset (low sun),
+ * `reach` is the beam length in tiles - longer at sunrise/sunset (low sun),
  * shorter at midday (high sun). Uses a cosine curve peaking at midday.
  */
 export function getSunState(): { angle: number; intensity: number; reach: number; color: [number, number, number] } {
@@ -67,7 +89,7 @@ export function getSunState(): { angle: number; intensity: number; reach: number
       intensity = (1.0 - t) / 0.1
     }
 
-    // Beam reach: cosine curve — max at sunrise/sunset (t=0,1), min at midday (t=0.5)
+    // Beam reach: cosine curve - max at sunrise/sunset (t=0,1), min at midday (t=0.5)
     // cos(t * PI) goes from 1 → -1 → 1, so abs gives 1 → 0 → 1
     const middayFactor = Math.abs(Math.cos(t * Math.PI))  // 1 at edges, 0 at center
     const reach = SUN_BEAM_MIN_LENGTH + middayFactor * (SUN_BEAM_MAX_LENGTH - SUN_BEAM_MIN_LENGTH)

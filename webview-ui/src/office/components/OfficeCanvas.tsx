@@ -95,10 +95,10 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     const stop = startGameLoop(canvas, {
       update: (dt) => {
         officeState.update(dt)
-        if (showSunlight) {
-          updateSunCycle(dt)
-          updateWeather(dt)
-        }
+        // The office's day runs whether or not its light is drawn: the wall clocks read it, and
+        // turning sunlight off should dim the room, not stop time.
+        updateSunCycle(dt)
+        updateWeather(dt)
       },
       render: (ctx) => {
         // Canvas dimensions are in device pixels

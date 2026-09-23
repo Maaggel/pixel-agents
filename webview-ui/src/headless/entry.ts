@@ -427,10 +427,9 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
 
   function tick(dt: number): void {
     os.update(dt)
-    if (flags.showSunlight) {
-      updateSunCycle(dt)
-      updateWeather(dt)
-    }
+    // The office's day runs whether or not its light is drawn: the wall clocks read it
+    updateSunCycle(dt)
+    updateWeather(dt)
   }
 
   function fitCamera(): void {
@@ -602,7 +601,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       const key = f.uid ?? `${f.col},${f.row},${f.zY}`
       const box = furnitureBox(f)
       fBoxes.set(key, box)
-      const sprite = f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
+      const sprite = f.activeTimeSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
       const before = prevFurnitureBoxes.get(key)
       if (!before || prevSpriteByKey.get(key) !== sprite) {
         addRect(rects, box)

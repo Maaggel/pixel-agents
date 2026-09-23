@@ -50,7 +50,7 @@ import {
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
-import { getSunState } from './sunlight.js'
+import { getSunState, getOfficeDialFraction } from './sunlight.js'
 import { getWeatherSeverity } from './windowEffects.js'
 import { isWalkable, getWalkableTiles, findPath } from '../layout/tileMap.js'
 import {
@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -1619,7 +1619,27 @@ export class OfficeState {
     return out
   }
 
+  /**
+   * Show the office's own time of day on the wall clocks.
+   *
+   * The dial frames are swapped like any other furniture sprite, so the renderer needs no idea
+   * what a clock is and the native renderer's damage tracking notices the change by itself. The
+   * office day is five minutes long, so a frame lasts a few seconds.
+   */
+  private clockDialIdx = -1
+  private updateClockSprites(): void {
+    const idx = Math.floor(getOfficeDialFraction() * CLOCK_DIAL_FRAMES) % CLOCK_DIAL_FRAMES
+    if (idx === this.clockDialIdx) return
+    this.clockDialIdx = idx
+    for (const f of this.furniture) {
+      if (!f.timeCycleSprites?.length) continue
+      f.activeTimeSprite = f.timeCycleSprites[idx % f.timeCycleSprites.length]
+    }
+  }
+
   rebuildFurnitureInstances(): void {
+    // the new instances have no dial yet; updateClockSprites only acts when the hour changes
+    this.clockDialIdx = -1
     // Collect tiles where active agents face desks (only when seated, not while walking to seat)
     const autoOnTiles = new Set<string>()
     for (const ch of this.characters.values()) {
@@ -2049,6 +2069,9 @@ export class OfficeState {
     if (needFurnitureRebuild) {
       this.rebuildFurnitureInstances()
     }
+
+    // ── Wall clocks ──────────────────────────────────────────────
+    this.updateClockSprites()
 
     // ── Meeting cycle furniture animation ────────────────────────
     this.updateMeetingCycleSprites(dt)

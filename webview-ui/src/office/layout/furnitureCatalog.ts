@@ -66,6 +66,7 @@ export interface LoadedAssetData {
     interactionCycleIntervalMax?: number
     /** Resolved sprite IDs for idle cycle animation frames */
     idleCycle?: string[]
+    timeCycle?: string[]
     randomIdleCycle?: boolean
     idleCycleIntervalMin?: number
     idleCycleIntervalMax?: number
@@ -172,6 +173,14 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       if (resolved.length > 0) idleCycleSprites = resolved
       //console.log(`[IdleCycle] Asset ${asset.id}: ${resolved.length} sprites resolved`)
     }
+    // Resolve timeCycle sprite IDs to SpriteData arrays (clock dials)
+    let timeCycleSprites: SpriteData[] | undefined
+    if (asset.timeCycle && asset.timeCycle.length > 0) {
+      const resolved = asset.timeCycle
+        .map((id: string) => assets.sprites[id])
+        .filter((s): s is SpriteData => s !== undefined)
+      if (resolved.length > 0) timeCycleSprites = resolved
+    }
     // Resolve dockedCycle sprite IDs to SpriteData arrays
     let dockedCycleSprites: SpriteData[] | undefined
     if (asset.dockedCycle && asset.dockedCycle.length > 0) {
@@ -223,6 +232,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.interactionCycleIntervalMin !== undefined ? { interactionCycleIntervalMin: asset.interactionCycleIntervalMin } : {}),
       ...(asset.interactionCycleIntervalMax !== undefined ? { interactionCycleIntervalMax: asset.interactionCycleIntervalMax } : {}),
       ...(idleCycleSprites ? { idleCycleSprites } : {}),
+      ...(timeCycleSprites ? { timeCycleSprites } : {}),
       ...(asset.randomIdleCycle ? { randomIdleCycle: true } : {}),
       ...(asset.idleCycleIntervalMin !== undefined ? { idleCycleIntervalMin: asset.idleCycleIntervalMin } : {}),
       ...(asset.idleCycleIntervalMax !== undefined ? { idleCycleIntervalMax: asset.idleCycleIntervalMax } : {}),

@@ -162,6 +162,11 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       instance.interactionCycleIdx = 0
     }
 
+    // Attach clock dial frames; the first one is replaced on the next update with the right hour
+    if (entry.timeCycleSprites && entry.timeCycleSprites.length > 0) {
+      instance.timeCycleSprites = entry.timeCycleSprites
+    }
+
     // Attach idle cycle data from catalog entry
     if (entry.idleCycleSprites && entry.idleCycleSprites.length > 0) {
       //console.log(`[IdleCycle] Instance ${item.uid} (${item.type}): attaching ${entry.idleCycleSprites.length} idle cycle sprites`)

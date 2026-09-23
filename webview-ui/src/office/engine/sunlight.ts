@@ -94,7 +94,7 @@ export function getSunState(): { angle: number; intensity: number; reach: number
     const middayFactor = Math.abs(Math.cos(t * Math.PI))  // 1 at edges, 0 at center
     const reach = SUN_BEAM_MIN_LENGTH + middayFactor * (SUN_BEAM_MAX_LENGTH - SUN_BEAM_MIN_LENGTH)
 
-    // Color: sharp transition — mostly midday yellow, warm orange only near sunrise/sunset
+    // Color: sharp transition - mostly midday yellow, warm orange only near sunrise/sunset
     // Cube the factor so tinting is concentrated at the edges of the day
     const colorFactor = middayFactor * middayFactor * middayFactor
     const color: [number, number, number] = [
@@ -126,7 +126,7 @@ export interface SunBeam {
   bottomLeftX: number
   /** Bottom-right x at beam end (sprite pixels) */
   bottomRightX: number
-  /** Y of beam start — bottom edge of window (sprite pixels) */
+  /** Y of beam start - bottom edge of window (sprite pixels) */
   topY: number
   /** Y of beam end (sprite pixels) */
   bottomY: number
@@ -204,7 +204,7 @@ export function computeSunBeams(
 
     if (maxDist === 0) continue
 
-    // Compute trapezoid corners — beam fans out based on window height.
+    // Compute trapezoid corners - beam fans out based on window height.
     // Light from the top of the window travels further than from the bottom,
     // so the beam edge on the "drift side" comes from the top (more drift),
     // and the opposite edge comes from the bottom (less drift).

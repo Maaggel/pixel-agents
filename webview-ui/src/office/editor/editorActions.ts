@@ -140,9 +140,18 @@ export function canPlaceFurniture(
 
   // Determine actual placement mode: wall vs floor
   // For items with both canPlaceOnWalls + canPlaceOnSurfaces, check if bottom row is on walls
+  /**
+   * The grid row the item rests on, which is what the tile lookups below must ask about.
+   * Half-tile items (`halfTilePlacement`) sit on fractional rows: a mug at row 6.5 stands on the
+   * desk in row 7 and merely leans into row 6. Flooring it asked about row 6 instead, so a mug
+   * could not be nudged onto a desk that stands against a wall - the one position where it looks
+   * like it is on the desk rather than on its front edge.
+   */
+  const restRow = Math.ceil(row)
+
   let placingOnWall = false
   if (entry.canPlaceOnWalls) {
-    const bottomRow = tileRow + entry.footprintH - 1
+    const bottomRow = restRow + entry.footprintH - 1
     if (bottomRow >= 0 && bottomRow < layout.rows) {
       placingOnWall = true
       for (let dc = 0; dc < entry.footprintW; dc++) {
@@ -158,11 +167,11 @@ export function canPlaceFurniture(
   const bgRows = entry.backgroundTiles || 0
   for (let dr = 0; dr < entry.footprintH; dr++) {
     if (dr < bgRows) continue
-    if (tileRow + dr < 0) continue // row above map (wall items extending upward)
+    if (restRow + dr < 0) continue // row above map (wall items extending upward)
     // Wall placement: only the bottom row must be on wall tiles; upper rows can overlap VOID/anything
     if (placingOnWall && dr < entry.footprintH - 1) continue
     for (let dc = 0; dc < entry.footprintW; dc++) {
-      const idx = (tileRow + dr) * layout.cols + (tileCol + dc)
+      const idx = (restRow + dr) * layout.cols + (tileCol + dc)
       const tileVal = layout.tiles[idx]
       if (placingOnWall) {
         if (tileVal !== TileType.WALL) return false

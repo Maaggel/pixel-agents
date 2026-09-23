@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.11.1
+
+- Fix: a half-tile item could not be nudged onto a desk standing against a wall - the one spot where a mug looks like it sits *on* the desk rather than on its front edge. Placement checked the tile the item leans into (the wall) instead of the one it rests on, so it was refused. It now checks the resting row; a mug over a plain wall with no desk under it is still refused.
+
 ## v1.11.0
 
 - **The tablet stream is sent at the office's own resolution (512x300) instead of being upscaled to 1024x600 first.** The viewer app already scales frames to fit with filtering off, which is the same nearest-neighbour doubling the renderer was doing, so the picture is pixel-identical - but the frame is a quarter of the bytes: less conversion, a quarter of the compression work and of the network (about 600 KB/s -> 150 KB/s), and a quarter of the tablet's decode. Set with `width`/`height`/`zoom`/`upscale` in `~/.pixel-agents/renderer.json`.

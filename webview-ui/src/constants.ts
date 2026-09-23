@@ -173,8 +173,8 @@ export const SUN_NIGHT_FRACTION = 0.15
 /** The hours the office's day phase is read as, for the wall clocks */
 export const OFFICE_SUNRISE_HOUR = 6
 export const OFFICE_SUNSET_HOUR = 20
-/** Frames on a twelve hour dial: half hours, as fine as a seven pixel face can show */
-export const CLOCK_DIAL_FRAMES = 24
+/** Frames on a twelve hour dial: quarter hours, so it reads "quarter past" and "half past" */
+export const CLOCK_DIAL_FRAMES = 48
 /** Maximum sunlight beam length in tiles (at sunrise/sunset when sun is low) */
 export const SUN_BEAM_MAX_LENGTH = 3
 /** Minimum sunlight beam length in tiles (at midday when sun is high) */

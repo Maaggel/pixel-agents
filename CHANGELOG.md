@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.12.1
+
+- The wall clocks now read quarter hours, with both hands. The first cut stepped in half hours, which meant the minute hand only ever pointed straight up or straight down and flipped 180 degrees on every step - flapping rather than telling the time. At quarters it steps 90 degrees the same way round each time and sweeps. 48 dial frames per clock.
+- Note when changing catalog data on the relay: it reads the catalog and sprites at startup only, so an upload needs `sudo systemctl restart pixel-agents-relay`. `relay/deploy.sh` restarts it only when relay code changed.
+
 ## v1.12.0
 
 - **The two wall clocks tell the office's time.** Both dials are driven by the same cycle as the sun, so they agree with the daylight in the windows: the day phase reads as 06:00 to 20:00 and the night phase as the hours back round to dawn. A five minute office day means a hand moves every few seconds.

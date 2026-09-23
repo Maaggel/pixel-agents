@@ -12,12 +12,19 @@ import { writeFileSync } from 'fs'
 
 const SRC = process.env.SRC
 const OUT = process.env.OUT
-/** Frames per 12 hour dial: half hours, which is as fine as a 7 pixel face can show */
-const FRAMES = 24
+/** Frames per 12 hour dial: quarter hours, so the dial reads "quarter past" and "half past" */
+const FRAMES = 48
 const HAND = '#391624'          // the same near-black the painted hands use
 const FACE = '#ffffff'
 
-/** The dial is found in the art itself, so only the hand reach is stated here */
+/**
+ * The dial is found in the art itself, so only the hand reach is stated here.
+ *
+ * Quarter hours, not half hours: at half hours the minute hand only ever pointed up or down, so
+ * every step flipped it 180 degrees and it read as flapping rather than as time passing. At
+ * quarters it steps 90 degrees the same way round each time, which reads as a hand sweeping - and
+ * the office day being five minutes long, a briskly turning minute hand suits the place.
+ */
 const CLOCKS = [
   { file: 'CLOCK_WALL_WHITE', minute: 3, hour: 2 },
   { file: 'CLOCK_WALL_COLOR', minute: 3, hour: 2 },
@@ -102,9 +109,8 @@ for (const clock of CLOCKS) {
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(src, 0, 0)
     clearHands(ctx, c)
-    const halfHours = f                                   // 0 = twelve o'clock, one step = 30 min
-    hand(ctx, c, (halfHours / FRAMES), c.hour)            // hour hand: one turn per 12 hours
-    hand(ctx, c, (halfHours % 2) / 2, c.minute)           // minute hand: twelve or six
+    hand(ctx, c, f / FRAMES, c.hour)                      // hour hand: one turn per twelve hours
+    hand(ctx, c, (f % 4) / 4, c.minute)                   // minute hand: on the quarter it points at
     ctx.fillStyle = HAND
     ctx.fillRect(c.cx, c.cy, 1, 1)                        // the pivot itself
     writeFileSync(`${OUT}/${clock.file}_TIME_${f}.png`, canvas.toBuffer('image/png'))
@@ -123,8 +129,8 @@ sheets.forEach((s, si) => {
   s.frames.forEach((c, i) => {
     g.drawImage(c, 4 + i * (16 * SC + 4), si * (32 * SC + 20) + 16, c.width * SC, c.height * SC)
     g.fillStyle = '#fff'; g.font = '10px sans-serif'
-    const hh = ((Math.floor(i / 2) + 11) % 12) + 1
-    g.fillText(`${hh}:${i % 2 ? '30' : '00'}`, 4 + i * (16 * SC + 4), si * (32 * SC + 20) + 11)
+    const hh = ((Math.floor(i / 4) + 11) % 12) + 1
+    g.fillText(`${hh}:${String((i % 4) * 15).padStart(2, '0')}`, 4 + i * (16 * SC + 4), si * (32 * SC + 20) + 11)
   })
 })
 writeFileSync(`${OUT}/clock-frames.png`, sheet.toBuffer('image/png'))

@@ -111,6 +111,7 @@ export function createCharacter(
     heldItem: null,
     itemColor: null,
     itemTargetUid: null,
+    fetchOriginUid: null,
     meetingGroupId: null,
     isSubagent: false,
     parentAgentId: null,

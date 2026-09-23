@@ -48,23 +48,25 @@ export function getSunPhase(): { dayProgress: number; phase: 'sunrise' | 'mornin
 }
 
 /**
- * The office's own time of day, as a fraction of a twelve hour dial (0 = twelve o'clock).
+ * The office's own time of day in hours (0-24), read from the sun cycle: its day phase runs from
+ * OFFICE_SUNRISE_HOUR to OFFICE_SUNSET_HOUR and its night phase covers the hours back to sunrise.
  *
- * The wall clocks are driven from this rather than from the real time, so they agree with the
- * daylight in the windows. The sun's day phase is read as SUNRISE_HOUR to SUNSET_HOUR and its
- * night phase as the hours back round to sunrise.
+ * Everything that should follow the office's day rather than the real one reads this: the wall
+ * clocks, the lunch and coffee rushes, the desk lamps at dusk.
  */
-export function getOfficeDialFraction(): number {
+export function getOfficeHour(): number {
   const dayDuration = SUN_CYCLE_DURATION_SEC * (1 - SUN_NIGHT_FRACTION)
-  let hour: number
   if (sunCycleTime < dayDuration) {
-    hour = OFFICE_SUNRISE_HOUR + (sunCycleTime / dayDuration) * (OFFICE_SUNSET_HOUR - OFFICE_SUNRISE_HOUR)
-  } else {
-    const nightDuration = SUN_CYCLE_DURATION_SEC - dayDuration
-    const t = (sunCycleTime - dayDuration) / nightDuration
-    hour = OFFICE_SUNSET_HOUR + t * (24 - OFFICE_SUNSET_HOUR + OFFICE_SUNRISE_HOUR)
+    return OFFICE_SUNRISE_HOUR + (sunCycleTime / dayDuration) * (OFFICE_SUNSET_HOUR - OFFICE_SUNRISE_HOUR)
   }
-  return (hour % 12) / 12
+  const nightDuration = SUN_CYCLE_DURATION_SEC - dayDuration
+  const t = (sunCycleTime - dayDuration) / nightDuration
+  return (OFFICE_SUNSET_HOUR + t * (24 - OFFICE_SUNSET_HOUR + OFFICE_SUNRISE_HOUR)) % 24
+}
+
+/** The office's time as a fraction of a twelve hour dial (0 = twelve o'clock), for the clocks */
+export function getOfficeDialFraction(): number {
+  return (getOfficeHour() % 12) / 12
 }
 
 /**

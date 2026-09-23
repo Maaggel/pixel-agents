@@ -121,6 +121,22 @@ for (let i = 0; i < 6; i++) {
   lines = [...lines.slice(1), newLine()]                   // scroll up, type a new line
 }
 
+// The load gauge: eight frames from a quiet office to a busy one. Unlike the shuffling panels
+// these are an ordered ramp, because the engine picks the frame from how many agents are working.
+{
+  const LEVELS = 8
+  for (let l = 0; l < LEVELS; l++) {
+    const c = await body(); const x = c.getContext('2d')
+    const load = l / (LEVELS - 1)
+    // four bars that rise with the load, with a little shape so it does not look like a block
+    const shape = [1, 0.75, 0.9, 0.6]
+    const heights = shape.map((k, i) => Math.max(1, Math.round((0.15 + load * 0.85) * SH * k) + (i === 1 && load > 0.5 ? 1 : 0)))
+    drawBars(x, heights.map((h) => Math.min(h, SH)), load > 0.85 ? 0 : -1)
+    writeFileSync(`${OUT}/WALL_MONITOR_LOAD_${l}.png`, c.toBuffer('image/png'))
+  }
+  console.log('WALL_MONITOR_LOAD', LEVELS, 'levels')
+}
+
 // The plain panel: the desk monitor's own screen, just without the stand
 {
   const src = await loadImage(SRC)

@@ -175,6 +175,31 @@ export const OFFICE_SUNRISE_HOUR = 6
 export const OFFICE_SUNSET_HOUR = 20
 /** Frames on a twelve hour dial: quarter hours, so it reads "quarter past" and "half past" */
 export const CLOCK_DIAL_FRAMES = 48
+
+// ── The office's working day ─────────────────────────────────────
+// Idle behaviour follows the office clock rather than being uniform round the clock: people eat
+// around noon, drink coffee in the morning, and do much less of either at night. Each entry is
+// [fromHour, toHour, multiplier] applied to that action's weight, first match wins.
+/** Meals: a lunch hour, a lighter evening meal, almost nothing at night */
+export const OFFICE_MEAL_HOURS: Array<[number, number, number]> = [
+  [11.5, 13.5, 3], [18, 20, 1.5], [22, 6, 0.15],
+]
+/** Drinks: a morning rush, a smaller afternoon one, little at night */
+export const OFFICE_DRINK_HOURS: Array<[number, number, number]> = [
+  [7, 10, 2.5], [14, 16, 1.6], [22, 6, 0.3],
+]
+/** How many candidates get a real pathfind when choosing the nearest machine, bin or stray mug */
+export const NEAREST_PATH_CANDIDATES = 5
+
+/** Active agents that count as a full office: the load gauge and the racks read this as 100% */
+export const OFFICE_FULL_LOAD_AGENTS = 6
+/** At full load a load-reactive idle cycle runs this many times faster (server rack lights) */
+export const LOAD_REACTIVE_SPEEDUP = 3
+
+/** After dark a lamp stays lit only while someone is working within this many tiles of it */
+export const LAMP_OCCUPANCY_RADIUS_TILES = 4
+/** How often the office re-checks which desks are still occupied, in seconds */
+export const LAMP_OCCUPANCY_CHECK_SEC = 6
 /** Maximum sunlight beam length in tiles (at sunrise/sunset when sun is low) */
 export const SUN_BEAM_MAX_LENGTH = 3
 /** Minimum sunlight beam length in tiles (at midday when sun is high) */

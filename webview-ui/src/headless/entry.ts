@@ -19,7 +19,7 @@
 import { OfficeState } from '../office/engine/officeState.js'
 import { renderFrame, renderNametags, renderBubbles, createTileLayerCache, setNametagFont } from '../office/engine/renderer.js'
 import type { SelectionRenderState } from '../office/engine/renderer.js'
-import { updateSunCycle, getSunState, computeSunBeams } from '../office/engine/sunlight.js'
+import { updateSunCycle, getSunState, computeSunBeams, getOfficeHour } from '../office/engine/sunlight.js'
 import { updateWeather, getWeatherSeverity, setWeather } from '../office/engine/windowEffects.js'
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js'
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js'
@@ -205,6 +205,8 @@ export interface HeadlessOffice {
   getFlags(): KioskFlags
   /** True once assets and a layout have arrived (frames before that are blank) */
   isReady(): boolean
+  /** Engine internals, for the tests that watch behaviour emerge over simulated office days */
+  debug(): { officeHour: () => number; workload: () => number; characters: () => Character[] }
   agentCount(): number
 }
 
@@ -601,7 +603,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       const key = f.uid ?? `${f.col},${f.row},${f.zY}`
       const box = furnitureBox(f)
       fBoxes.set(key, box)
-      const sprite = f.activeTimeSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
+      const sprite = f.activeDataSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
       const before = prevFurnitureBoxes.get(key)
       if (!before || prevSpriteByKey.get(key) !== sprite) {
         addRect(rects, box)
@@ -767,6 +769,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     render,
     renderNametagOverlay,
     renderDamaged,
+    debug: () => ({ officeHour: getOfficeHour, workload: () => os.getWorkload(), characters: () => os.getCharacters() }),
     setFlags,
     getFlags: () => ({ ...flags }),
     isReady: () => layoutReady,

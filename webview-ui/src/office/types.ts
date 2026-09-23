@@ -148,8 +148,8 @@ export interface FurnitureInstance {
   isLamp?: boolean
   /** Placed on a wall (catalog `canPlaceOnWalls`), so it must draw in front of the wall it hangs on */
   onWall?: boolean
-  /** The dial frame a clock is currently showing */
-  activeTimeSprite?: SpriteData | null
+  /** The frame a state-driven cycle is showing: a clock's dial, a panel's load level */
+  activeDataSprite?: SpriteData | null
   /** Light radius in tiles */
   lightRadius?: number
   /** Light color [r, g, b] */
@@ -192,6 +192,10 @@ export interface FurnitureInstance {
   idleCycleSprites?: SpriteData[]
   /** Clock dial frames, one per half hour, chosen by the office's time of day */
   timeCycleSprites?: SpriteData[]
+  /** Gauge frames, ordered quiet to busy, chosen by how many agents are working */
+  loadCycleSprites?: SpriteData[]
+  /** Its idle cycle runs faster the busier the office is (server rack lights) */
+  loadReactive?: boolean
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -322,6 +326,10 @@ export interface FurnitureCatalogEntry {
   idleCycleSprites?: SpriteData[]
   /** Clock dial frames, one per half hour, chosen by the office's time of day */
   timeCycleSprites?: SpriteData[]
+  /** Gauge frames, ordered quiet to busy, chosen by how many agents are working */
+  loadCycleSprites?: SpriteData[]
+  /** Its idle cycle runs faster the busier the office is (server rack lights) */
+  loadReactive?: boolean
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -443,6 +451,8 @@ export interface Character {
   itemColor: FloorColor | null
   /** Prop uid targeted by a TIDY_UP action */
   itemTargetUid: string | null
+  /** The uid of the origin furniture being used to fetch an item, so others queue rather than overlap */
+  fetchOriginUid: string | null
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
   /** Project name (used for per-project look memory) */

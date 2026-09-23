@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.13.0
+
+- **The office keeps office hours.** Meals peak around noon and drinks in the first hours of the day, both thin out overnight, and everything still happens at its normal rate in between (`OFFICE_MEAL_HOURS`, `OFFICE_DRINK_HOURS`). Measured over 40 office days: 12 meals in the lunch hours against 1 overnight.
+- **Lamps burn where people are.** After dark a desk lamp stays lit only while someone is working within a few tiles of it, so the office ends up lit in pools around whoever is still at it.
+- **A wall panel that means something.** "Wall Panel - Office Load" is a gauge whose bars follow how many agents are working, through a new catalog cycle `loadCycle` (ordered quiet to busy, picked by state like the clocks' `timeCycle`). The server racks take a new `loadReactive` flag and blink up to three times faster as the office gets busy.
+- **Nearest means nearest to walk to.** Choosing a coffee machine, a bin or a stray mug now measures the real route with the same pathfinding the agents walk with, not straight-line distance - a bin three tiles away through a wall no longer beats one eight tiles down the corridor. Only the closest few candidates are measured, so it stays cheap.
+- **One at a time at the coffee machine.** Agents prefer a machine nobody is using, and where there is only one they wait beside it for their turn instead of brewing through each other. The claim is released the moment the drink is handed over, so sitting down to eat no longer keeps the fridge looking busy.
+- `renderer/test/office-day.mjs` simulates whole office days against live state and reports the rhythm, plus the engine `debug()` hook it reads.
+
 ## v1.12.1
 
 - The wall clocks now read quarter hours, with both hands. The first cut stepped in half hours, which meant the minute hand only ever pointed straight up or straight down and flipped 180 degrees on every step - flapping rather than telling the time. At quarters it steps 90 degrees the same way round each time and sweeps. 48 dial frames per clock.

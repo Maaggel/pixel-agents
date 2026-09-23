@@ -32,8 +32,12 @@ import {
   MEETING_BUBBLE_GAP_MAX_SEC,
   MEETING_BUBBLE_INITIAL_MAX_DELAY_SEC,
   MEETING_MIN_PARTICIPANTS,
+  OFFICE_MEAL_HOURS,
+  OFFICE_DRINK_HOURS,
+  NEAREST_PATH_CANDIDATES,
 } from '../../constants.js'
 import { getCatalogEntry, getCatalogTypesMatching, getUtensilEntries } from '../layout/furnitureCatalog.js'
+import { getOfficeHour } from './sunlight.js'
 
 // ── Idle Action Registry ───────────────────────────────────────
 // Adding a new action: 1) add to IdleActionType in types.ts
@@ -61,6 +65,21 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.FETCH_ITEM, weight: 25, needsDynamicItems: true },
   { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
 ]
+
+/**
+ * How much more (or less) likely an action is at this hour of the office's day.
+ *
+ * Ranges may wrap past midnight, which is how the quiet night hours are written. The office day
+ * is five minutes long, so a lunch rush lasts about half a minute of real time.
+ */
+function hourMultiplier(ranges: Array<[number, number, number]>): number {
+  const hour = getOfficeHour()
+  for (const [from, to, factor] of ranges) {
+    const inRange = from <= to ? hour >= from && hour < to : hour >= from || hour < to
+    if (inRange) return factor
+  }
+  return 1
+}
 
 function logIdle(ch: Character, message: string): void {
   addBehaviourEntry({ agentId: ch.id, agentName: ch.nametag || `Agent ${ch.id}`, message, type: 'idle' })
@@ -102,16 +121,28 @@ function findFetchableUtensils(ctx: IdleActionContext, want: 'food' | 'break'): 
   return out
 }
 
-/** Start walking to a random origin of `utensil`; on arrival the caller waits ITEM_FETCH_SEC and receives it. */
-function startFetch(ch: Character, utensil: FetchableUtensil, ctx: IdleActionContext): boolean {
-  const origins = [...utensil.origins]
-  for (let i = origins.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [origins[i], origins[j]] = [origins[j], origins[i]]
+/** Is someone else already at this machine, or on their way to it? */
+function originTaken(uid: string | undefined, ch: Character, ctx: IdleActionContext): boolean {
+  if (!uid) return false
+  for (const other of ctx.characters.values()) {
+    if (other.id !== ch.id && other.fetchOriginUid === uid) return true
   }
-  for (const origin of origins) {
+  return false
+}
+
+/**
+ * Start walking to an origin of `utensil`; on arrival the caller waits ITEM_FETCH_SEC and
+ * receives it. A machine nobody else is using wins over a nearer one that is taken, so two agents
+ * wanting coffee spread across the machines instead of piling onto the same one; with only one
+ * machine the second arrival waits their turn beside it.
+ */
+function startFetch(ch: Character, utensil: FetchableUtensil, ctx: IdleActionContext): boolean {
+  const byDistance = nearestFirst(utensil.origins, ch, ctx)
+  const free = byDistance.filter((o) => !originTaken(o.uid, ch, ctx))
+  for (const origin of [...free, ...byDistance.filter((o) => !free.includes(o))]) {
     if (!walkToFurniture(ch, origin, ctx)) continue
     ch.itemTargetUid = utensil.type // utensil type to receive on arrival
+    ch.fetchOriginUid = origin.uid ?? null
     ch.itemColor = pickRandom(ITEM_COLOR_VARIANTS) ?? null
     ch.idleActionTimer = ITEM_FETCH_SEC
     return true
@@ -128,8 +159,7 @@ function utensilLabel(type: string | null): string {
 function findDisposalFor(type: string, ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
   const prefix = getCatalogEntry(type)?.utensilDisposal
   if (!prefix) return []
-  return findFurnitureByAssetName(ctx, prefix)
-    .sort((a, b) => (Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)) - (Math.abs(b.col - ch.tileCol) + Math.abs(b.row - ch.tileRow)))
+  return nearestFirst(findFurnitureByAssetName(ctx, prefix), ch, ctx)
 }
 
 /** A prop is "in use" while someone sits right next to it (eating in front of a plate, a mug by a seated agent). */
@@ -210,6 +240,45 @@ function clearItemBubble(ch: Character): void {
 
 function pickRandom<T>(list: T[]): T | null {
   return list.length > 0 ? list[Math.floor(Math.random() * list.length)] : null
+}
+
+/** Straight-line tiles between a character and something, ignoring walls. */
+function tileDistance(a: { col: number; row: number }, ch: Character): number {
+  return Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)
+}
+
+/**
+ * Nearest first, by how far there is to *walk*.
+ *
+ * Anything an agent goes to is chosen this way: the coffee machine it uses, the bin it takes the
+ * paper to, the mug it clears away. Straight-line distance is not good enough - a bin three tiles
+ * away through a wall would beat one eight tiles along the corridor, and the agent would set off
+ * around the building past three closer ones.
+ *
+ * Measuring is a pathfind each, so only the closest few by straight line are measured and the
+ * rest keep that cheap order behind them. Anything unreachable sorts last rather than being
+ * dropped, because the caller may still find a way to it.
+ */
+function nearestFirst<T extends { col: number; row: number; type?: string }>(
+  list: T[], ch: Character, ctx?: IdleActionContext,
+): T[] {
+  const byLine = [...list].sort((a, b) => tileDistance(a, ch) - tileDistance(b, ch))
+  if (!ctx || byLine.length < 2) return byLine
+  const measured = byLine.slice(0, NEAREST_PATH_CANDIDATES).map((item) => {
+    const footprint = item.type ? ctx.getFurnitureFootprint(item.type) : null
+    // a stray mug on the floor has no uid or type; it stands in as a one tile piece of furniture
+    const asFurniture: PlacedFurniture = { uid: '', type: item.type ?? '', col: item.col, row: item.row }
+    const adj = findAdjacentWalkableTile(
+      asFurniture, footprint?.w ?? 1, footprint?.h ?? 1,
+      ctx.tileMap, ctx.blockedTiles, item.type ? useSideFor(item.type) : 'front',
+    )
+    if (!adj) return { item, steps: Infinity }
+    if (adj.col === ch.tileCol && adj.row === ch.tileRow) return { item, steps: 0 }
+    const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
+    return { item, steps: path.length === 0 ? Infinity : path.length }
+  })
+  measured.sort((a, b) => a.steps - b.steps)
+  return [...measured.map((m) => m.item), ...byLine.slice(NEAREST_PATH_CANDIDATES)]
 }
 
 /** Check if a character's current seat is in the given zone type */
@@ -440,7 +509,11 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
         if (hasStalePropNearby(ch, ctx)) { eligible.push({ type: entry.type, weight: TIDY_NEAR_WEIGHT }); continue }
       }
     }
-    eligible.push({ type: entry.type, weight: entry.weight })
+    // The office day shapes when people eat and drink
+    let weight = entry.weight
+    if (entry.type === IdleActionType.EATING) weight *= hourMultiplier(OFFICE_MEAL_HOURS)
+    else if (entry.type === IdleActionType.FETCH_ITEM) weight *= hourMultiplier(OFFICE_DRINK_HOURS)
+    eligible.push({ type: entry.type, weight })
   }
 
   if (eligible.length === 0) return IdleActionType.WANDER
@@ -687,9 +760,7 @@ export function initIdleAction(
 
     case IdleActionType.TIDY_UP: {
       // Pick up a stray item and carry it to a sink
-      const stale = findStaleProps(ctx)
-        .sort((a, b) => (Math.abs(a.col - ch.tileCol) + Math.abs(a.row - ch.tileRow)) - (Math.abs(b.col - ch.tileCol) + Math.abs(b.row - ch.tileRow)))
-      const prop = stale[0] ?? null
+      const prop = nearestFirst(findStaleProps(ctx), ch, ctx)[0] ?? null
       if (!prop) return false
       const propAsFurniture: PlacedFurniture = { uid: prop.uid, type: '', col: prop.col, row: prop.row }
       if (!walkToFurniture(ch, propAsFurniture, ctx)) return false
@@ -737,9 +808,10 @@ export function updateIdleAction(
 // ── Dynamic items: update loops ────────────────────────────────
 
 function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boolean {
-  if (!ctx.dynamicItems) { ch.itemTargetUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
+  if (!ctx.dynamicItems) { ch.itemTargetUid = null; ch.fetchOriginUid = null; clearItemBubble(ch); clearIdleAction(ch); return false }
   if (ch.conversationPhase === 'approaching') {
-    if (arrivedAtFurniture(ch)) ch.conversationPhase = 'talking' // waiting at the origin (brewing...)
+    // Arrived, but the machine may be in use: stand and wait rather than brewing over someone
+    if (arrivedAtFurniture(ch) && !someoneIsUsing(ch, ctx)) ch.conversationPhase = 'talking'
     return true
   }
   if (ch.conversationPhase === 'talking') {
@@ -747,12 +819,32 @@ function updateFetchItem(ch: Character, dt: number, ctx: IdleActionContext): boo
     if (ch.idleActionTimer <= 0) {
       ch.heldItem = ch.itemTargetUid
       ch.itemTargetUid = null
+      ch.fetchOriginUid = null // the machine is free for whoever is waiting
       clearItemBubble(ch)
       logIdle(ch, `got a ${utensilLabel(ch.heldItem)}`)
       clearIdleAction(ch)
       return false // back to seat, carrying the item
     }
     return true
+  }
+  return false
+}
+
+/**
+ * Someone else is at this machine right now, rather than merely heading for it.
+ *
+ * "At it" means still holding the claim: a fetcher waiting for their drink, or someone at the
+ * fridge collecting a meal. The claim is dropped the moment the item is handed over, so sitting
+ * down to eat does not keep the fridge busy.
+ */
+function someoneIsUsing(ch: Character, ctx: IdleActionContext): boolean {
+  if (!ch.fetchOriginUid) return false
+  for (const other of ctx.characters.values()) {
+    if (other.id === ch.id || other.fetchOriginUid !== ch.fetchOriginUid) continue
+    const collecting = other.idleAction === IdleActionType.EATING
+      ? other.conversationPhase === 'leaving'
+      : other.conversationPhase === 'talking'
+    if (collecting) return true
   }
   return false
 }
@@ -1017,10 +1109,12 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
   if (ch.conversationPhase === 'leaving') {
     // Fetch leg: wait at the origin, receive the food, then head back to the kitchen seat
     if (!arrivedAtFurniture(ch)) return true
+    if (someoneIsUsing(ch, ctx)) return true // someone else is at the fridge: wait
     ch.idleActionTimer -= dt
     if (ch.idleActionTimer > 0) return true
     ch.heldItem = ch.itemTargetUid
     ch.itemTargetUid = null
+    ch.fetchOriginUid = null // done at the fridge; it should not read as taken while they eat
     clearItemBubble(ch)
     logIdle(ch, `got some ${utensilLabel(ch.heldItem)}`)
     const seat = ch.seatId ? ctx.seats.get(ch.seatId) : null
@@ -1081,6 +1175,7 @@ function clearIdleAction(ch: Character): void {
   ch.conversationPartnerId = null
   ch.conversationPhase = null
   ch.idleActionTimer = 0
+  ch.fetchOriginUid = null
   ch.meetingGroupId = null
   ch.currentTool = null
   // Don't clear bubbleType here - let it fade naturally or get cleared by the caller

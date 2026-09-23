@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -1619,6 +1619,28 @@ export class OfficeState {
     return out
   }
 
+  /** Is anyone sitting and working close enough to this lamp to want it on? */
+  private someoneWorkingNear(lamp: { col: number; row: number }): boolean {
+    for (const ch of this.characters.values()) {
+      if (ch.isSubagent || !isSittingState(ch.state)) continue
+      const dc = Math.abs(ch.tileCol - lamp.col), dr = Math.abs(ch.tileRow - lamp.row)
+      if (dc + dr <= LAMP_OCCUPANCY_RADIUS_TILES) return true
+    }
+    return false
+  }
+
+  private lampOccupancyTimer = 0
+
+  /**
+   * How busy the office looks right now, 0 to 1: the share of a full house that is working.
+   * Sub-agents count, since a parent spawning five of them really is five things happening.
+   */
+  getWorkload(): number {
+    let active = 0
+    for (const ch of this.characters.values()) if (ch.isActive) active++
+    return Math.min(1, active / OFFICE_FULL_LOAD_AGENTS)
+  }
+
   /**
    * Show the office's own time of day on the wall clocks.
    *
@@ -1627,19 +1649,31 @@ export class OfficeState {
    * office day is five minutes long, so a frame lasts a few seconds.
    */
   private clockDialIdx = -1
-  private updateClockSprites(): void {
-    const idx = Math.floor(getOfficeDialFraction() * CLOCK_DIAL_FRAMES) % CLOCK_DIAL_FRAMES
-    if (idx === this.clockDialIdx) return
-    this.clockDialIdx = idx
+  private loadLevelIdx = -1
+  private updateDataSprites(): void {
+    const dial = Math.floor(getOfficeDialFraction() * CLOCK_DIAL_FRAMES) % CLOCK_DIAL_FRAMES
+    if (dial !== this.clockDialIdx) {
+      this.clockDialIdx = dial
+      for (const f of this.furniture) {
+        if (!f.timeCycleSprites?.length) continue
+        f.activeDataSprite = f.timeCycleSprites[dial % f.timeCycleSprites.length]
+      }
+    }
+    // Gauges: the frames are an ordered ramp, so the busier the office the further up it reads
+    const load = this.getWorkload()
     for (const f of this.furniture) {
-      if (!f.timeCycleSprites?.length) continue
-      f.activeTimeSprite = f.timeCycleSprites[idx % f.timeCycleSprites.length]
+      if (!f.loadCycleSprites?.length) continue
+      const idx = Math.round(load * (f.loadCycleSprites.length - 1))
+      if (idx === this.loadLevelIdx && f.activeDataSprite) continue
+      f.activeDataSprite = f.loadCycleSprites[idx]
+      this.loadLevelIdx = idx
     }
   }
 
   rebuildFurnitureInstances(): void {
-    // the new instances have no dial yet; updateClockSprites only acts when the hour changes
+    // the new instances have no state sprite yet; the updater only acts when its input changes
     this.clockDialIdx = -1
+    this.loadLevelIdx = -1
     // Collect tiles where active agents face desks (only when seated, not while walking to seat)
     const autoOnTiles = new Set<string>()
     for (const ch of this.characters.values()) {
@@ -2021,6 +2055,22 @@ export class OfficeState {
       this.characters.delete(id)
     }
 
+    // After dark, a lamp is only worth burning where someone is still working: the office ends up
+    // lit in pools around whoever is at their desk, and dark where nobody is.
+    this.lampOccupancyTimer -= dt
+    if (this.lampsTargetOn && this.lampOccupancyTimer <= 0) {
+      this.lampOccupancyTimer = LAMP_OCCUPANCY_CHECK_SEC
+      for (const item of this.layout.furniture) {
+        if (!item.uid || !getCatalogEntry(item.type)?.isLamp) continue
+        if (this.lampPendingToggles.has(item.uid)) continue          // mid-switch, leave it alone
+        const wanted = this.someoneWorkingNear(item)
+        if ((this.lampIndividualOn.get(item.uid) ?? false) !== wanted) {
+          this.lampIndividualOn.set(item.uid, wanted)
+          needFurnitureRebuild = true
+        }
+      }
+    }
+
     // Check if lamp target state changed (sun intensity + weather crossed threshold)
     const { intensity: sunIntensity } = getSunState()
     const weatherSeverity = getWeatherSeverity()
@@ -2071,7 +2121,7 @@ export class OfficeState {
     }
 
     // ── Wall clocks ──────────────────────────────────────────────
-    this.updateClockSprites()
+    this.updateDataSprites()
 
     // ── Meeting cycle furniture animation ────────────────────────
     this.updateMeetingCycleSprites(dt)
@@ -2466,9 +2516,12 @@ export class OfficeState {
   }
 
   /** Compute the next idle cycle interval in seconds for a furniture instance. */
-  private computeIdleCycleInterval(f: { idleCycleIntervalMin?: number; idleCycleIntervalMax?: number }): number {
-    const min = f.idleCycleIntervalMin
-    const max = f.idleCycleIntervalMax
+  private computeIdleCycleInterval(f: { idleCycleIntervalMin?: number; idleCycleIntervalMax?: number; loadReactive?: boolean }): number {
+    // A load-reactive cycle (the server racks) runs up to LOAD_REACTIVE_SPEEDUP times faster when
+    // the office is busy, so the lights flicker along with the work rather than at a steady idle.
+    const scale = f.loadReactive ? 1 / (1 + this.getWorkload() * (LOAD_REACTIVE_SPEEDUP - 1)) : 1
+    const min = f.idleCycleIntervalMin === undefined ? undefined : f.idleCycleIntervalMin * scale
+    const max = f.idleCycleIntervalMax === undefined ? undefined : f.idleCycleIntervalMax * scale
     if (min !== undefined && max !== undefined) {
       return min + Math.random() * (max - min)
     }

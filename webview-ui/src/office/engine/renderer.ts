@@ -208,7 +208,7 @@ export function renderScene(
 
   // Furniture
   for (const f of furniture) {
-    const cached = getCachedSprite(f.activeTimeSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite, zoom)
+    const cached = getCachedSprite(f.activeDataSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
     // Pre-cache overlay sprite (uncolorized - ignores user color changes)

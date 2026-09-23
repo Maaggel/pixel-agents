@@ -71,6 +71,8 @@ export interface FurnitureAsset {
   idleCycle?: string[]
   /** Clock dial frames, selected by the office's own time of day rather than a timer */
   timeCycle?: string[]
+  /** Gauge frames, ordered quiet to busy, selected by how many agents are working */
+  loadCycle?: string[]
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -262,6 +264,33 @@ export async function loadFurnitureAssets(
             }
           }
           asset.timeCycle = resolvedIds
+        }
+
+        // Load loadCycle frame sprites (file paths → sprite IDs): gauges, ordered quiet to busy
+        if (Array.isArray(asset.loadCycle)) {
+          const rawCycle = asset.loadCycle
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Load cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading idle cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.loadCycle = resolvedIds
         }
 
         // Load dockedCycle frame sprites (file paths → sprite IDs)

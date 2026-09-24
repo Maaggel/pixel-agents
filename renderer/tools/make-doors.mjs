@@ -241,7 +241,7 @@ const SIDE_CLOSED = rows(sideClosedGrid)
 
 const sideOpenGrid = grid(32, 48)
 stampBeam(sideOpenGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
-stampSwungLeaf(sideOpenGrid, BEAM_X + 5, BEAM_TOP + 3, 15, 12, 12, -0.5)
+stampSwungLeaf(sideOpenGrid, BEAM_X + 5, BEAM_TOP + 6, 15, 12, 12, -0.12)
 const SIDE_OPEN = rows(sideOpenGrid)
 
 console.log('doors ->')

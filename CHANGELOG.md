@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.9
+
+- The swung leaf lies nearly horizontal: a door standing wide open sticks straight out from the wall it hangs on, rather than at the diagonal it had before.
+
 ## v1.19.8
 
 - The door swings further: the leaf's angle goes from about 17 degrees to about 27, so an open side door reads as open rather than ajar.

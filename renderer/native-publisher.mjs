@@ -17,6 +17,12 @@ import { promisify } from 'util'
 import { createCanvas } from '@napi-rs/canvas'
 import { installShims, useSnapshots, snapshotsMade } from './native/shims.mjs'
 import { compressBlock } from '../relay/lz4.mjs'
+
+/** The build this renderer is drawing, shown on the tablet so it is clear what is live */
+const VERSION = (() => {
+  try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version }
+  catch { return '?' }
+})()
 import { encodeFramePayload, COMPRESSION_LZ4_BLOCK, COMPRESSION_DEFLATE_RAW } from '../relay/legacyProtocol.mjs'
 
 const CONFIG_FILE = join(homedir(), '.pixel-agents', 'renderer.json')
@@ -193,6 +199,52 @@ function convertRegion(src, x, y, w, h) {
   timing.area += w * h
 }
 
+/**
+ * The build the tablet is looking at, bottom left of the picture.
+ *
+ * It goes into the scene rather than onto the nametag overlay, because the overlay only exists
+ * when the scene is drawn at half size and doubled - and it is not, the tablet does the doubling.
+ * Drawn with a 3x5 pixel font rather than a real one: at this size a font is anti-aliased into a
+ * smear, and the frame is quantised to RGB565 and doubled by the tablet on top of that. Built once
+ * into a small image and blitted each frame - Skia's text drawing also slows down badly over a long
+ * run, which is why nametags are cached the same way.
+ *
+ * Damage needs no special handling. It is drawn after the scene and before the readback, so
+ * wherever the office repaints under it the stamp goes back on top and that rectangle is converted
+ * anyway; where nothing repaints, the pixels already in the frame are still right.
+ */
+const STAMP_GLYPHS = {
+  '0': ['111', '101', '101', '101', '111'],
+  '1': ['010', '110', '010', '010', '111'],
+  '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '111', '001', '111'],
+  '4': ['101', '101', '111', '001', '001'],
+  '5': ['111', '100', '111', '001', '111'],
+  '6': ['111', '100', '111', '101', '111'],
+  '7': ['111', '001', '001', '001', '001'],
+  '8': ['111', '101', '111', '101', '111'],
+  '9': ['111', '101', '111', '001', '111'],
+  'v': ['000', '101', '101', '101', '010'],
+  '.': ['000', '000', '000', '000', '010'],
+}
+
+const stamp = (() => {
+  const text = `v${VERSION}`
+  const glyphs = [...text].map((ch) => STAMP_GLYPHS[ch]).filter(Boolean)
+  const w = glyphs.length * 4 + 1, h = 5 + 4
+  const c = createCanvas(w, h)
+  const x = c.getContext('2d')
+  x.fillStyle = 'rgba(0,0,0,0.6)'
+  x.fillRect(0, 0, w, h)
+  x.fillStyle = '#e8e8f0'
+  glyphs.forEach((g, i) => {
+    g.forEach((row, ry) => {
+      [...row].forEach((on, rx) => { if (on === '1') x.fillRect(1 + i * 4 + rx, 2 + ry, 1, 1) })
+    })
+  })
+  return { image: c, x: 2, y: drawH - h - 2 }
+})()
+
 function drawFrame() {
   const t0 = performance.now()
   // The nametag overlay is drawn first and at full resolution: its rectangles tell the scene pass
@@ -214,6 +266,7 @@ function drawFrame() {
 
   const unchanged = rects !== null && rects.length === 0 && overlayRects.length === 0 && stats.drawn > 0
   if (!unchanged) {
+    ctx.drawImage(stamp.image, stamp.x, stamp.y)
     const rgba = canvas.data() // RGBA8, row-major, no padding (also where Skia rasterises the frame)
     const t2 = performance.now()
     timing.readback += t2 - t1

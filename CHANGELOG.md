@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.27.0
+
+- **The build is stamped in the corner of the tablet's picture**, bottom left, where the app's own fps overlay (top left) will not cover it. It goes into the scene rather than onto the nametag overlay, because that overlay only exists when the scene is drawn at half size and doubled by the renderer - and it is not any more; the tablet does the doubling. Drawn with a 3x5 pixel font rather than a real one: at this size a font is anti-aliased into a smear, and the frame is quantised to RGB565 and doubled by the tablet on top of that.
+- `npm run deploy` now ends with `renderer/refresh.sh`, which rebuilds the headless engine and restarts the tablet renderer. Nothing else restarted it, so the tablet kept drawing with whatever engine it started with - and a version stamp claiming a build it was not running would be worse than no stamp at all.
+
 ## v1.26.3
 
 - The phone sits a pixel further left, centred in the lap.

@@ -2,7 +2,7 @@
   "name": "pixel-agents",
   "displayName": "Pixel Agents",
   "description": "Pixel art office where your Claude Code agents come to life as animated characters",
-  "version": "1.26.3",
+  "version": "1.27.1",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
@@ -87,7 +87,7 @@
     "daemon": "node dist/pixel-agents-daemon.cjs",
     "build:daemon": "npm run check-types && node esbuild.js --daemon-only",
     "package:daemon": "npm run build:daemon && bash daemon/package.sh",
-    "deploy": "npm run build && bash relay/deploy.sh && bash daemon/install.sh",
+    "deploy": "npm run build && bash relay/deploy.sh && bash daemon/install.sh && bash renderer/refresh.sh",
     "deploy:ui": "npm run build:webview && bash relay/deploy.sh --ui-only"
   },
   "devDependencies": {

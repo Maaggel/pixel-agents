@@ -22,10 +22,9 @@ const check = (ok, what, detail = '') => {
 
 const office = createHeadlessOffice({ width: 512, height: 300, zoom: 1 })
 const ws = new WebSocket(`wss://apps.blommemix.dk/pixelagents/ws?role=viewer&token=${encodeURIComponent(token)}`)
-ws.onmessage = (e) => {
+ws.onmessage = async (e) => {
   const msg = JSON.parse(e.data)
   if (msg.type !== 'init') return
-  ws.close()
   const cat = msg.furniture.catalog
   const doorEntry = cat.find((c) => c.name === 'DOOR_FRONT_CLOSED')
   const toilet = cat.find((c) => c.privacySeat)
@@ -53,6 +52,15 @@ ws.onmessage = (e) => {
   lay.furniture.push({ uid: 'test-door', type: doorEntry.id, col: near.col, row: near.row - (doorEntry.footprintH - 1) })
   office.handleRelayMessage(msg)
   const dbg = office.debug()
+
+  // Agents can still be re-announcing (after a relay restart the init can arrive before the
+  // publishers reconnect), so give them a moment rather than bailing out.
+  const start = Date.now()
+  while (dbg.characters().length === 0 && Date.now() - start < 8000) {
+    office.tick(0.05)
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  ws.close()
 
   // Start from a quiet office: whoever is on the toilet in the real one right now would have the
   // room locked before the first check ran (which is how this test first found the lock working).

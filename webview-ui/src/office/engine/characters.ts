@@ -469,7 +469,8 @@ export function getCharacterSprite(ch: Character, sprites: CharacterSprites): Sp
       // Sitting somewhere that is not a desk: doing nothing, or on their phone. The reading frames
       // hold up a sheet of paper, which is not what anyone is doing on the toilet.
       if (ch.sitPose === 'still') return sprites.walk[dir][1]
-      if (ch.sitPose === 'phone') return sprites.typing[dir][ch.frame % 2]
+      // the neutral frame, arms down: the phone is held low in the lap, not up at the chest
+      if (ch.sitPose === 'phone') return sprites.walk[dir][1]
       // Sitting idle: slow reading animation (casually looking around)
       return sprites.reading[dir][ch.frame % 2]
     case CharacterState.SIT_WAIT:

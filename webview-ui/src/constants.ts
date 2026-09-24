@@ -465,14 +465,15 @@ export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind:
   3: { dx: -12, dy: -13, behind: false }, // LEFT - mirrored
 }
 /**
- * Where the phone sits relative to a character's bottom-centre, per direction. Nothing for UP:
- * facing away, their own back is in the way.
+ * Where the phone sits relative to a character's bottom-centre, per direction: held low, in the
+ * lap, the way the reading frames hold a paper. Nothing for UP: facing away, their back is in
+ * the way.
  */
 export const PHONE_OFFSETS: Record<number, { dx: number; dy: number } | null> = {
-  0: { dx: -1, dy: -14 },  // DOWN
+  0: { dx: -1, dy: -9 },   // DOWN
   1: null,                 // UP
-  2: { dx: 1, dy: -14 },   // RIGHT
-  3: { dx: -3, dy: -14 },  // LEFT
+  2: { dx: 1, dy: -9 },    // RIGHT
+  3: { dx: -3, dy: -9 },   // LEFT
 }
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4

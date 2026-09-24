@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.26.1
+
+- The phone is held low, down in the lap with the arms down, rather than up at the chest - which is how anyone sits on a toilet. `renderer/tools/pose-shot.mjs` photographs both poses, since they are picked at random and cannot be asked for.
+
 ## v1.26.0
 
 - Nobody reads a newspaper on the toilet. The seated idle animation holds up a sheet of paper, which was what an agent in there appeared to be doing; they now either just sit, or sit looking at their phone, picked at random when they sit down.

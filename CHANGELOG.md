@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.21.2
+
+- The door sign is back to a single tile, with a shorter plate drawn in the top half of it so it sits in the wall's lit face without hanging past the bottom edge. On the two-tile footprint it sat too high and the only half step that stayed on the wall was upward, which is the wrong way for a sign that is already too high; on one tile both the whole and the half position are valid, so it can be nudged either way.
+
 ## v1.21.1
 
 - The door sign hangs high on the wall instead of halfway down it with its lower half past the wall's bottom edge: it is a 16x32 sprite on a 1x2 footprint now, so the tile you point at is where its bottom row lands and the plate sits up in the wall's face. It is also half-tile placeable, so it can be nudged eight pixels at a time rather than taken or left where it falls.

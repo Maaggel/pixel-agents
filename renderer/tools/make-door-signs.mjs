@@ -4,9 +4,10 @@
 //   DOOR_SIGN_MEETING   amber, two heads round a table
 //   DOOR_SIGN_OCCUPIED  red, a bar
 //
-// Three 16x32 frames of one plate on a 1x2 footprint, hung high on a wall: at 16x16 the plate's
-// lower half fell past the wall's bottom edge onto the floor. The entry is half-tile placeable,
-// so it can be nudged up or down eight pixels at a time. The engine picks the frame from the nearest
+// Three 16x16 frames of one plate on a single tile, drawn in the top half of it so the plate sits
+// in the wall's lit face rather than hanging past its bottom edge. One tile is deliberate: the
+// entry is half-tile placeable, and on a two-tile footprint the only half step that stays on the
+// wall is upward, which is the wrong way for a sign that is already too high. The engine picks the frame from the nearest
 // room that has something worth reporting - a toilet in it, or a meeting zone - so which frame
 // shows is state, not animation. Run by hand, output uploaded over FTP:
 //   cd renderer && OUT=<dir> node tools/make-door-signs.mjs
@@ -34,21 +35,18 @@ const P = {
 // One plate, three faces. F is the face colour, f its highlight, and the marks differ per state.
 const plate = (F, f, marks) => {
   const face = (ch) => `...K${ch.repeat(8)}K...`
-  // the plate itself, then padded out to the full 16x32 so it hangs high on the wall face
   const block = [
     '....KKKKKKKK....',
     '....KMmmmmMK....',
     '...KKKKKKKKKK...',
     face(F),
     face(F),
-    face(F),
     face(f),
     '...KKKKKKKKKK...',
     '....SSSSSSSS....',
   ]
-  const TOP = 2
-  const rows = Array.from({ length: 32 }, (_, i) => block[i - TOP] ?? '................')
-  // stamp the state's marks into the face, which spans columns 4-11 and rows 5-8 of the sprite
+  const rows = Array.from({ length: 16 }, (_, i) => block[i] ?? '................')
+  // stamp the state's marks into the face, which spans columns 4-11 and rows 3-5
   for (const [x, y, ch] of marks) {
     const r = rows[y].split('')
     r[x] = ch
@@ -58,7 +56,7 @@ const plate = (F, f, marks) => {
 }
 
 const png = (rows, name) => {
-  const c = createCanvas(16, 32)
+  const c = createCanvas(16, 16)
   const x = c.getContext('2d')
   x.imageSmoothingEnabled = false
   rows.forEach((row, y) => [...row].forEach((ch, X) => {
@@ -72,11 +70,11 @@ const png = (rows, name) => {
 }
 
 // a tick: a short stroke down, a long one back up
-const VACANT = [[5, 6, 'W'], [6, 7, 'W'], [7, 8, 'W'], [8, 7, 'W'], [9, 6, 'W'], [10, 5, 'W']]
+const VACANT = [[5, 4, 'W'], [6, 5, 'W'], [7, 4, 'W'], [8, 3, 'W']]
 // two heads at a table
-const MEETING = [[6, 6, 'W'], [9, 6, 'W'], [6, 8, 'W'], [7, 8, 'W'], [8, 8, 'W'], [9, 8, 'W']]
+const MEETING = [[6, 3, 'W'], [9, 3, 'W'], [6, 5, 'W'], [7, 5, 'W'], [8, 5, 'W'], [9, 5, 'W']]
 // a bar across: do not come in
-const OCCUPIED = [[5, 7, 'W'], [6, 7, 'W'], [7, 7, 'W'], [8, 7, 'W'], [9, 7, 'W'], [10, 7, 'W']]
+const OCCUPIED = [[5, 4, 'W'], [6, 4, 'W'], [7, 4, 'W'], [8, 4, 'W'], [9, 4, 'W'], [10, 4, 'W']]
 
 console.log('door signs ->')
 png(plate('G', 'g', VACANT), 'DOOR_SIGN_VACANT')

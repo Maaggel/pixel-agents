@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, PHONE_SPRITE, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE, BUBBLE_IDLE_TIDY_SPRITE, getItemBubbleSprite } from '../sprites/spriteData.js'
+import { getCharacterSprites, PHONE_FRAMES, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE, BUBBLE_IDLE_TIDY_SPRITE, getItemBubbleSprite } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { renderSkillAura, renderSkillBubble } from './skillAura.js'
@@ -413,7 +413,7 @@ export function renderScene(
     // On their phone: held up in front of them, in the hands the typing pose already puts there
     if (ch.sitPose === 'phone' && isSittingState(ch.state)) {
       const anchor = PHONE_OFFSETS[ch.dir]
-      const phoneCached = getCachedSprite(PHONE_SPRITE, zoom)
+      const phoneCached = getCachedSprite(PHONE_FRAMES[ch.frame % PHONE_FRAMES.length], zoom)
       if (anchor && phoneCached) {
         const px = Math.round(offsetX + (ch.x + anchor.dx) * zoom)
         const py = Math.round(offsetY + (ch.y + sittingOffset + anchor.dy) * zoom)

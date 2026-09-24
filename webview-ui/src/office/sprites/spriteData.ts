@@ -1831,15 +1831,29 @@ function hueShiftSprites(sprites: CharacterSprites, hueShift: number): Character
 }
 
 /**
- * A phone, for somebody sitting on the toilet. Six pixels of dark case around a lit screen, held
- * in the typing pose so it reads as looking down at something rather than reading a newspaper.
+ * A phone, for somebody sitting on the toilet. A dark case around a lit screen, four pixels wide,
+ * held low in the lap. Two frames: the screen is never quite still, and because the seated idle
+ * animation already advances `ch.frame`, alternating on that costs the damage tracker nothing.
  */
-export const PHONE_SPRITE: SpriteData = [
-  ['#1a1a24', '#1a1a24', '#1a1a24'],
-  ['#1a1a24', '#9fd9f0', '#1a1a24'],
-  ['#1a1a24', '#cfeefb', '#1a1a24'],
-  ['#1a1a24', '#9fd9f0', '#1a1a24'],
-  ['#1a1a24', '#1a1a24', '#1a1a24'],
+const PHONE_CASE = '#1a1a24'
+const PHONE_LIT = '#cfeefb'
+const PHONE_MID = '#9fd9f0'
+const PHONE_DIM = '#6fb8d8'
+export const PHONE_FRAMES: SpriteData[] = [
+  [
+    [PHONE_CASE, PHONE_CASE, PHONE_CASE, PHONE_CASE],
+    [PHONE_CASE, PHONE_LIT, PHONE_MID, PHONE_CASE],
+    [PHONE_CASE, PHONE_MID, PHONE_LIT, PHONE_CASE],
+    [PHONE_CASE, PHONE_LIT, PHONE_DIM, PHONE_CASE],
+    [PHONE_CASE, PHONE_CASE, PHONE_CASE, PHONE_CASE],
+  ],
+  [
+    [PHONE_CASE, PHONE_CASE, PHONE_CASE, PHONE_CASE],
+    [PHONE_CASE, PHONE_MID, PHONE_LIT, PHONE_CASE],
+    [PHONE_CASE, PHONE_LIT, PHONE_DIM, PHONE_CASE],
+    [PHONE_CASE, PHONE_MID, PHONE_LIT, PHONE_CASE],
+    [PHONE_CASE, PHONE_CASE, PHONE_CASE, PHONE_CASE],
+  ],
 ]
 
 export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {

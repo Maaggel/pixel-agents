@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.26.2
+
+- The phone is a pixel wider, with two screen pixels instead of one, and the screen is never quite still - two frames alternating on the seated animation's own clock, about every 0.8 s. Riding that clock rather than a new one means the damage tracker already knows the character changed, so an animated screen costs the tablet nothing.
+
 ## v1.26.1
 
 - The phone is held low, down in the lap with the arms down, rather than up at the chest - which is how anyone sits on a toilet. `renderer/tools/pose-shot.mjs` photographs both poses, since they are picked at random and cannot be asked for.

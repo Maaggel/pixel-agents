@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.25.0
+
+- **Mugs actually get cleared away now.** Two things were in the way. Props aged by the wall clock rather than the office's own, so the audit - which fast-forwards - saw mugs eight seconds old after half an office day and reported two things tidied over thirty office days; they now age by `elapsedSec`, the way plants already did, and the same thirty days show thirty-five things cleared away against a hundred fetched. And "somebody is using this" meant *anyone* sitting within a tile of it, which protected a drink for ever, because a drink is put down on the desk of whoever fetched it and that person then sits there working. Only its own owner counts now, and only until `PROP_ABANDONED_SEC`.
+- **An empty is finished with, not in use.** An empty plate or bowl can be cleared at once, even from under someone's nose - it is the utensils with somewhere to be taken but nowhere to be fetched from. Anything still full waits out its minimum lifetime.
+- **A drink goes down on a clear bit of desk.** If something is already standing where they would put it - a monitor, a laptop - they look along the desk to either side for a free spot first, out to `DESK_SPOT_SEARCH_TILES`. Only if the whole desk is occupied does it go on top of something, which beats carrying it around for ever. Measured over an office day: 32 of 37 drinks put down on a clear tile.
+
 ## v1.24.1
 
 - Something standing on a desk can be reached across it. A mug on the back row of a desk against a wall had no free tile beside it at all, so nobody could ever clear it away - but anyone in front of the desk can lean over and take it, which is what it looks like from the outside. Every plant, utensil and machine in the office is now reachable.

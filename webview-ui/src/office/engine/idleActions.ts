@@ -10,6 +10,7 @@ import {
   TIDY_NEAR_DISTANCE_TILES,
   TIDY_NEAR_WEIGHT,
   PROP_MIN_AGE_SEC,
+  PROP_ABANDONED_SEC,
   MAX_PROPS,
   CONVERSATION_MIN_DURATION_SEC,
   CONVERSATION_MAX_DURATION_SEC,
@@ -196,12 +197,30 @@ function findDisposalFor(type: string, ch: Character, ctx: IdleActionContext): P
 }
 
 /** A prop is "in use" while someone sits right next to it (eating in front of a plate, a mug by a seated agent). */
+/**
+ * Something finished with rather than in use: the empty a meal turns into. They are the utensils
+ * with somewhere to be taken but nowhere to be fetched from, which is exactly what an empty is.
+ */
+function isFinishedWith(kind: string): boolean {
+  const entry = getCatalogEntry(kind)
+  return !!entry?.utensil && !!entry.utensilDisposal && !entry.utensilOrigin
+}
+
+/**
+ * Is somebody still drinking this, or is it just sitting there?
+ *
+ * Only the person who put it down counts as using it, and only for a while: anyone else sitting
+ * near a mug is simply sitting near a mug. Protecting it from whoever happens to be next to it
+ * meant nothing on a desk was ever cleared away, because the person who fetched it is sitting at
+ * that desk working. Something with no owner and no age - a mug placed in the layout - is never
+ * in use; clearing those away is the point of them being tidyable.
+ */
 function isPropInUse(prop: PlacedProp, ctx: IdleActionContext): boolean {
-  for (const other of ctx.characters.values()) {
-    if (!isSittingState(other.state)) continue
-    if (Math.abs(other.tileCol - prop.col) + Math.abs(other.tileRow - prop.row) <= 1) return true
-  }
-  return false
+  if (!prop.placedAt) return false
+  if (ctx.nowSec - prop.placedAt >= PROP_ABANDONED_SEC) return false
+  const owner = ctx.characters.get(prop.ownerId)
+  if (!owner || !isSittingState(owner.state)) return false
+  return Math.abs(owner.tileCol - prop.col) + Math.abs(owner.tileRow - prop.row) <= 1
 }
 
 /** Props old enough to be tidied, not in use, and not currently targeted by someone else */
@@ -262,16 +281,16 @@ function wateringUrge(ch: Character, ctx: IdleActionContext): number {
 interface TidyTarget { uid: string; kind: string; col: number; row: number }
 
 function findStaleProps(ctx: IdleActionContext): TidyTarget[] {
-  const now = performance.now()
   const targeted = new Set<string>()
   for (const other of ctx.characters.values()) {
     if (other.itemTargetUid) targeted.add(other.itemTargetUid)
   }
   const out: TidyTarget[] = ctx.props
     .filter(p => !targeted.has(p.uid)
-      && (now - p.placedAt) / 1000 >= PROP_MIN_AGE_SEC
       && !!getCatalogEntry(p.kind)?.utensilDisposal
-      && !isPropInUse(p, ctx))
+      // An empty plate is finished with, so it can go at once and from under someone's nose.
+      // Anything still full waits out its minimum lifetime, and waits for whoever is drinking it.
+      && (isFinishedWith(p.kind) || (ctx.nowSec - p.placedAt >= PROP_MIN_AGE_SEC && !isPropInUse(p, ctx))))
     .map(p => ({ uid: p.uid, kind: p.kind, col: p.col, row: p.row }))
   // Cups, plates and glasses from the layout count too: they are exactly the things someone would
   // clear away, and hiding one only lasts until the layout is loaded again.
@@ -595,6 +614,9 @@ export interface IdleActionContext {
   findPathUnblocked: (ch: Character, toCol: number, toRow: number) => Array<{ col: number; row: number }>
   /** Callback for personality tracking of idle events */
   onIdleEvent?: (type: string, agentIds: number[]) => void
+  /** The office's own clock in seconds, which is what props age by - not the wall clock, or a
+   * simulation that fast-forwards sees mugs that never get old enough to clear away */
+  nowSec: number
   /** Dynamic items feature enabled (View options) */
   dynamicItems: boolean
   /** Props currently lying around the office */

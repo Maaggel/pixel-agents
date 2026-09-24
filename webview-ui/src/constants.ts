@@ -424,6 +424,14 @@ export const FETCH_DRINK_PREFERENCE = 3
 export const WATERING_CAN_DEFAULT_USES = 3
 /** A prop must lie around at least this long before someone tidies it away */
 export const PROP_MIN_AGE_SEC = 90
+/**
+ * After this long a mug is abandoned, whoever is sitting beside it. Without it nothing on a desk
+ * was ever cleared away: a drink is put down on the desk of whoever fetched it, that person then
+ * sits there working, and the "someone is using this" rule protected it for the rest of the day.
+ */
+export const PROP_ABANDONED_SEC = 180
+/** How far along the desk to look for a clear spot before putting a drink down on the monitor */
+export const DESK_SPOT_SEARCH_TILES = 3
 /** Tidy-up is much more likely when a stale, unused prop lies within this many tiles (Manhattan) of the agent */
 export const TIDY_NEAR_DISTANCE_TILES = 6
 /** TIDY_UP weight when such a prop is near (registry weight applies otherwise) */

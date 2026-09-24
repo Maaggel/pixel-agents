@@ -3,6 +3,7 @@ import type { ZoneType } from '../types.js'
 import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
   MAX_PROPS,
+  DESK_SPOT_SEARCH_TILES,
   PROP_MIN_AGE_SEC,
   PROP_SURFACE_LIFT_PX,
   PALETTE_COUNT,
@@ -659,6 +660,7 @@ export class OfficeState {
           findPath(ch.tileCol, ch.tileRow, toCol, toRow, this.tileMap, this.blockedTiles)
         )
       },
+      nowSec: this.elapsedSec,
       dynamicItems: this.dynamicItemsEnabled,
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
@@ -1842,7 +1844,7 @@ export class OfficeState {
   }
 
   addProp(kind: string, col: number, row: number, ownerId: number, color: FloorColor | null = null): PlacedProp {
-    const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: performance.now(), ownerId, ...(color ? { color } : {}) }
+    const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: this.elapsedSec, ownerId, ...(color ? { color } : {}) }
     this.props.set(prop.uid, prop)
     if (getCatalogEntry(kind)?.steams) this.pouredAt.set(prop.uid, this.elapsedSec)
     this.rebuildFurnitureInstances()
@@ -1865,7 +1867,8 @@ export class OfficeState {
    * own ticking: a tab left in the background does not come back to a room full of dead plants,
    * and a simulated day in a test dries them out exactly as a real one would.
    */
-  private elapsedSec = 0
+  /** The office's own clock: seconds of simulated time, which is what props and plants age by */
+  elapsedSec = 0
 
   /** When each plant was last watered, in office seconds */
   private plantWateredAt = new Map<string, number>()
@@ -1936,7 +1939,7 @@ export class OfficeState {
       const emptyType = getCatalogTypesMatching(entry.utensilEmpty)[0]
       if (!emptyType) continue
       p.kind = emptyType
-      p.placedAt = performance.now() // tidy clock starts now
+      p.placedAt = this.elapsedSec // tidy clock starts now
       changed = true
     }
     if (changed) this.rebuildFurnitureInstances()
@@ -1958,6 +1961,17 @@ export class OfficeState {
   }
 
   /** A seated character puts its held item down on the desk in front of it (or beside it). */
+  /** Is something already standing on this desk tile - a monitor, a keyboard, a laptop? */
+  private hasSurfaceItemAt(col: number, row: number): boolean {
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type)
+      if (!entry?.canPlaceOnSurfaces) continue
+      const c0 = Math.floor(item.col), r0 = Math.floor(item.row)
+      if (col >= c0 && col < c0 + entry.footprintW && row >= r0 && row < r0 + entry.footprintH) return true
+    }
+    return false
+  }
+
   private placeHeldItem(ch: Character): void {
     if (!ch.heldItem || !ch.seatId) return
     const seat = this.seats.get(ch.seatId)
@@ -1969,12 +1983,25 @@ export class OfficeState {
     const name = ch.nametag || `Agent ${ch.id}`
     const label = (getCatalogEntry(kind)?.label ?? 'item').toLowerCase()
     const f = seat.facingDir
-    const front = { col: seat.seatCol + (f === Direction.RIGHT ? 1 : f === Direction.LEFT ? -1 : 0), row: seat.seatRow + (f === Direction.DOWN ? 1 : f === Direction.UP ? -1 : 0) }
-    const sides = f === Direction.LEFT || f === Direction.RIGHT
+    const step = { col: f === Direction.RIGHT ? 1 : f === Direction.LEFT ? -1 : 0, row: f === Direction.DOWN ? 1 : f === Direction.UP ? -1 : 0 }
+    const front = { col: seat.seatCol + step.col, row: seat.seatRow + step.row }
+    // along the desk, out to either side of the spot in front, then the seat's own sides and behind
+    const along: Array<{ col: number; row: number }> = []
+    for (let d = 1; d <= DESK_SPOT_SEARCH_TILES; d++) {
+      if (step.col !== 0) along.push({ col: front.col, row: front.row - d }, { col: front.col, row: front.row + d })
+      else along.push({ col: front.col - d, row: front.row }, { col: front.col + d, row: front.row })
+    }
+    const sides = step.col !== 0
       ? [{ col: seat.seatCol, row: seat.seatRow - 1 }, { col: seat.seatCol, row: seat.seatRow + 1 }]
       : [{ col: seat.seatCol - 1, row: seat.seatRow }, { col: seat.seatCol + 1, row: seat.seatRow }]
-    const behind = { col: seat.seatCol - (front.col - seat.seatCol), row: seat.seatRow - (front.row - seat.seatRow) }
-    const spot = [front, ...sides, behind].find(t => this.isDeskTile(t.col, t.row) && !this.hasPropAt(t.col, t.row))
+    const behind = { col: seat.seatCol - step.col, row: seat.seatRow - step.row }
+    const candidates = [front, ...along, ...sides, behind]
+
+    // Somewhere clear first: a desk tile with nothing already standing on it. Failing that, put it
+    // down on top of whatever is there rather than let it stay in their hand for ever.
+    const onDesk = candidates.filter(t => this.isDeskTile(t.col, t.row))
+    const spot = onDesk.find(t => !this.hasPropAt(t.col, t.row) && !this.hasSurfaceItemAt(t.col, t.row))
+      ?? onDesk.find(t => !this.hasPropAt(t.col, t.row))
     if (spot && this.props.size < MAX_PROPS) {
       this.addProp(kind, spot.col, spot.row, ch.id, color)
       addBehaviourEntry({ agentId: ch.id, agentName: name, message: `put the ${label} down on the desk`, type: 'idle' })
@@ -2002,7 +2029,7 @@ export class OfficeState {
     if (!ch) return 'no idle agent available'
     if (kind === 'tidy') {
       if (this.props.size === 0) return 'nothing lying around to tidy'
-      for (const p of this.props.values()) p.placedAt = Math.min(p.placedAt, performance.now() - PROP_MIN_AGE_SEC * 1000)
+      for (const p of this.props.values()) p.placedAt = Math.min(p.placedAt, this.elapsedSec - PROP_MIN_AGE_SEC)
     }
     if (kind === 'food' && !ch.seatId) return 'agent has no seat to eat at'
     // Interrupt whatever idle thing they were doing and start from a standing state

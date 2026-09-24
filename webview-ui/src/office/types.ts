@@ -80,7 +80,7 @@ export interface PlacedProp {
   color?: FloorColor
   col: number
   row: number
-  /** performance.now() when placed - tidy-up only targets props older than PROP_MIN_AGE_SEC */
+  /** Office seconds when placed - tidy-up only targets props older than PROP_MIN_AGE_SEC */
   placedAt: number
   ownerId: number
 }

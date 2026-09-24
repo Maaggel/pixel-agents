@@ -10,8 +10,13 @@ import { writeFileSync } from 'fs'
 const SRC = process.env.SRC
 const OUT = process.env.OUT
 const PLANTS = ['PLANT_1', 'PLANT_2', 'PLANT_3', 'WHITE_PLANT_1', 'WHITE_PLANT_2', 'WHITE_PLANT_3']
-/** [hue turn toward yellow, saturation left, lightness left] per dryness level */
-const LEVELS = [[-0.035, 0.7, 0.97], [-0.07, 0.45, 0.88]]
+/**
+ * [hue turn toward yellow, saturation left, lightness left] per dryness level.
+ * Green sits near 0.33 on the wheel and yellow near 0.15, so turning the hue down walks the
+ * leaves from green through yellow-green to a dry olive. A first pass was too subtle to read at
+ * this size: the difference has to survive being sixteen pixels tall.
+ */
+const LEVELS = [[-0.085, 0.95, 1.0], [-0.175, 0.7, 0.86]]
 
 const rgbToHsl = (r, g, b) => {
   r /= 255; g /= 255; b /= 255

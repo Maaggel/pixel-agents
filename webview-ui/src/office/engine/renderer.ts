@@ -62,6 +62,12 @@ import {
   EXTERIOR_GLASS_TINT_COLOR,
   EXTERIOR_GLASS_TINT_OPACITY,
   WALL_MOUNTED_Z_EPSILON,
+  STEAM_WISPS,
+  STEAM_RISE_PX,
+  STEAM_SPEED_PX_SEC,
+  STEAM_DRIFT_PX,
+  STEAM_MAX_ALPHA,
+  STEAM_COLOR,
 } from '../../constants.js'
 
 /** Track unknown tool names to log each only once (for future sprite creation) */
@@ -169,12 +175,56 @@ interface ZDrawable {
 
 let _overlayLogged = false
 
+/** A stable number per cup, so two cups side by side do not steam in lockstep */
+function steamSeed(uid: string | undefined): number {
+  if (!uid) return 0
+  let h = 0
+  for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) | 0
+  return Math.abs(h) % 100
+}
+
 // Held items: a utensil sprite trimmed to its opaque bounds, so it can sit in the hand
 /** A utensil's sprite with its optional color variant applied (cached by type + color). */
 function getItemSprite(type: string, color: FloorColor | null): SpriteData | undefined {
   const base = getCatalogEntry(type)?.sprite
   if (!base || !color) return base
   return getColorizedSprite(`item-${type}-${color.h}-${color.s}-${color.b}-${color.c}-${color.colorize ? 1 : 0}`, base, color)
+}
+
+/**
+ * Steam above a fresh drink.
+ *
+ * Three wisps climb out of the cup on their own rhythm, wandering a little sideways and fading as
+ * they rise; the whole thing thins out as the drink goes cold (`instance.steam`, 1 down to 0).
+ * Drawn as single sprite pixels so it stays in the office's grid rather than looking like a blur.
+ */
+function renderSteam(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  zoom: number,
+  heat: number,
+  seed: number,
+): void {
+  const now = performance.now() / 1000
+  const px = Math.max(1, Math.round(zoom))
+  ctx.save()
+  ctx.fillStyle = STEAM_COLOR
+  for (let i = 0; i < STEAM_WISPS; i++) {
+    // each wisp starts its climb at a different moment, so they do not rise in step
+    const phase = (now * STEAM_SPEED_PX_SEC + (seed + i * 37) % STEAM_RISE_PX) % STEAM_RISE_PX
+    const rise = phase / STEAM_RISE_PX
+    const drift = Math.sin(now * 1.7 + i * 2.1 + seed) * STEAM_DRIFT_PX * rise
+    // fades in as it leaves the cup and out again at the top, and thins as the drink cools
+    const alpha = STEAM_MAX_ALPHA * heat * Math.sin(rise * Math.PI)
+    if (alpha <= 0.01) continue
+    ctx.globalAlpha = alpha
+    const wx = Math.round(x + width / 2 + (i - (STEAM_WISPS - 1) / 2) * 2 * zoom + drift * zoom)
+    const wy = Math.round(y - phase * zoom)
+    ctx.fillRect(wx, wy, px, px)
+  }
+  ctx.restore()
 }
 
 const croppedSpriteCache = new WeakMap<SpriteData, SpriteData>()
@@ -276,6 +326,7 @@ export function renderScene(
         draw: (c) => {
           c.drawImage(cached, fx, fy)
           if (overlayCached) c.drawImage(overlayCached, fx, fy)
+          if (f.steam) renderSteam(c, fx, fy, cached.width, zoom, f.steam, steamSeed(f.uid))
         },
       })
     }

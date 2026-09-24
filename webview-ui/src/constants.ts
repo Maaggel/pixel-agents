@@ -368,6 +368,21 @@ export const ITEM_DISPOSE_SEC = 1.0
 export const WATER_PLANT_SEC = 2.0
 /** A plant is worth watering again this long after its last drink (seconds) */
 export const PLANT_DRY_AFTER_SEC = 600
+// ── Steam ────────────────────────────────────────────────────────
+/** How long a fresh drink steams for, in office seconds */
+export const STEAM_DURATION_SEC = 100
+/** Wisps drawn above a steaming cup */
+export const STEAM_WISPS = 3
+/** How far a wisp climbs before it fades out, in sprite pixels */
+export const STEAM_RISE_PX = 7
+/** Sprite pixels a wisp climbs per second */
+export const STEAM_SPEED_PX_SEC = 3.2
+/** How far a wisp wanders sideways as it climbs, in sprite pixels */
+export const STEAM_DRIFT_PX = 1.6
+/** The thickest a wisp gets, before its own fade and the drink going cold */
+export const STEAM_MAX_ALPHA = 0.45
+export const STEAM_COLOR = '#ffffff'
+
 /** A plant starts looking faded at this fraction of the way to wanting water */
 export const PLANT_FADE_AT_DRYNESS = 0.6
 /** Plants one canful stretches to before a trip back to the tap, if the can says nothing else */

@@ -22,7 +22,7 @@ import type { SelectionRenderState } from '../office/engine/renderer.js'
 import { updateSunCycle, getSunState, computeSunBeams, getOfficeHour } from '../office/engine/sunlight.js'
 import { updateWeather, getWeatherSeverity, setWeather } from '../office/engine/windowEffects.js'
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js'
-import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js'
+import { buildDynamicCatalog, getCatalogEntry } from '../office/layout/furnitureCatalog.js'
 import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
@@ -206,7 +206,14 @@ export interface HeadlessOffice {
   /** True once assets and a layout have arrived (frames before that are blank) */
   isReady(): boolean
   /** Engine internals, for the tests that watch behaviour emerge over simulated office days */
-  debug(): { officeHour: () => number; workload: () => number; characters: () => Character[]; furniture: () => FurnitureInstance[] }
+  debug(): {
+    officeHour: () => number
+    workload: () => number
+    characters: () => Character[]
+    furniture: () => FurnitureInstance[]
+    /** Drop a prop where a character could have left one, for tests */
+    dropProp: (kind: string) => { col: number; row: number } | null
+  }
   agentCount(): number
 }
 
@@ -605,7 +612,8 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       fBoxes.set(key, box)
       const sprite = f.activeDataSprite ?? f.activeWorkSprite ?? f.activeInteractionSprite ?? f.activeMeetingSprite ?? f.activeIdleSprite ?? f.sprite
       const before = prevFurnitureBoxes.get(key)
-      if (!before || prevSpriteByKey.get(key) !== sprite) {
+      // steam drifts every frame, so a hot drink is always worth repainting
+      if (!before || prevSpriteByKey.get(key) !== sprite || f.steam) {
         addRect(rects, box)
         if (before) addRect(rects, before)
       }
@@ -769,7 +777,18 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     render,
     renderNametagOverlay,
     renderDamaged,
-    debug: () => ({ officeHour: getOfficeHour, workload: () => os.getWorkload(), characters: () => os.getCharacters(), furniture: () => os.furniture }),
+    debug: () => ({
+      officeHour: getOfficeHour,
+      workload: () => os.getWorkload(),
+      characters: () => os.getCharacters(),
+      furniture: () => os.furniture,
+      dropProp: (kind: string) => {
+        const desk = os.getLayout().furniture.find((f) => getCatalogEntry(f.type)?.isDesk)
+        if (!desk) return null
+        const prop = os.addProp(kind, desk.col, desk.row, -1, null)
+        return { col: prop.col, row: prop.row }
+      },
+    }),
     setFlags,
     getFlags: () => ({ ...flags }),
     isReady: () => layoutReady,

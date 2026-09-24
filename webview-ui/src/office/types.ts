@@ -151,6 +151,8 @@ export interface FurnitureInstance {
   onWall?: boolean
   /** The frame a state-driven cycle is showing: a clock's dial, a panel's load level */
   activeDataSprite?: SpriteData | null
+  /** 1 for a drink just poured, falling to 0 as it goes cold; drives the steam above it */
+  steam?: number
   /** Light radius in tiles */
   lightRadius?: number
   /** Light color [r, g, b] */
@@ -281,6 +283,8 @@ export interface FurnitureCatalogEntry {
   utensilDisposal?: string
   /** 'drink'/'item': fetched on breaks and carried to the desk; 'food': fetched before eating at a kitchen seat */
   utensilUse?: 'drink' | 'food' | 'item' | 'water'
+  /** Served hot, so it steams for a while after it is poured */
+  steams?: boolean
   /** What a 'water' utensil is used on (asset-name spec, e.g. '*PLANT*') */
   utensilTargets?: string
   /** How many targets one fill covers before going back to the source */

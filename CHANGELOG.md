@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.16.0
+
+- **Fresh coffee steams.** Three wisps climb out of a cup on their own rhythm, wandering sideways and fading as they rise, thinning out over a minute and a half until the drink is cold. Which drinks are served hot is catalog data (`steams: true`, set on the coffee mug), so tea or soup can steam later without touching the engine.
+- Thirsty plants read more clearly: the leaves now walk green to yellow-green to dry olive rather than merely losing a little colour. The first attempt was too subtle to see at sixteen pixels.
+- `renderer/test/steam.mjs` checks a poured drink steams at once, thins as it cools, and stops.
+
 ## v1.15.0
 
 - **Plants are one tile, not two.** Their sprites are 16x32 with every pixel in the lower half, so the declared 1x2 footprint covered a tile of empty air: a two tile footprint in the editor, and an agent standing two tiles away when watering one from above. The sprites are cropped to their bottom tile and bottom-aligned (which also lifts the one plant that sat a few pixels high), and placed plants moved down a row to stay where they were.

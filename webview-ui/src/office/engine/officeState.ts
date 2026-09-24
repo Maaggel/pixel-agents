@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, PLANT_FADE_AT_DRYNESS, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, PLANT_FADE_AT_DRYNESS, STEAM_DURATION_SEC, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -1495,6 +1495,7 @@ export class OfficeState {
   addProp(kind: string, col: number, row: number, ownerId: number, color: FloorColor | null = null): PlacedProp {
     const prop: PlacedProp = { uid: `prop-${++this.propCounter}`, kind, col, row, placedAt: performance.now(), ownerId, ...(color ? { color } : {}) }
     this.props.set(prop.uid, prop)
+    if (getCatalogEntry(kind)?.steams) this.pouredAt.set(prop.uid, this.elapsedSec)
     this.rebuildFurnitureInstances()
     return prop
   }
@@ -1519,6 +1520,9 @@ export class OfficeState {
 
   /** When each plant was last watered, in office seconds */
   private plantWateredAt = new Map<string, number>()
+
+  /** When each hot drink was poured, in office seconds, so it can steam and then go cold */
+  private pouredAt = new Map<string, number>()
 
   /**
    * How dry a plant is: 0 just watered, 1 when it wants watering again, higher while it waits.
@@ -1558,6 +1562,7 @@ export class OfficeState {
     const prop = this.props.get(uid)
     if (!prop) return null
     this.props.delete(uid)
+    this.pouredAt.delete(uid)
     this.rebuildFurnitureInstances()
     return prop
   }
@@ -1719,6 +1724,18 @@ export class OfficeState {
         f.activeDataSprite = f.timeCycleSprites[dial % f.timeCycleSprites.length]
       }
     }
+    // Hot drinks steam for a while after they are poured, then go cold
+    if (this.pouredAt.size > 0) {
+      for (const f of this.furniture) {
+        if (!f.uid) continue
+        const poured = this.pouredAt.get(f.uid)
+        if (poured === undefined) continue
+        const left = 1 - (this.elapsedSec - poured) / STEAM_DURATION_SEC
+        if (left <= 0) { this.pouredAt.delete(f.uid); f.steam = 0; continue }
+        f.steam = left
+      }
+    }
+
     // Plants: watered, dry, parched. They fade before anyone is sent to water them, so the office
     // looks thirsty first and tended afterwards.
     for (const f of this.furniture) {

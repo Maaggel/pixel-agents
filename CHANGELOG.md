@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.24.0
+
+- **An empty chair is something you walk past, not a wall.** Chairs blocked everyone but their own occupant, so a row of them walled a room into cells: a plant behind one could never be watered, and whoever sat there could not get out to fetch anything. Only the tile somebody is actually sitting on blocks now, added and removed each tick the way a moving vacuum's tile is, and chairs stay out of the wander destinations so nobody chooses to stand on one.
+- The office proper went from 182 of its 340 floor tiles to 233. Every plant is reachable, no seat is walled in, and over 30 office days the plants average 61% freshly watered against 18% parched, up from 55/24.
+
 ## v1.23.0
 
 - **The toilet is an actual toilet.** It is a chair, so an agent could be assigned one as their working seat and sit on it for the rest of the day, coming back to it after every break. A seat marked `privacySeat` is now left out of seat assignment entirely, and visited by a new idle action instead: walk over, sit a short while, **wash your hands at the nearest sink**, then back to your own desk. The room still shuts and locks its doors while it is in use.

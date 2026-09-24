@@ -1,8 +1,8 @@
 // Can the office actually get to the things it is supposed to use?
 //
-// A plant in a nook, a bin behind a chair, a coffee machine walled in by a desk: the behaviour is
-// fine, the layout is not, and the symptom is something quietly never being done. Chair tiles
-// block everyone but the agent assigned to that seat, so a single chair can seal a corner off.
+// A plant in a nook, a bin behind a desk, a coffee machine walled in: the behaviour is fine, the
+// layout is not, and the symptom is something quietly never being done. An empty chair is walked
+// past, so chairs no longer seal corners off; desks and shelves still do.
 //
 // Reports every plant and every utensil origin or disposal that no one can walk to.
 //   node test/reachability.mjs
@@ -165,9 +165,8 @@ ws.onmessage = (e) => {
     for (const line of stranded['used by someone']) print(line)
     print('')
   }
-  print('Usually a chair is the cause: a chair tile is blocked for everyone but its own occupant,')
-  print('so a row of chairs walls a room into cells. Note that a plant listed above may still have')
-  print('someone standing next to it - the agent walled in beside it. They cannot water it, because')
-  print('the watering can is filled at a sink or cooler and they cannot get out to reach one.')
+  print('Desks, shelves and walls are what box things in now - an empty chair is walked past. A')
+  print('surface item against the top wall with desks either side is the usual case: there is')
+  print('nowhere to stand beside it at all.')
   process.exit(0)
 }

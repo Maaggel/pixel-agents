@@ -209,6 +209,9 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     if (entry.isDoor) continue // a doorway is walked through, so it never blocks the way
+    // An empty chair is furniture you can squeeze past. Only a chair with somebody on it blocks,
+    // and officeState adds those each tick - otherwise a row of chairs walls a room into cells.
+    if (entry.isSeat) continue
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
       if (dr < bgRows) continue // skip background rows - characters can walk through

@@ -145,6 +145,11 @@ export class OfficeState {
 
 
   // ── Doors ──────────────────────────────────────────────────
+  /** Every tile a chair stands on. Empty chairs are walked past; occupied ones are blocked. */
+  private seatTiles: Set<string> = new Set()
+  /** Tile keys blocked this tick because someone is sitting there */
+  private sittingBlockKeys: string[] = []
+
   /** tile key -> the uid of the door standing there */
   private doorByTile: Map<string, string> = new Map()
   /** door uid -> the tile keys its footprint covers */
@@ -245,6 +250,16 @@ export class OfficeState {
       if (ch.idleAction === IdleActionType.MEETING) meeting = true
     }
     return meeting ? 1 : 0
+  }
+
+  /**
+   * Chair tiles. They are walkable - an empty chair is something you squeeze past, not a wall -
+   * but nobody should choose to stand on one, so they are kept out of the wander destinations.
+   */
+  private rebuildSeatTiles(): void {
+    this.seatTiles.clear()
+    for (const seat of this.seats.values()) this.seatTiles.add(`${seat.seatCol},${seat.seatRow}`)
+    this.walkableTiles = this.walkableTiles.filter((t) => !this.seatTiles.has(`${t.col},${t.row}`))
   }
 
   /** Index the doors in the layout. Their state survives a rebuild; doors that are gone do not. */
@@ -464,6 +479,7 @@ export class OfficeState {
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
+    this.rebuildSeatTiles()
     this.rebuildDoorIndex()
     this.rebuildSignRooms()
   }
@@ -481,6 +497,7 @@ export class OfficeState {
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
+    this.rebuildSeatTiles()
     this.rebuildDoorIndex()
     this.rebuildSignRooms()
 
@@ -2268,6 +2285,17 @@ export class OfficeState {
     // multiplies the chance by its own size and meetings crowd out every other break.
     let meetingRolled = false
 
+    // A chair with somebody sitting on it is blocked for the duration of the tick: an empty chair
+    // is walked past, an occupied one is not walked through
+    this.sittingBlockKeys = []
+    for (const ch of this.characters.values()) {
+      if (!isSittingState(ch.state) || ch.matrixEffect) continue
+      const key = `${ch.tileCol},${ch.tileRow}`
+      if (!this.seatTiles.has(key) || this.blockedTiles.has(key)) continue
+      this.blockedTiles.add(key)
+      this.sittingBlockKeys.push(key)
+    }
+
     // Temporarily block tiles occupied by active (moving) vacuums so characters avoid them
     const vacuumBlockKeys: string[] = []
     for (const vacuum of this.vacuums.values()) {
@@ -2592,6 +2620,9 @@ export class OfficeState {
     // Remove temporary vacuum blocks before vacuum update
     this.updatePrivacyLocks()
     this.updateDoors(dt)
+
+    for (const key of this.sittingBlockKeys) this.blockedTiles.delete(key)
+    this.sittingBlockKeys = []
 
     for (const key of vacuumBlockKeys) {
       this.blockedTiles.delete(key)

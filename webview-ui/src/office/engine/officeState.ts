@@ -1918,6 +1918,9 @@ export class OfficeState {
     this.elapsedSec += dt
     const toDelete: number[] = []
     let needFurnitureRebuild = false
+    // One meeting roll per tick, not one per idle character - otherwise a full office
+    // multiplies the chance by its own size and meetings crowd out every other break.
+    let meetingRolled = false
 
     // Temporarily block tiles occupied by active (moving) vacuums so characters avoid them
     const vacuumBlockKeys: string[] = []
@@ -2077,8 +2080,9 @@ export class OfficeState {
       }
 
       // ── Meeting Trigger ──────────────────────────────────────────
-      // Once per tick (driven by first eligible character), try to start a meeting
-      if (ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+      // Once per tick, driven by the first eligible character
+      if (!meetingRolled && ch.state === CharacterState.SIT_IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {
+        meetingRolled = true
         if (Math.random() < MEETING_CHANCE_PER_SEC * dt) {
           this.tryStartMeeting()
         }

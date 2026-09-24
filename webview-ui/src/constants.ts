@@ -464,8 +464,13 @@ export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
 // ── Meetings ───────────────────────────────────────────────
 export const MEETING_MIN_DURATION_SEC = 45.0
 export const MEETING_MAX_DURATION_SEC = 120.0
-/** Chance per second that a meeting starts (when enough idle agents + meeting zone seats exist) */
-export const MEETING_CHANCE_PER_SEC = 0.008
+/**
+ * Chance per second that a meeting starts (when enough idle agents + meeting zone seats exist).
+ * Rolled once per tick, so this is the real rate: one attempt every ~5.5 idle minutes. A meeting
+ * pulls in most of the office for 45-120 s, so raising this eats the time drinks, meals, tidying
+ * and plant care live in.
+ */
+export const MEETING_CHANCE_PER_SEC = 0.003
 /** Minimum idle non-subagent agents required to start a meeting */
 export const MEETING_MIN_PARTICIPANTS = 2
 export const MEETING_BUBBLE_SHOW_MIN_SEC = 3.0

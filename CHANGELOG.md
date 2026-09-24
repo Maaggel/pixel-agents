@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.18.0
+
+- **Meetings are an occasional event again, not the office's main activity.** The roll to start one was written to happen once per tick but had no guard, so it ran for every idle agent: a room with twelve people free multiplied the chance by twelve, and a meeting started roughly every ten seconds. Most of the office spent most of its idle time sitting in the meeting room, which is why a glass of water or a steaming cup was so rarely seen. The roll now really does happen once per tick, and `MEETING_CHANCE_PER_SEC` is 0.003 - about one meeting per five and a half idle minutes. Over 30 office days: 36 meetings instead of 77-106, with conversations, meals, drinks, tidying and plant care taking back the time.
+
 ## v1.17.1
 
 - Breaks and plant care rebalanced. Making watering prompt-on-sight had turned it into most of what the office did: over 30 office days there were 48 trips with the watering can and only 5 drinks fetched, so a glass of water was a sight nobody ever saw. Watering weights are roughly halved, a break is more likely to be taken, drinks are picked three times as often as something to read, and plants last 16 minutes rather than 10 - sixteen plants on a ten minute cycle is a treadmill. Now around 30 drinks to 35 waterings, with the plants still averaging about half freshly watered.

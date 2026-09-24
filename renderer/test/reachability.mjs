@@ -34,19 +34,53 @@ ws.onmessage = (e) => {
       if (t !== WALL && t !== VOID) floors.push([c, r])
     }
   }
+  // Walk the floor as a graph and take its biggest connected piece as "the office proper". Measuring
+  // from a character's own tile is not safe: a character sitting on a chair can step off it into a
+  // cell nobody else can enter, and everything behind that chair then looks reachable.
+  const key = ([c, r]) => `${c},${r}`
+  const floorSet = new Set(floors.map(key))
+  const step = (a, b) => floorSet.has(key(b)) && dbg.route(a[0], a[1], b[0], b[1]).length > 0
+  const seen = new Set()
   let hub = null, hubSize = -1
-  for (const ch of dbg.characters()) {
-    const size = floors.filter(([c, r]) => dbg.route(ch.tileCol, ch.tileRow, c, r).length > 0).length
-    if (size > hubSize) { hubSize = size; hub = [ch.tileCol, ch.tileRow] }
+  for (const start of floors) {
+    if (seen.has(key(start))) continue
+    const region = []
+    const queue = [start]
+    seen.add(key(start))
+    while (queue.length) {
+      const [c, r] = queue.shift()
+      region.push([c, r])
+      for (const n of [[c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]]) {
+        if (seen.has(key(n))) continue
+        if (!step([c, r], n)) continue
+        seen.add(key(n))
+        queue.push(n)
+      }
+    }
+    if (region.length > hubSize) { hubSize = region.length; hub = region[0] }
   }
-  if (!hub) { print('no agents in the office to measure from - try again in a moment'); process.exit(1) }
-  print(`measuring from ${hub.join(',')}, which reaches ${hubSize} of ${floors.length} floor tiles\n`)
+  if (!hub) { print('no floor to measure from'); process.exit(1) }
+  const openFloor = new Set()
+  {
+    const queue = [hub]
+    openFloor.add(key(hub))
+    while (queue.length) {
+      const [c, r] = queue.shift()
+      for (const n of [[c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]]) {
+        if (openFloor.has(key(n)) || !step([c, r], n)) continue
+        openFloor.add(key(n))
+        queue.push(n)
+      }
+    }
+  }
+  const reaches = (c, r) => openFloor.has(`${c},${r}`)
+  print(`the office proper is ${openFloor.size} of ${floors.length} floor tiles, measured from ${hub.join(',')}\n`)
 
   const canStandBeside = (col, row, w, h) => {
     const sides = []
     for (let dc = 0; dc < w; dc++) { sides.push([col + dc, row - 1], [col + dc, row + h]) }
     for (let dr = 0; dr < h; dr++) { sides.push([col - 1, row + dr], [col + w, row + dr]) }
-    return sides.some(([c, r]) => dbg.route(hub[0], hub[1], c, r).length > 0)
+    return sides.some(([c, r]) => reaches(c, r))
   }
 
   const wanted = (e) => e?.thirstCycle?.length ? 'plant'
@@ -64,7 +98,7 @@ ws.onmessage = (e) => {
     if (!e?.isSeat) continue
     const col = Math.floor(f.col), row = Math.floor(f.row)
     const out = [[col, row - 1], [col, row + 1], [col - 1, row], [col + 1, row]]
-      .some(([c, r]) => dbg.route(hub[0], hub[1], c, r).length > 0)
+      .some(([c, r]) => reaches(c, r))
     if (!out) walledIn.push(`  ${e.name.padEnd(28)} at ${col},${row}`)
   }
 

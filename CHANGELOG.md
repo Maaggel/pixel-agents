@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.22.3
+
+- `reachability.mjs` measures from the largest connected patch of floor rather than from a character's own tile. A character sitting on a chair can step off it into a cell nobody else can enter, so measuring from one made everything behind that chair look reachable - and the answer changed depending on which character happened to be picked.
+
 ## v1.22.2
 
 - `reachability.mjs` also reports **seats an agent cannot get out of**. A chair tile is blocked for everyone but its own occupant, so a row of chairs walls a room into cells, and whoever spawns in one is stuck: they cannot reach a sink to fill a watering can, a coffee machine, or anything else. That is why a plant can be left parched with an agent standing right beside it - the only person who can reach it is the one who cannot fetch water.

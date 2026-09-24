@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.19.4
+
+- The north-south door closed is now just the leaf itself seen edge on: a beam a third of the tile wide standing in the middle of the doorway, with the way through showing either side of it. It was a full-width slab before, which is more door than that direction can actually show.
+- Opened, that beam stays as the frame and the leaf swings out beside it, sheared so it reads as a door standing at an angle. Its sprite is two tiles wide, since a swung leaf reaches past the doorway it belongs to; the footprint is still the one tile. Both are generated rather than typed out (`stampBeam`/`stampSwungLeaf` in `renderer/tools/make-doors.mjs`), because a sheared rectangle is not something to draw by hand.
+
 ## v1.19.3
 
 - **Every door sprite was 8 px too high in the actual office.** They were drawn against previews that composited the sprite onto a rendered frame using the tool's own camera maths, which sits 8 px below the engine's - so what looked right in a picture was wrong once the engine drew it. All four are shifted to match, and `renderer/tools/door-shot.mjs` now puts a door in the layout and lets the engine draw it instead, which is the only honest way to look at one.

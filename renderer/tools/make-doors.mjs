@@ -4,11 +4,13 @@
 //   DOOR_FRONT_CLOSED / DOOR_FRONT_OPEN   gap in an east-west wall, walked through north-south
 //   DOOR_SIDE_CLOSED  / DOOR_SIDE_OPEN    gap in a north-south wall, walked through east-west
 //
-// A door in a north-south wall is seen edge on, so closed it is just a wooden beam filling the
-// gap - there is no door face to show from that direction. Open, the beam stays as the frame and
-// the leaf stands beside it, face toward us. Its band is shorter than the east-west door's: in a
-// vertical wall run the wall below the gap draws in front of the doorway, so anything below
-// sprite row 31 is covered anyway.
+// A door in a north-south wall is seen edge on, so closed it is only the narrow beam of the leaf
+// itself, a third of the tile wide and standing in the middle of the doorway - there is no door
+// face to show from that direction. Open, that beam stays as the frame and the leaf swings out
+// beside it, sheared so it reads as a door standing open, which is why that sprite is two tiles
+// wide: the leaf reaches past the doorway it belongs to. Their band is shorter than the east-west
+// door's, because in a vertical wall run the wall below the gap draws in front of the doorway and
+// anything below sprite row 31 is covered anyway.
 //
 // Each is 16x32, placed on a 1x2 footprint whose top row is a background row lying in the wall.
 // Only the top 24 rows are drawn, because that is exactly the wall's lit face: measured off a
@@ -168,108 +170,59 @@ const FRONT_OPEN = [
 
 // ── Door in a north-south wall, seen from the side ───────────────
 // The frame runs along the top and bottom of the gap; the leaf fills the middle.
-const SIDE_CLOSED = [
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  'KKKKKKKKKKKKKKKK',
-  'KFFFFFFFFFFFFFFK',
-  'KKKKKKKKKKKKKKKK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KKKKKKKKKKKKKKKK',
-  'KFFFFFFFFFFFFFFK',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-]
 
 // Open: the leaf swung back against the top jamb, the room beyond showing through.
-const SIDE_OPEN = [
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  'KKKKKKKKKKKKKKKK',
-  'KFFFFKKKKKKK....',
-  'KKKKKKwwwwwK....',
-  'KwWdKKWDDDDWK...',
-  'KwWdKKWDDDDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWBddDWK...',
-  'KwWdKKWbddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDddDWK...',
-  'KwWdKKWDDDDWK...',
-  'KwWdKKWDDDDWK...',
-  'KwWdKKWWWWWWK...',
-  'KwWdKKWWWWWWK...',
-  'KKKKKKKKKKKK....',
-  'KFFFFKKKKKKK....',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-]
+
+// ── The north-south pair, built rather than typed: the open leaf is a sheared rectangle ──
+function grid(w, h) { return Array.from({ length: h }, () => Array(w).fill('.')) }
+function rows(g) { return g.map((r) => r.join('')) }
+
+/** The leaf seen edge on: a narrow beam standing in the middle of the doorway. */
+function stampBeam(g, x0, top, bottom) {
+  for (let y = top; y <= bottom; y++) {
+    const cap = y === top || y === top + 1 || y === bottom || y === bottom - 1
+    g[y][x0] = 'K'
+    g[y][x0 + 1] = cap ? 'F' : 'w'
+    g[y][x0 + 2] = cap ? 'F' : 'W'
+    g[y][x0 + 3] = cap ? 'F' : 'W'
+    g[y][x0 + 4] = cap ? 'F' : 'd'
+    g[y][x0 + 5] = 'K'
+  }
+  for (const y of [top, bottom]) for (let i = 0; i <= 5; i++) g[y][x0 + i] = 'K'
+}
+
+/**
+ * The leaf swung open beside the frame: a rectangle LEAF_LEN long and LEAF_H deep, lifted by
+ * SHEAR pixels for every pixel it travels right, so it reads as a door standing at an angle.
+ */
+function stampSwungLeaf(g, ax, ay, len, depth, shear) {
+  for (let i = 0; i < len; i++) {
+    const lift = Math.round(i * shear)
+    for (let j = 0; j < depth; j++) {
+      const x = ax + i, y = ay + j - lift
+      if (y < 0 || y >= g.length || x < 0 || x >= g[0].length) continue
+      const edge = i === 0 || i === len - 1 || j === 0 || j === depth - 1
+      const panel = !edge && i > 2 && i < len - 3 && j > 1 && j < depth - 2
+      const groove = panel && (i === 3 || i === len - 4 || j === 2 || j === depth - 3)
+      g[y][x] = edge ? 'K' : groove ? 'D' : panel ? 'd' : 'W'
+    }
+  }
+  // a brass handle near the swinging edge
+  const hi = 2, lift = Math.round(hi * shear)
+  const hy = ay + Math.floor(depth / 2) - lift
+  if (hy >= 0 && hy < g.length) { g[hy][ax + hi] = 'B'; if (hy + 1 < g.length) g[hy + 1][ax + hi] = 'b' }
+}
+
+const BEAM_TOP = 8, BEAM_BOTTOM = 31, BEAM_X = 5
+
+const sideClosedGrid = grid(16, 48)
+stampBeam(sideClosedGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
+const SIDE_CLOSED = rows(sideClosedGrid)
+
+const sideOpenGrid = grid(32, 48)
+stampBeam(sideOpenGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
+stampSwungLeaf(sideOpenGrid, BEAM_X + 6, BEAM_TOP + 10, 18, 11, 0.55)
+const SIDE_OPEN = rows(sideOpenGrid)
 
 console.log('doors ->')
 png(FRONT_CLOSED, 'DOOR_FRONT_CLOSED')

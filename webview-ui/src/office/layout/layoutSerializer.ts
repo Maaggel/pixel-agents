@@ -169,6 +169,9 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
     if (entry.loadCycleSprites && entry.loadCycleSprites.length > 0) {
       instance.loadCycleSprites = entry.loadCycleSprites
     }
+    if (entry.thirstCycleSprites && entry.thirstCycleSprites.length > 0) {
+      instance.thirstCycleSprites = entry.thirstCycleSprites
+    }
     if (entry.loadReactive) instance.loadReactive = true
 
     // Attach idle cycle data from catalog entry

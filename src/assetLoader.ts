@@ -73,6 +73,8 @@ export interface FurnitureAsset {
   timeCycle?: string[]
   /** Gauge frames, ordered quiet to busy, selected by how many agents are working */
   loadCycle?: string[]
+  /** Plant frames, watered through to parched, selected by how long since it was watered */
+  thirstCycle?: string[]
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -291,6 +293,33 @@ export async function loadFurnitureAssets(
             }
           }
           asset.loadCycle = resolvedIds
+        }
+
+        // Load thirstCycle frame sprites (file paths → sprite IDs): a plant, watered through to parched
+        if (Array.isArray(asset.thirstCycle)) {
+          const rawCycle = asset.thirstCycle
+          const resolvedIds: string[] = []
+          for (const framePath of rawCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            let frameFilePath = framePath
+            if (!frameFilePath.startsWith('assets/')) {
+              frameFilePath = `assets/${frameFilePath}`
+            }
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Thirst cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              const frameBuf = fs.readFileSync(framePngPath)
+              const frameSprite = pngToSpriteData(frameBuf, asset.width, asset.height)
+              sprites.set(spriteId, frameSprite)
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading idle cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.thirstCycle = resolvedIds
         }
 
         // Load dockedCycle frame sprites (file paths → sprite IDs)

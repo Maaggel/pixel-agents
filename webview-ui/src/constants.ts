@@ -368,6 +368,8 @@ export const ITEM_DISPOSE_SEC = 1.0
 export const WATER_PLANT_SEC = 2.0
 /** A plant is worth watering again this long after its last drink (seconds) */
 export const PLANT_DRY_AFTER_SEC = 600
+/** A plant starts looking faded at this fraction of the way to wanting water */
+export const PLANT_FADE_AT_DRYNESS = 0.6
 /** Plants one canful stretches to before a trip back to the tap, if the can says nothing else */
 export const WATERING_CAN_DEFAULT_USES = 3
 /** A prop must lie around at least this long before someone tidies it away */

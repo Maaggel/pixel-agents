@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.15.0
+
+- **Plants are one tile, not two.** Their sprites are 16x32 with every pixel in the lower half, so the declared 1x2 footprint covered a tile of empty air: a two tile footprint in the editor, and an agent standing two tiles away when watering one from above. The sprites are cropped to their bottom tile and bottom-aligned (which also lifts the one plant that sat a few pixels high), and placed plants moved down a row to stay where they were.
+- **Plants look thirsty.** Two drier variants of each - faded, then faded further and drooping - shown through a new `thirstCycle` as the time since watering grows, and reset when someone waters them. They start fading at 60% of the way to wanting water, so the office looks thirsty before anyone is sent round with the can.
+- Plant dryness is measured in office time rather than wall-clock time, so a tab left in the background does not come back to a room full of dead plants.
+- `renderer/tools/crop-plants.mjs` and `make-thirsty-plants.mjs` generate the sprites; `renderer/test/plants.mjs` checks a plant passes through watered, fading and parched.
+
 ## v1.14.0
 
 - **Someone waters the plants.** An agent fetches the watering can from a sink or water cooler, does the rounds of the plants that have not had a drink lately, and goes back for more water after a few of them - then puts the can away. Driven by catalog data like the other utensils: a new `utensilUse: "water"` with `utensilTargets` (what it is used on) and `utensilUses` (plants per fill). Plants on shelves or boxed in by desks are not counted, since nobody can stand next to them.

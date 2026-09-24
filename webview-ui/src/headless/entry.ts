@@ -206,7 +206,7 @@ export interface HeadlessOffice {
   /** True once assets and a layout have arrived (frames before that are blank) */
   isReady(): boolean
   /** Engine internals, for the tests that watch behaviour emerge over simulated office days */
-  debug(): { officeHour: () => number; workload: () => number; characters: () => Character[] }
+  debug(): { officeHour: () => number; workload: () => number; characters: () => Character[]; furniture: () => FurnitureInstance[] }
   agentCount(): number
 }
 
@@ -769,7 +769,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
     render,
     renderNametagOverlay,
     renderDamaged,
-    debug: () => ({ officeHour: getOfficeHour, workload: () => os.getWorkload(), characters: () => os.getCharacters() }),
+    debug: () => ({ officeHour: getOfficeHour, workload: () => os.getWorkload(), characters: () => os.getCharacters(), furniture: () => os.furniture }),
     setFlags,
     getFlags: () => ({ ...flags }),
     isReady: () => layoutReady,

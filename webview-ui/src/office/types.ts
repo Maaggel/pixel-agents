@@ -195,6 +195,8 @@ export interface FurnitureInstance {
   timeCycleSprites?: SpriteData[]
   /** Gauge frames, ordered quiet to busy, chosen by how many agents are working */
   loadCycleSprites?: SpriteData[]
+  /** Plant frames, watered through to parched, chosen by how long since it was watered */
+  thirstCycleSprites?: SpriteData[]
   /** Its idle cycle runs faster the busier the office is (server rack lights) */
   loadReactive?: boolean
   randomIdleCycle?: boolean
@@ -333,6 +335,8 @@ export interface FurnitureCatalogEntry {
   timeCycleSprites?: SpriteData[]
   /** Gauge frames, ordered quiet to busy, chosen by how many agents are working */
   loadCycleSprites?: SpriteData[]
+  /** Plant frames, watered through to parched, chosen by how long since it was watered */
+  thirstCycleSprites?: SpriteData[]
   /** Its idle cycle runs faster the busier the office is (server rack lights) */
   loadReactive?: boolean
   randomIdleCycle?: boolean

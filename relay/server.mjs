@@ -182,6 +182,8 @@ function loadFurnitureAssets() {
       asset.timeCycle = loadCycleFrames(asset.timeCycle, asset.width, asset.height, sprites)
     if (Array.isArray(asset.loadCycle) && asset.loadCycle.length > 0)
       asset.loadCycle = loadCycleFrames(asset.loadCycle, asset.width, asset.height, sprites)
+    if (Array.isArray(asset.thirstCycle) && asset.thirstCycle.length > 0)
+      asset.thirstCycle = loadCycleFrames(asset.thirstCycle, asset.width, asset.height, sprites)
     // Load lamp overlay sprite (single file path → sprite ID)
     if (asset.lampOverlay) {
       const overlayId = asset.lampOverlay.split('/').pop().replace(/\.[^.]+$/, '')

@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, PLANT_FADE_AT_DRYNESS, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -322,11 +322,8 @@ export class OfficeState {
       dynamicItems: this.dynamicItemsEnabled,
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
-      isPlantThirsty: (uid: string) => {
-        const last = this.plantWateredAt.get(uid)
-        return last === undefined || (performance.now() - last) / 1000 >= PLANT_DRY_AFTER_SEC
-      },
-      markPlantWatered: (uid: string) => { this.plantWateredAt.set(uid, performance.now()) },
+      isPlantThirsty: (uid: string) => this.plantDryness(uid) >= 1,
+      markPlantWatered: (uid: string) => { this.plantWateredAt.set(uid, this.elapsedSec) },
       tidyableFurniture: this.tidyableFurniture(),
       takeLayoutItem: (uid: string) => this.takeLayoutItem(uid),
       finishFoodNear: (ch: Character) => this.finishFoodNear(ch),
@@ -1511,8 +1508,28 @@ export class OfficeState {
    */
   private clearedLayoutUids = new Set<string>()
 
-  /** When each plant was last watered, so nobody waters the same one twice in a row */
+  /**
+   * Seconds of office time since this state was created.
+   *
+   * Plant dryness is measured against this rather than the wall clock, so it follows the office's
+   * own ticking: a tab left in the background does not come back to a room full of dead plants,
+   * and a simulated day in a test dries them out exactly as a real one would.
+   */
+  private elapsedSec = 0
+
+  /** When each plant was last watered, in office seconds */
   private plantWateredAt = new Map<string, number>()
+
+  /**
+   * How dry a plant is: 0 just watered, 1 when it wants watering again, higher while it waits.
+   * A plant seen for the first time counts as freshly watered, so the office does not open with
+   * every plant parched and everyone rushing for the can.
+   */
+  private plantDryness(uid: string): number {
+    const last = this.plantWateredAt.get(uid)
+    if (last === undefined) { this.plantWateredAt.set(uid, this.elapsedSec); return 0 }
+    return (this.elapsedSec - last) / PLANT_DRY_AFTER_SEC
+  }
 
   /** Layout-placed utensils that could be cleared away: anything drinkable or edible, with a home to go to */
   tidyableFurniture(): PlacedFurniture[] {
@@ -1702,6 +1719,17 @@ export class OfficeState {
         f.activeDataSprite = f.timeCycleSprites[dial % f.timeCycleSprites.length]
       }
     }
+    // Plants: watered, dry, parched. They fade before anyone is sent to water them, so the office
+    // looks thirsty first and tended afterwards.
+    for (const f of this.furniture) {
+      if (!f.thirstCycleSprites?.length || !f.uid) continue
+      const dryness = this.plantDryness(f.uid)
+      const idx = Math.min(f.thirstCycleSprites.length - 1,
+        dryness >= 1 ? f.thirstCycleSprites.length - 1 : Math.floor(dryness / PLANT_FADE_AT_DRYNESS))
+      const wanted = f.thirstCycleSprites[idx]
+      if (f.activeDataSprite !== wanted) f.activeDataSprite = wanted
+    }
+
     // Gauges: the frames are an ordered ramp, so the busier the office the further up it reads
     const load = this.getWorkload()
     for (const f of this.furniture) {
@@ -1859,6 +1887,7 @@ export class OfficeState {
   }
 
   update(dt: number): void {
+    this.elapsedSec += dt
     const toDelete: number[] = []
     let needFurnitureRebuild = false
 

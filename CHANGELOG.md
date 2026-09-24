@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.5
+
+- The north-south door's swung leaf reads as a door rather than a plank: shorter, deeper, a gentler angle, and sitting beside the doorway instead of climbing off over the wall above it. Its length, depth and angle are the arguments to `stampSwungLeaf`, so the swing can be tuned without redrawing anything.
+
 ## v1.19.4
 
 - The north-south door closed is now just the leaf itself seen edge on: a beam a third of the tile wide standing in the middle of the doorway, with the way through showing either side of it. It was a full-width slab before, which is more door than that direction can actually show.

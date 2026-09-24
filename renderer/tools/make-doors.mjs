@@ -192,25 +192,36 @@ function stampBeam(g, x0, top, bottom) {
 }
 
 /**
- * The leaf swung open beside the frame: a rectangle LEAF_LEN long and LEAF_H deep, lifted by
- * SHEAR pixels for every pixel it travels right, so it reads as a door standing at an angle.
+ * The leaf swung open beside the frame. It is drawn as a door seen at an angle: it climbs as it
+ * travels away from its hinge (SHEAR) and gets shallower with distance (depthNear -> depthFar),
+ * which is what stops it reading as a plank nailed to the wall.
  */
-function stampSwungLeaf(g, ax, ay, len, depth, shear) {
+function stampSwungLeaf(g, ax, ay, len, depthNear, depthFar, shear) {
+  const H = g.length, W = g[0].length
+  const put = (x, y, ch) => { if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = ch }
   for (let i = 0; i < len; i++) {
     const lift = Math.round(i * shear)
+    const depth = Math.round(depthNear + (depthFar - depthNear) * (i / (len - 1)))
+    const top = ay - lift
     for (let j = 0; j < depth; j++) {
-      const x = ax + i, y = ay + j - lift
-      if (y < 0 || y >= g.length || x < 0 || x >= g[0].length) continue
-      const edge = i === 0 || i === len - 1 || j === 0 || j === depth - 1
-      const panel = !edge && i > 2 && i < len - 3 && j > 1 && j < depth - 2
-      const groove = panel && (i === 3 || i === len - 4 || j === 2 || j === depth - 3)
-      g[y][x] = edge ? 'K' : groove ? 'D' : panel ? 'd' : 'W'
+      const x = ax + i, y = top + j
+      const first = i === 0, last = i === len - 1
+      const edgeTop = j === 0, edgeBottom = j === depth - 1
+      if (first || last || edgeTop || edgeBottom) { put(x, y, 'K'); continue }
+      if (j === 1) { put(x, y, 'w'); continue }          // the lit top face of the leaf
+      if (j === depth - 2) { put(x, y, 'd'); continue }  // and its shaded underside
+      // two panels running the length of the leaf
+      const inPanel = i > 2 && i < len - 2
+      const groove = inPanel && (j === 3 || j === depth - 4 || i === 3 || i === len - 3)
+      put(x, y, groove ? 'D' : inPanel ? 'd' : 'W')
     }
   }
-  // a brass handle near the swinging edge
-  const hi = 2, lift = Math.round(hi * shear)
-  const hy = ay + Math.floor(depth / 2) - lift
-  if (hy >= 0 && hy < g.length) { g[hy][ax + hi] = 'B'; if (hy + 1 < g.length) g[hy + 1][ax + hi] = 'b' }
+  // the handle sits on the swinging edge, furthest from the hinge
+  const hi = len - 4, lift = Math.round(hi * shear)
+  const depth = Math.round(depthNear + (depthFar - depthNear) * (hi / (len - 1)))
+  const hy = ay - lift + Math.floor(depth / 2)
+  put(ax + hi, hy, 'B')
+  put(ax + hi, hy + 1, 'b')
 }
 
 const BEAM_TOP = 8, BEAM_BOTTOM = 31, BEAM_X = 5
@@ -221,7 +232,7 @@ const SIDE_CLOSED = rows(sideClosedGrid)
 
 const sideOpenGrid = grid(32, 48)
 stampBeam(sideOpenGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
-stampSwungLeaf(sideOpenGrid, BEAM_X + 6, BEAM_TOP + 10, 18, 11, 0.55)
+stampSwungLeaf(sideOpenGrid, BEAM_X + 6, BEAM_TOP + 8, 14, 12, 12, 0.3)
 const SIDE_OPEN = rows(sideOpenGrid)
 
 console.log('doors ->')

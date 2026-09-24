@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.20.0
+
+- **The north-south door has no open state.** Seen edge on it is just the narrow beam of the leaf, and a door that is edge on barely changes when it swings: every attempt at drawing the leaf swung out - angled, tapered, flat, past ninety degrees - read as a plank stuck to the wall rather than a door. The engine still opens, closes and locks it, it simply looks the same either way, and the catalog is one asset lighter for it. The east-west door keeps its pair, where there is a face to show.
+
 ## v1.19.11
 
 - The open side door is about a tile long rather than two, and its top edge lines up with the top of the beam it hangs on.

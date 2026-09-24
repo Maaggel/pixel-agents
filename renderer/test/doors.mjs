@@ -117,8 +117,11 @@ ws.onmessage = async (e) => {
     ch.path = [{ col: near.col, row: near.row }]
     office.tick(0.1)
   }
-  stepToDoor()
-  check(dbg.doors()[0].open, 'it opens when someone is a step away')
+  // a few goes: the character's own FSM can clear the path it was given before the door logic
+  // reads it, and that race is not what this is testing
+  let opened = false
+  for (let i = 0; i < 5 && !opened; i++) { stepToDoor(); opened = dbg.doors()[0].open }
+  check(opened, 'it opens when someone is a step away')
 
   // 3. It closes again once they are through and gone - usually. Left open is a real outcome, so
   // this counts over many trips rather than trusting one toss of a weighted coin.

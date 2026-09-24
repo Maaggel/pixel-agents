@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.1
+
+- The north-south door, standing open, was a thin bar across the top of an empty frame and read as a hole rather than a doorway. Its leaf now lies back against the top jamb as a proper panelled door, handle and all, with the way through left clear below it so whoever is walking through is not hidden behind it.
+
 ## v1.19.0
 
 - **Doors.** A new Doors category in the editor, with a door for a gap in an east-west wall and one for a gap in a north-south wall, each drawn open and closed (`renderer/tools/make-doors.mjs`). A door is a 16x48 sprite on a 1x3 footprint whose top two rows lie in the wall, so it can reach above the tile people walk through: its head sits up in the wall's dark top band and its body fills the lit face down to the wall's bottom edge. That geometry was measured off a rendered wall rather than guessed - a wall block is 1 px of outline, 7 px of dark top, 23 px of lit face and 1 px of outline, and that last outline falls 8 px into the tile row, not at its bottom. `renderer/test/doors.mjs` covers the behaviour.

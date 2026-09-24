@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.31.0
+
+- **The tablet's status line says which build it is looking at**, not which build its own apk came from: the relay announces the version it is serving in an `X-Pixel-Agents-Version` header on the stream, and the app puts it in front of the fps counters. The version stamp is out of the picture again, now that the text can carry it.
+- **The app stops fast-forwarding after a stall.** It skips a frame when a whole newer one is already waiting, but the yardstick was a fixed 32 KB - set when frames were bigger. At the ~24 KB they are now, one queued frame sat under it and was decoded anyway, which is a short fast-forward on screen and an fps count above the cap. It measures against the frame in hand instead. **Needs the new apk sideloading.**
+
 ## v1.30.1
 
 - Someone washing their hands turns to face the sink, rather than standing at it facing whichever way they happened to walk in.

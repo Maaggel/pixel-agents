@@ -28,9 +28,18 @@ public final class FrameReceiver {
     private int compression = Protocol.COMPRESSION_LZ4_BLOCK;
     private Inflater inflater;
     private DataInputStream in;
-    /** If at least this many bytes are already waiting behind a frame, that frame is stale: skip its decode. */
-    private static final int BEHIND_THRESHOLD_BYTES = 32 * 1024;
+    /**
+     * A frame is stale when a whole newer one is already waiting behind it. The yardstick is the
+     * size of the frame in hand, because that is what a frame currently costs: a fixed 32 KB was
+     * set when frames were bigger, and at the ~24 KB they are now one queued frame sat under it
+     * and got decoded anyway - which is a fast-forward on screen and an fps count above the cap.
+     */
+    private static final int MIN_BEHIND_BYTES = 6 * 1024;
     private int skipped;
+    /** Shown before the counters: the build the relay says it is serving. */
+    private String prefix = "";
+
+    public void setPrefix(String p) { prefix = p == null ? "" : p; }
 
     // Per-second counters, mirrored to the status overlay and the log.
     private long windowStart;
@@ -101,7 +110,7 @@ public final class FrameReceiver {
         // Behind the stream (a link that stalled and recovered): present only the newest frame rather
         // than replaying the backlog in fast-forward. A skipped frame costs nothing - the next one
         // carries the whole picture.
-        if (in.available() >= BEHIND_THRESHOLD_BYTES) { skipped++; return; }
+        if (in.available() >= Math.max(MIN_BEHIND_BYTES, msg.length)) { skipped++; return; }
 
         long t0 = System.nanoTime();
         int blockOff = Protocol.FRAME_FULL_HEADER_SIZE;
@@ -153,6 +162,7 @@ public final class FrameReceiver {
                     + "  blit=" + String.format("%.1f", blitNs / 1e6 / frames) + "ms"
                     + (skipped > 0 ? "  skip=" + skipped : "");
         }
+        line = prefix + line;
         lastStatus = line;
         log.log(line);
         sink.status(line);

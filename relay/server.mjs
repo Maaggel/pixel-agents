@@ -1154,6 +1154,8 @@ const server = createServer((req, res) => {
     const fps = Number.isFinite(fpsReq) && fpsReq > 0 ? Math.min(fpsReq, streamConfig.maxFps) : streamConfig.maxFps
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
+      // what the tablet is looking at, so its status line can say so without a protocol change
+      'X-Pixel-Agents-Version': VERSION,
       'Cache-Control': 'no-cache, no-store',
       'X-Accel-Buffering': 'no',
       'Connection': 'keep-alive',

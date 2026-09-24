@@ -109,10 +109,14 @@ public final class HttpsFrameClient extends Thread {
             int code = conn.getResponseCode();
             if (code == 401) { drain(conn.getErrorStream()); throw new KeyRejected(); }
             if (code != 200) { drain(conn.getErrorStream()); throw new IOException("HTTP " + code); }
+            String serving = conn.getHeaderField("X-Pixel-Agents-Version");
             in = conn.getInputStream();
             receiver = new FrameReceiver(sink, new FrameReceiver.Logger() {
                 @Override public void log(String line) { Log.i(TAG, line); }
             });
+            // The relay tells us which build it is serving; show that rather than our own version,
+            // which is only what this apk was built from and says nothing about what is live.
+            if (serving != null && serving.length() > 0) receiver.setPrefix("v" + serving + "  ");
             // HELLO is folded into the request URL; the receiver's HELLO goes to a sink that drops it.
             receiver.run(in, new ByteArrayOutputStream());
         } finally {

@@ -199,71 +199,6 @@ function convertRegion(src, x, y, w, h) {
   timing.area += w * h
 }
 
-/**
- * The build the tablet is looking at, bottom left of the picture.
- *
- * It goes into the scene rather than onto the nametag overlay, because the overlay only exists
- * when the scene is drawn at half size and doubled - and it is not, the tablet does the doubling.
- * Drawn with a 3x5 pixel font rather than a real one: at this size a font is anti-aliased into a
- * smear, and the frame is quantised to RGB565 and doubled by the tablet on top of that. Built once
- * into a small image and blitted each frame - Skia's text drawing also slows down badly over a long
- * run, which is why nametags are cached the same way.
- *
- * Damage needs no special handling. It is drawn after the scene and before the readback, so
- * wherever the office repaints under it the stamp goes back on top and that rectangle is converted
- * anyway; where nothing repaints, the pixels already in the frame are still right.
- */
-const STAMP_GLYPHS = {
-  '0': ['111', '101', '101', '101', '111'],
-  '1': ['010', '110', '010', '010', '111'],
-  '2': ['111', '001', '111', '100', '111'],
-  '3': ['111', '001', '111', '001', '111'],
-  '4': ['101', '101', '111', '001', '001'],
-  '5': ['111', '100', '111', '001', '111'],
-  '6': ['111', '100', '111', '101', '111'],
-  '7': ['111', '001', '001', '001', '001'],
-  '8': ['111', '101', '111', '101', '111'],
-  '9': ['111', '101', '111', '001', '111'],
-  'v': ['000', '101', '101', '101', '010'],
-  '.': ['000', '000', '000', '000', '010'],
-}
-
-const stamp = (() => {
-  const text = `v${VERSION}`
-  const glyphs = [...text].map((ch) => STAMP_GLYPHS[ch]).filter(Boolean)
-  const w = glyphs.length * 4 + 1, h = 5 + 4
-  const c = createCanvas(w, h)
-  const x = c.getContext('2d')
-  x.fillStyle = 'rgba(0,0,0,0.6)'
-  x.fillRect(0, 0, w, h)
-  x.fillStyle = '#e8e8f0'
-  glyphs.forEach((g, i) => {
-    g.forEach((row, ry) => {
-      [...row].forEach((on, rx) => { if (on === '1') x.fillRect(1 + i * 4 + rx, 2 + ry, 1, 1) })
-    })
-  })
-  return { image: c, w, h, x: 2, y: drawH - h - 2 }
-})()
-
-/** Full strength for half a minute after the renderer starts, so a new build announces itself */
-const STAMP_BRIGHT_SEC = 30
-/** ...then it fades over this long, to this, and stays there */
-const STAMP_FADE_SEC = 1.5
-const STAMP_FADED_ALPHA = 0.5
-/** Alpha is quantised: each distinct value costs one small conversion to push it to the tablet */
-const STAMP_FADE_STEPS = 12
-const startedAt = performance.now()
-let stampAlpha = 1
-let stampDirty = true
-
-function stampAlphaNow() {
-  const age = (performance.now() - startedAt) / 1000 - STAMP_BRIGHT_SEC
-  if (age <= 0) return 1
-  if (age >= STAMP_FADE_SEC) return STAMP_FADED_ALPHA
-  const t = age / STAMP_FADE_SEC
-  const a = 1 - (1 - STAMP_FADED_ALPHA) * t
-  return Math.round(a * STAMP_FADE_STEPS) / STAMP_FADE_STEPS
-}
 
 function drawFrame() {
   const t0 = performance.now()
@@ -284,27 +219,14 @@ function drawFrame() {
   const t1 = performance.now()
   timing.render += t1 - t0
 
-  // The stamp fading is a change nothing else would report: the corner it sits in may go a long
-  // time without the office repainting there, so its own alpha has to force a frame.
-  const wantAlpha = stampAlphaNow()
-  if (wantAlpha !== stampAlpha) { stampAlpha = wantAlpha; stampDirty = true }
-
-  const unchanged = !stampDirty && rects !== null && rects.length === 0 && overlayRects.length === 0 && stats.drawn > 0
+  const unchanged = rects !== null && rects.length === 0 && overlayRects.length === 0 && stats.drawn > 0
   if (!unchanged) {
-    ctx.save()
-    ctx.globalAlpha = stampAlpha
-    ctx.drawImage(stamp.image, stamp.x, stamp.y)
-    ctx.restore()
     const rgba = canvas.data() // RGBA8, row-major, no padding (also where Skia rasterises the frame)
     const t2 = performance.now()
     timing.readback += t2 - t1
     const src = new Uint32Array(rgba.buffer, rgba.byteOffset, drawW * drawH) // little-endian: A B G R
     if (rects === null) convertRegion(src, 0, 0, drawW, drawH)
-    else {
-      for (const r of rects) convertRegion(src, r.x, r.y, r.w, r.h)
-      if (stampDirty) convertRegion(src, stamp.x, stamp.y, stamp.w, stamp.h)
-    }
-    stampDirty = false
+    else for (const r of rects) convertRegion(src, r.x, r.y, r.w, r.h)
     timing.rgb565 += performance.now() - t2
     if (overlayRects.length > 0) compositeNametags(overlayRects)
   }

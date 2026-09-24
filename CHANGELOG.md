@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.19.3
+
+- **Every door sprite was 8 px too high in the actual office.** They were drawn against previews that composited the sprite onto a rendered frame using the tool's own camera maths, which sits 8 px below the engine's - so what looked right in a picture was wrong once the engine drew it. All four are shifted to match, and `renderer/tools/door-shot.mjs` now puts a door in the layout and lets the engine draw it instead, which is the only honest way to look at one.
+- The north-south door's beam fills the slot it actually has: from the edge of the dark band above down to where the wall below begins. In a vertical wall run that wall draws in front of the doorway, so anything lower was never visible anyway.
+- Opened, that door leaves the beam standing as the frame and puts the leaf beside it, face and handle toward us, with the way through clear.
+
 ## v1.19.2
 
 - A door in a north-south wall is seen edge on, so there is no door face to show from that direction. Closed, it is now simply a wooden beam filling the gap rather than a panelled door drawn as if we were looking at it square on. Swinging it open turns it toward the camera, and that is when its panels and handle appear.

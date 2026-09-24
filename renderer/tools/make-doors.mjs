@@ -5,14 +5,16 @@
 //   DOOR_SIDE_CLOSED  / DOOR_SIDE_OPEN    gap in a north-south wall, walked through east-west
 //
 // A door in a north-south wall is seen edge on, so closed it is just a wooden beam filling the
-// gap - there is no door face to show from that direction. Swung open it turns toward the camera
-// and its panels and handle come into view, lying back against the top jamb.
+// gap - there is no door face to show from that direction. Open, the beam stays as the frame and
+// the leaf stands beside it, face toward us. Its band is shorter than the east-west door's: in a
+// vertical wall run the wall below the gap draws in front of the doorway, so anything below
+// sprite row 31 is covered anyway.
 //
 // Each is 16x32, placed on a 1x2 footprint whose top row is a background row lying in the wall.
 // Only the top 24 rows are drawn, because that is exactly the wall's lit face: measured off a
 // rendered wall, a wall block is 1 px of outline, 7 px of dark top, 23 px of lit face and 1 px of
 // outline again, and that last outline falls 8 px into the tile row rather than at its bottom.
-// So sprite row 0 lands at the top of the lit face and row 23 on the wall's bottom edge.
+
 // Drawn in wood rather than the wall's own colour so a door reads as a door whatever the walls
 // are tinted, and so the editor's colour sliders can restain it.
 //
@@ -73,6 +75,14 @@ const FRONT_CLOSED = [
   '................',
   '................',
   '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
   'KKKKKKKKKKKKKKKK',
   'KFffffffffffffFK',
   'KFFFFFFFFFFFFFFK',
@@ -102,18 +112,18 @@ const FRONT_CLOSED = [
   'KFKKKKKKKKKKKKfK',
   'KSssssssssssssSK',
   'KKKKKKKKKKKKKKKK',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
 ]
 
 // Open: the leaf folded back against the left jamb, the room beyond showing through.
 const FRONT_OPEN = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
   '................',
   '................',
   '................',
@@ -154,14 +164,6 @@ const FRONT_OPEN = [
   'KFKKKKKK......fK',
   'KSsssK........fK',
   'KKKKKK........KK',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
 ]
 
 // ── Door in a north-south wall, seen from the side ───────────────
@@ -175,9 +177,6 @@ const SIDE_CLOSED = [
   '................',
   '................',
   '................',
-  '................',
-  '................',
-  '................',
   'KKKKKKKKKKKKKKKK',
   'KFFFFFFFFFFFFFFK',
   'KKKKKKKKKKKKKKKK',
@@ -200,13 +199,16 @@ const SIDE_CLOSED = [
   'KwWWWDWWWWDWWWdK',
   'KwWWWDWWWWDWWWdK',
   'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
-  'KwWWWDWWWWDWWWdK',
   'KKKKKKKKKKKKKKKK',
   'KFFFFFFFFFFFFFFK',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
   '................',
   '................',
   '................',
@@ -227,29 +229,29 @@ const SIDE_OPEN = [
   '................',
   '................',
   '................',
-  '................',
-  '................',
-  '................',
   'KKKKKKKKKKKKKKKK',
-  'KFffffffffffffFK',
-  'KFFFFFFFFFFFFFFK',
-  'KFFFFFFFFFFFFFFK',
-  'KKKKKKKKKKKKKKKK',
-  'KNNNNNNNNNNNNNNK',
-  'KwwwwwwwwwwwwwwK',
-  'KWDDDDDDDDDDDDWK',
-  'KWDddddddddddDWK',
-  'KWDdWWWWWWWdBdWK',
-  'KWDdWWWWWWWdbdWK',
-  'KWDddddddddddDWK',
-  'KWDDDDDDDDDDDDWK',
-  'KWWWWWWWWWWWWWWK',
-  'KKKKKKKKKKKKKKKK',
-  '................',
-  '................',
-  '................',
-  '................',
-  '................',
+  'KFFFFKKKKKKK....',
+  'KKKKKKwwwwwK....',
+  'KwWdKKWDDDDWK...',
+  'KwWdKKWDDDDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWBddDWK...',
+  'KwWdKKWbddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDddDWK...',
+  'KwWdKKWDDDDWK...',
+  'KwWdKKWDDDDWK...',
+  'KwWdKKWWWWWWK...',
+  'KwWdKKWWWWWWK...',
+  'KKKKKKKKKKKK....',
+  'KFFFFKKKKKKK....',
   '................',
   '................',
   '................',

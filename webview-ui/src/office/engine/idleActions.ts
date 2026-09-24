@@ -445,6 +445,32 @@ function findAdjacentWalkableTile(
     if (walkable(rightCol, rightRow)) candidates.push({ col: rightCol, row: rightRow, facingDir: Direction.LEFT, side: 'right' })
   }
 
+  // Something standing on a desk can be reached across it. A mug on the back row of a desk that is
+  // against a wall has no free tile beside it at all, but anyone in front of the desk can lean over
+  // and take it, which is what it looks like from the outside.
+  if (candidates.length === 0 && getCatalogEntry(furniture.type)?.canPlaceOnSurfaces) {
+    const overable = (c: number, r: number) => r >= 0 && r < rows && c >= 0 && c < cols
+      && tileMap[r] !== undefined && tileMap[r][c] > 0 && tileMap[r][c] !== 8 && blockedTiles.has(`${c},${r}`)
+    for (let dc = 0; dc < footprintW; dc++) {
+      const col = furniture.col + dc
+      if (overable(col, furniture.row + footprintH) && walkable(col, furniture.row + footprintH + 1)) {
+        candidates.push({ col, row: furniture.row + footprintH + 1, facingDir: Direction.UP, side: 'front' })
+      }
+      if (overable(col, furniture.row - 1) && walkable(col, furniture.row - 2)) {
+        candidates.push({ col, row: furniture.row - 2, facingDir: Direction.DOWN, side: 'back' })
+      }
+    }
+    for (let dr = 0; dr < footprintH; dr++) {
+      const row = furniture.row + dr
+      if (overable(furniture.col - 1, row) && walkable(furniture.col - 2, row)) {
+        candidates.push({ col: furniture.col - 2, row, facingDir: Direction.RIGHT, side: 'left' })
+      }
+      if (overable(furniture.col + footprintW, row) && walkable(furniture.col + footprintW + 1, row)) {
+        candidates.push({ col: furniture.col + footprintW + 1, row, facingDir: Direction.LEFT, side: 'right' })
+      }
+    }
+  }
+
   if (candidates.length === 0) return null
   const preferred = candidates.filter(c => c.side === preferredSide)
   const pool = preferred.length > 0 ? preferred : candidates

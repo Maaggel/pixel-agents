@@ -104,11 +104,41 @@ ws.onmessage = (e) => {
   const reachesViaSeat = (c, r) => throughSeats.has(`${c},${r}`)
   print(`the office proper is ${openFloor.size} of ${floors.length} floor tiles, measured from ${hub.join(',')}\n`)
 
-  const canStandBeside = (col, row, w, h, test = reaches) => {
+  // what actually stands in the way: furniture minus its background rows, minus doors and chairs
+  const blockers = new Set()
+  for (const f of lay.furniture) {
+    const e = byId.get(f.type)
+    if (!e || e.isDoor || e.isSeat) continue
+    const bg = e.backgroundTiles || 0
+    for (let dr = bg; dr < (e.footprintH || 1); dr++) {
+      for (let dc = 0; dc < (e.footprintW || 1); dc++) blockers.add(`${Math.floor(f.col) + dc},${Math.floor(f.row) + dr}`)
+    }
+  }
+  const blockedAt = (c, r) => {
+    const t = lay.tiles[r * lay.cols + c]
+    if (t === undefined || t === WALL || t === VOID) return false
+    return blockers.has(`${c},${r}`)
+  }
+  /**
+   * Somewhere to stand and use the thing. Beside it, or - for something that sits on a desk -
+   * across the desk from it, which is what the engine allows and what it looks like from outside.
+   */
+  const canStandBeside = (col, row, w, h, test = reaches, surface = false) => {
     const sides = []
     for (let dc = 0; dc < w; dc++) { sides.push([col + dc, row - 1], [col + dc, row + h]) }
     for (let dr = 0; dr < h; dr++) { sides.push([col - 1, row + dr], [col + w, row + dr]) }
-    return sides.some(([c, r]) => test(c, r))
+    if (sides.some(([c, r]) => test(c, r))) return true
+    if (!surface) return false
+    const over = []
+    for (let dc = 0; dc < w; dc++) {
+      if (blockedAt(col + dc, row + h)) over.push([col + dc, row + h + 1])
+      if (blockedAt(col + dc, row - 1)) over.push([col + dc, row - 2])
+    }
+    for (let dr = 0; dr < h; dr++) {
+      if (blockedAt(col - 1, row + dr)) over.push([col - 2, row + dr])
+      if (blockedAt(col + w, row + dr)) over.push([col + w + 1, row + dr])
+    }
+    return over.some(([c, r]) => test(c, r))
   }
 
   const wanted = (e) => e?.thirstCycle?.length ? 'plant'
@@ -136,8 +166,9 @@ ws.onmessage = (e) => {
     const why = wanted(e)
     if (!why) continue
     const col = Math.floor(f.col), row = Math.floor(f.row)
-    if (canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1)) continue
-    const viaSeat = canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1, reachesViaSeat)
+    const surface = !!e.canPlaceOnSurfaces
+    if (canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1, reaches, surface)) continue
+    const viaSeat = canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1, reachesViaSeat, surface)
     stranded[why].push(`  ${e.name.padEnd(28)} at ${col},${row}${viaSeat ? '   (only from someone\'s own chair)' : ''}`)
   }
 

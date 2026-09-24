@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.24.1
+
+- Something standing on a desk can be reached across it. A mug on the back row of a desk against a wall had no free tile beside it at all, so nobody could ever clear it away - but anyone in front of the desk can lean over and take it, which is what it looks like from the outside. Every plant, utensil and machine in the office is now reachable.
+
 ## v1.24.0
 
 - **An empty chair is something you walk past, not a wall.** Chairs blocked everyone but their own occupant, so a row of them walled a room into cells: a plant behind one could never be watered, and whoever sat there could not get out to fetch anything. Only the tile somebody is actually sitting on blocks now, added and removed each tick the way a moving vacuum's tile is, and chairs stay out of the wander destinations so nobody chooses to stand on one.

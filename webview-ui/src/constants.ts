@@ -488,6 +488,11 @@ export const DOOR_CLOSE_DELAY_SEC = 0.8
  * plan from flood-filling the whole office and locking every door in the building.
  */
 export const PRIVACY_ROOM_MAX_TILES = 140
+/**
+ * How far a door sign will look for a room to report on. Without this a lone sign would latch
+ * onto whatever qualifying room happened to be nearest, even one across the office.
+ */
+export const SIGN_ROOM_MAX_DISTANCE_TILES = 10
 
 // ── Meetings ───────────────────────────────────────────────
 export const MEETING_MIN_DURATION_SEC = 45.0

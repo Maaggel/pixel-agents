@@ -52,6 +52,7 @@ import {
   DOOR_MIN_OPEN_SEC,
   DOOR_CLOSE_DELAY_SEC,
   PRIVACY_ROOM_MAX_TILES,
+  SIGN_ROOM_MAX_DISTANCE_TILES,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -158,6 +159,93 @@ export class OfficeState {
   private doorCloseRolled: Set<string> = new Set()
   /** Tile keys this class has added to blockedTiles for locked doors, so it can take them back out */
   private lockedDoorBlockKeys: Set<string> = new Set()
+
+
+  // ── Door signs ─────────────────────────────────────────────
+  /** Sign uid -> the tiles of the room it reports on, worked out once per layout */
+  private signRooms: Map<string, Set<string>> = new Map()
+
+  /**
+   * Every room worth putting a sign on: one with a toilet in it, or one meetings are held in.
+   * Rooms are the same flood as the privacy lock uses, so a room is whatever walls and doors
+   * enclose, and anything too big to be a room is not one.
+   */
+  private qualifyingRooms(): Array<Set<string>> {
+    const rooms: Array<Set<string>> = []
+
+    // A room with a toilet in it is whatever walls and doors enclose around that toilet
+    const seen = new Set<string>()
+    for (const item of this.layout.furniture) {
+      if (!getCatalogEntry(item.type)?.privacySeat) continue
+      const c = Math.floor(item.col), r = Math.floor(item.row)
+      if (seen.has(`${c},${r}`)) continue
+      const room = this.roomAround(c, r, false)
+      if (!room.tiles.size) continue
+      for (const t of room.tiles) seen.add(t)
+      rooms.push(room.tiles)
+    }
+
+    // A meeting room is its zone, not its walls - they are rarely walled off at all, and flooding
+    // out from one would swallow the open plan and report on nothing useful
+    const zones = this.layout.zones
+    if (zones) {
+      const visited = new Set<string>()
+      const at = (c: number, r: number) =>
+        (c < 0 || r < 0 || c >= this.layout.cols || r >= this.layout.rows) ? null : zones[r * this.layout.cols + c]
+      for (let r = 0; r < this.layout.rows; r++) {
+        for (let c = 0; c < this.layout.cols; c++) {
+          if (at(c, r) !== ZoneTypeValues.MEETING_ROOM || visited.has(`${c},${r}`)) continue
+          const tiles = new Set<string>()
+          const queue: Array<[number, number]> = [[c, r]]
+          while (queue.length) {
+            const [qc, qr] = queue.shift()!
+            const key = `${qc},${qr}`
+            if (visited.has(key) || at(qc, qr) !== ZoneTypeValues.MEETING_ROOM) continue
+            visited.add(key)
+            tiles.add(key)
+            queue.push([qc + 1, qr], [qc - 1, qr], [qc, qr + 1], [qc, qr - 1])
+          }
+          if (tiles.size) rooms.push(tiles)
+        }
+      }
+    }
+    return rooms
+  }
+
+  /** Point every sign at the nearest room that has something to report. */
+  private rebuildSignRooms(): void {
+    this.signRooms.clear()
+    const signs = this.layout.furniture.filter((f) => f.uid && getCatalogEntry(f.type)?.roomCycleSprites?.length)
+    if (!signs.length) return
+    const rooms = this.qualifyingRooms()
+    if (!rooms.length) return
+    for (const sign of signs) {
+      const sc = Math.floor(sign.col), sr = Math.floor(sign.row)
+      let best: Set<string> | null = null
+      let bestDist = SIGN_ROOM_MAX_DISTANCE_TILES
+      for (const room of rooms) {
+        for (const key of room) {
+          const [c, r] = key.split(',').map(Number)
+          const d = Math.abs(c - sc) + Math.abs(r - sr)
+          if (d < bestDist) { bestDist = d; best = room }
+        }
+      }
+      // nothing near enough is nothing to report: the sign stays on its first frame
+      if (best) this.signRooms.set(sign.uid!, best)
+    }
+  }
+
+  /** What the room a sign watches is doing: 0 free, 1 in a meeting, 2 in use. */
+  private roomStateIndex(tiles: Set<string>): number {
+    let meeting = false
+    for (const ch of this.characters.values()) {
+      if (ch.isRemote || ch.matrixEffect) continue
+      if (!tiles.has(`${ch.tileCol},${ch.tileRow}`)) continue
+      if (ch.seatId && isSittingState(ch.state) && this.seatFurnitureEntry(ch.seatId)?.privacySeat) return 2
+      if (ch.idleAction === IdleActionType.MEETING) meeting = true
+    }
+    return meeting ? 1 : 0
+  }
 
   /** Index the doors in the layout. Their state survives a rebuild; doors that are gone do not. */
   private rebuildDoorIndex(): void {
@@ -300,7 +388,7 @@ export class OfficeState {
    * report the tiles it covers and the doors around its edge. A space with no door around it,
    * or one too big to be a room at all, reports nothing to lock.
    */
-  private roomAround(col: number, row: number): { tiles: Set<string>; doors: Set<string> } {
+  private roomAround(col: number, row: number, requireDoors = true): { tiles: Set<string>; doors: Set<string> } {
     const tiles = new Set<string>()
     const doors = new Set<string>()
     const queue: Array<[number, number]> = [[col, row]]
@@ -318,7 +406,7 @@ export class OfficeState {
       if (tiles.size > PRIVACY_ROOM_MAX_TILES) return empty // too big to be a private room
       queue.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1])
     }
-    return doors.size ? { tiles, doors } : empty
+    return (doors.size || !requireDoors) ? { tiles, doors } : empty
   }
 
   /**
@@ -366,6 +454,7 @@ export class OfficeState {
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
     this.rebuildDoorIndex()
+    this.rebuildSignRooms()
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -382,6 +471,7 @@ export class OfficeState {
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
     this.rebuildDoorIndex()
+    this.rebuildSignRooms()
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -1978,6 +2068,17 @@ export class OfficeState {
         dryness >= 1 ? f.thirstCycleSprites.length - 1 : Math.floor(dryness / PLANT_FADE_AT_DRYNESS))
       const wanted = f.thirstCycleSprites[idx]
       if (f.activeDataSprite !== wanted) f.activeDataSprite = wanted
+    }
+
+    // Door signs: free, in a meeting, or in use, read off the room the sign was pointed at
+    if (this.signRooms.size) {
+      for (const f of this.furniture) {
+        if (!f.roomCycleSprites?.length || !f.uid) continue
+        const tiles = this.signRooms.get(f.uid)
+        if (!tiles) continue
+        const wanted = f.roomCycleSprites[Math.min(f.roomCycleSprites.length - 1, this.roomStateIndex(tiles))]
+        if (f.activeDataSprite !== wanted) f.activeDataSprite = wanted
+      }
     }
 
     // Gauges: the frames are an ordered ramp, so the busier the office the further up it reads

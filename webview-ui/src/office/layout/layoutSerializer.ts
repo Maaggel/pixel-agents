@@ -176,6 +176,10 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
     if (entry.loadCycleSprites && entry.loadCycleSprites.length > 0) {
       instance.loadCycleSprites = entry.loadCycleSprites
     }
+    if (entry.roomCycleSprites && entry.roomCycleSprites.length > 0) {
+      instance.roomCycleSprites = entry.roomCycleSprites
+    }
+
     if (entry.thirstCycleSprites && entry.thirstCycleSprites.length > 0) {
       instance.thirstCycleSprites = entry.thirstCycleSprites
     }

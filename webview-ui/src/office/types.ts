@@ -201,6 +201,8 @@ export interface FurnitureInstance {
   loadCycleSprites?: SpriteData[]
   /** Plant frames, watered through to parched, chosen by how long since it was watered */
   thirstCycleSprites?: SpriteData[]
+  /** Door sign frames - free, meeting, in use - chosen by the nearest room worth reporting on */
+  roomCycleSprites?: SpriteData[]
   /** Its idle cycle runs faster the busier the office is (server rack lights) */
   loadReactive?: boolean
   randomIdleCycle?: boolean
@@ -347,6 +349,7 @@ export interface FurnitureCatalogEntry {
   loadCycleSprites?: SpriteData[]
   /** Plant frames, watered through to parched, chosen by how long since it was watered */
   thirstCycleSprites?: SpriteData[]
+  roomCycleSprites?: SpriteData[]
   /** Its idle cycle runs faster the busier the office is (server rack lights) */
   loadReactive?: boolean
   randomIdleCycle?: boolean

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.21.0
+
+- **A sign for a door, saying whether the room behind it is free, in a meeting, or in use.** Hang it on the wall (it is wall-placeable, in the Doors tab) and it finds the nearest room worth reporting on - one with a toilet in it, or one meetings are held in - and reads that room: green with a tick when it is empty, amber with two heads at a table while a meeting is running, red with a bar while someone is on the toilet. Which room a sign watches is settled once per layout; only the state is read each tick.
+- Driven by a new `roomCycle` in the catalog, so a sign is data rather than code: three frames, ordered free, meeting, in use.
+- A room with a toilet in it is whatever walls and doors enclose that toilet, but **a meeting room is its zone, not its walls** - meeting areas are rarely walled off, and flooding out from one swallows the open plan and reports on nothing useful. A sign with no qualifying room within `SIGN_ROOM_MAX_DISTANCE_TILES` stays on its first frame rather than latching onto a room across the office.
+- The north-south door is its own entry in the Doors tab. It shared a rotation group with the east-west one, so it could only be reached by placing that and rotating, which is no way to find a door.
+
 ## v1.20.0
 
 - **The north-south door has no open state.** Seen edge on it is just the narrow beam of the leaf, and a door that is edge on barely changes when it swings: every attempt at drawing the leaf swung out - angled, tapered, flat, past ninety degrees - read as a plank stuck to the wall rather than a door. The engine still opens, closes and locks it, it simply looks the same either way, and the catalog is one asset lighter for it. The east-west door keeps its pair, where there is a face to show.

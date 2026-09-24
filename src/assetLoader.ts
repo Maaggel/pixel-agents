@@ -75,6 +75,7 @@ export interface FurnitureAsset {
   loadCycle?: string[]
   /** Plant frames, watered through to parched, selected by how long since it was watered */
   thirstCycle?: string[]
+  roomCycle?: string[]
   randomIdleCycle?: boolean
   idleCycleIntervalMin?: number
   idleCycleIntervalMax?: number
@@ -320,6 +321,27 @@ export async function loadFurnitureAssets(
             }
           }
           asset.thirstCycle = resolvedIds
+        }
+
+        // Load roomCycle frame sprites (file paths -> sprite IDs): a door sign, free through to in use
+        if (Array.isArray(asset.roomCycle)) {
+          const resolvedIds: string[] = []
+          for (const framePath of asset.roomCycle) {
+            const spriteId = path.basename(framePath, path.extname(framePath))
+            const frameFilePath = framePath.startsWith('assets/') ? framePath : `assets/${framePath}`
+            const framePngPath = path.join(workspaceRoot, frameFilePath)
+            if (!fs.existsSync(framePngPath)) {
+              console.warn(`  ⚠️  Room cycle frame not found: ${framePath}`)
+              continue
+            }
+            try {
+              sprites.set(spriteId, pngToSpriteData(fs.readFileSync(framePngPath), asset.width, asset.height))
+              resolvedIds.push(spriteId)
+            } catch (frameErr) {
+              console.warn(`  ⚠️  Error loading room cycle frame ${framePath}: ${frameErr instanceof Error ? frameErr.message : frameErr}`)
+            }
+          }
+          asset.roomCycle = resolvedIds
         }
 
         // Load dockedCycle frame sprites (file paths → sprite IDs)

@@ -74,6 +74,7 @@ export interface LoadedAssetData {
     timeCycle?: string[]
     loadCycle?: string[]
     thirstCycle?: string[]
+    roomCycle?: string[]
     loadReactive?: boolean
     randomIdleCycle?: boolean
     idleCycleIntervalMin?: number
@@ -197,6 +198,15 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
         .filter((s): s is SpriteData => s !== undefined)
       if (resolved.length > 0) loadCycleSprites = resolved
     }
+    // Resolve roomCycle sprite IDs to SpriteData arrays (a door sign: free, meeting, in use)
+    let roomCycleSprites: SpriteData[] | undefined
+    if (asset.roomCycle && asset.roomCycle.length > 0) {
+      const resolved = asset.roomCycle
+        .map((id) => assets.sprites[id])
+        .filter((sprite): sprite is SpriteData => !!sprite)
+      if (resolved.length > 0) roomCycleSprites = resolved
+    }
+
     // Resolve thirstCycle sprite IDs to SpriteData arrays (plants drying out)
     let thirstCycleSprites: SpriteData[] | undefined
     if (asset.thirstCycle && asset.thirstCycle.length > 0) {
@@ -261,6 +271,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(timeCycleSprites ? { timeCycleSprites } : {}),
       ...(loadCycleSprites ? { loadCycleSprites } : {}),
       ...(thirstCycleSprites ? { thirstCycleSprites } : {}),
+      ...(roomCycleSprites ? { roomCycleSprites } : {}),
       ...(asset.loadReactive ? { loadReactive: true } : {}),
       ...(asset.randomIdleCycle ? { randomIdleCycle: true } : {}),
       ...(asset.idleCycleIntervalMin !== undefined ? { idleCycleIntervalMin: asset.idleCycleIntervalMin } : {}),

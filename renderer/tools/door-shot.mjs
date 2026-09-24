@@ -9,6 +9,7 @@
 //
 //   node tools/door-shot.mjs <outdir> front|side        closed, as placed
 //   DT=0.01 VARIANT=DOOR_SIDE_OPEN node tools/door-shot.mjs <outdir> side
+//   SIGN=1 node tools/door-shot.mjs <outdir> front      also hangs a sign beside the door
 //     (a small DT keeps an open door open: the engine shuts it after DOOR_MIN_OPEN_SEC)
 import { createCanvas } from '@napi-rs/canvas'
 import { readFileSync, writeFileSync } from 'fs'
@@ -36,6 +37,11 @@ ws.onmessage = (e) => {
   const [gc, gr] = gaps[0]
   const closed = cat.find((a) => a.name === (process.env.VARIANT || (WANT === 'side' ? 'DOOR_SIDE_CLOSED' : 'DOOR_FRONT_CLOSED')))
   lay.furniture.push({ uid: 'shot-door', type: closed.id, col: gc, row: gr - (closed.footprintH - 1) })
+  if (process.env.SIGN) {
+    const sign = cat.find((a) => a.name === 'DOOR_SIGN')
+    const wallBy = [gc - 1, gc + 1].find((c) => tile(c, gr) === WALL)
+    if (sign && wallBy !== undefined) lay.furniture.push({ uid: 'shot-sign', type: sign.id, col: wallBy, row: gr })
+  }
   office.handleRelayMessage(m)
   setTimeout(() => {
     for (let i = 0; i < 40; i++) office.tick(Number(process.env.DT ?? 0.05)) // small DT keeps an open door open past the spawn effect

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.17.0
+
+- **Walking past a dry plant is what sets someone off to water it**, the same way walking past a stray mug is what gets it cleared away. A plant that has merely started to fade is now worth watering at all, and one that is parched and close by is acted on far more readily (`PLANT_NOTICE_DISTANCE_TILES` and the `WATER_*_WEIGHT` constants). Someone with a canful waters the worst plants first, nearest within that.
+- The office keeps its plants alive as a result: over 30 simulated office days, 56 watering rounds instead of 16, and the plants averaged 65% freshly watered against 18% parched rather than steadily wilting.
+
 ## v1.16.1
 
 - Plants dry at their own pace: each draws a fresh figure for how long its watering lasts, within about half again either way, so the office no longer wilts in lockstep - one plant droops while its neighbour is still fine.

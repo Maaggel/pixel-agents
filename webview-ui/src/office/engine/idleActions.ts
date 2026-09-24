@@ -35,6 +35,12 @@ import {
   OFFICE_MEAL_HOURS,
   OFFICE_DRINK_HOURS,
   NEAREST_PATH_CANDIDATES,
+  PLANT_FADE_AT_DRYNESS,
+  PLANT_NOTICE_DISTANCE_TILES,
+  WATER_NEAR_PARCHED_WEIGHT,
+  WATER_NEAR_FADING_WEIGHT,
+  WATER_PARCHED_ELSEWHERE_WEIGHT,
+  WATER_FADING_ELSEWHERE_WEIGHT,
   WATER_PLANT_SEC,
   WATERING_CAN_DEFAULT_USES,
 } from '../../constants.js'
@@ -66,7 +72,8 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
   { type: IdleActionType.FETCH_ITEM, weight: 25, needsDynamicItems: true },
   { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
-  { type: IdleActionType.WATER_PLANTS, weight: 12, needsDynamicItems: true },
+  // weight comes from wateringUrge(): what is dry, and whether they are walking past it
+  { type: IdleActionType.WATER_PLANTS, weight: 0, needsDynamicItems: true },
 ]
 
 /**
@@ -186,19 +193,47 @@ function findWateringCan(ctx: IdleActionContext): FetchableUtensil | null {
   return null
 }
 
-/** Plants that have not had a drink lately, nearest first */
-function findThirstyPlants(ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
+/**
+ * Plants worth watering: the parched ones first and then the merely fading, nearest within each.
+ *
+ * Someone with a canful walks the worst first rather than the closest, which is what anyone would
+ * do; `minDryness` lets the caller ask only about the parched ones.
+ */
+function findThirstyPlants(ch: Character, ctx: IdleActionContext, minDryness = PLANT_FADE_AT_DRYNESS): PlacedFurniture[] {
   const can = getCatalogEntry(findWateringCan(ctx)?.type ?? '')
   if (!can?.utensilTargets) return []
   const targeted = new Set<string>()
   for (const other of ctx.characters.values()) if (other.itemTargetUid) targeted.add(other.itemTargetUid)
-  const dry = findFurnitureByAssetName(ctx, can.utensilTargets).filter((f) => {
-    if (!f.uid || targeted.has(f.uid) || !ctx.isPlantThirsty(f.uid)) return false
+  const parched: PlacedFurniture[] = []
+  const fading: PlacedFurniture[] = []
+  for (const f of findFurnitureByAssetName(ctx, can.utensilTargets)) {
+    if (!f.uid || targeted.has(f.uid)) continue
+    const dryness = ctx.plantDryness(f.uid)
+    if (dryness < minDryness) continue
     // one on a shelf or boxed in by desks cannot be reached, so it never counts as thirsty
     const fp = ctx.getFurnitureFootprint(f.type)
-    return !!findAdjacentWalkableTile(f, fp?.w ?? 1, fp?.h ?? 1, ctx.tileMap, ctx.blockedTiles, useSideFor(f.type))
-  })
-  return nearestFirst(dry, ch, ctx)
+    if (!findAdjacentWalkableTile(f, fp?.w ?? 1, fp?.h ?? 1, ctx.tileMap, ctx.blockedTiles, useSideFor(f.type))) continue
+    ;(dryness >= 1 ? parched : fading).push(f)
+  }
+  return [...nearestFirst(parched, ch, ctx), ...nearestFirst(fading, ch, ctx)]
+}
+
+/** How much someone wants to go and water something, given what is dry and how near it is */
+function wateringUrge(ch: Character, ctx: IdleActionContext): number {
+  const candidates = findThirstyPlants(ch, ctx)
+  if (candidates.length === 0) return 0
+  let nearParched = false, nearFading = false, anyParched = false
+  for (const f of candidates) {
+    const parched = f.uid ? ctx.plantDryness(f.uid) >= 1 : false
+    if (parched) anyParched = true
+    if (tileDistance(f, ch) <= PLANT_NOTICE_DISTANCE_TILES) {
+      if (parched) nearParched = true
+      else nearFading = true
+    }
+  }
+  if (nearParched) return WATER_NEAR_PARCHED_WEIGHT
+  if (nearFading) return WATER_NEAR_FADING_WEIGHT
+  return anyParched ? WATER_PARCHED_ELSEWHERE_WEIGHT : WATER_FADING_ELSEWHERE_WEIGHT
 }
 
 /** Something lying about that someone could carry to the sink: a left mug, or one the owner placed */
@@ -520,6 +555,8 @@ export interface IdleActionContext {
   takeProp: (uid: string) => PlacedProp | null
   /** Has this plant gone long enough without water to be worth a trip? */
   isPlantThirsty: (uid: string) => boolean
+  /** How dry a plant is: under 1 it is fine, 1 and over it wants water */
+  plantDryness: (uid: string) => number
   /** Remember that a plant has just been watered */
   markPlantWatered: (uid: string) => void
   /** Cups and plates placed in the editor, which agents may also clear away */
@@ -554,7 +591,11 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
       if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'break').length === 0)) continue
       if (entry.type === IdleActionType.WATER_PLANTS) {
-        if (!findWateringCan(ctx) || findThirstyPlants(ch, ctx).length === 0) continue
+        if (!findWateringCan(ctx)) continue
+        const urge = wateringUrge(ch, ctx)
+        if (urge === 0) continue
+        eligible.push({ type: entry.type, weight: urge })
+        continue
       }
       if (entry.type === IdleActionType.TIDY_UP) {
         if (findStaleProps(ctx).length === 0) continue

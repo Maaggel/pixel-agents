@@ -391,6 +391,20 @@ export const STEAM_COLOR = '#ffffff'
 
 /** A plant starts looking faded at this fraction of the way to wanting water */
 export const PLANT_FADE_AT_DRYNESS = 0.6
+
+// ── Noticing a dry plant ─────────────────────────────────────────
+// Walking past one is what usually sets someone off to fetch the can, the same way walking past a
+// stray mug is what gets it cleared away. A parched plant is noticed from further off and acted
+// on far more readily than one that has merely started to fade.
+export const PLANT_NOTICE_DISTANCE_TILES = 7
+/** Weight when a parched plant is close by */
+export const WATER_NEAR_PARCHED_WEIGHT = 65
+/** Weight when a merely fading plant is close by */
+export const WATER_NEAR_FADING_WEIGHT = 22
+/** Weight when something is parched, but nowhere near */
+export const WATER_PARCHED_ELSEWHERE_WEIGHT = 12
+/** Weight when nothing is worse than fading, and none of it is close */
+export const WATER_FADING_ELSEWHERE_WEIGHT = 4
 /** Plants one canful stretches to before a trip back to the tap, if the can says nothing else */
 export const WATERING_CAN_DEFAULT_USES = 3
 /** A prop must lie around at least this long before someone tidies it away */

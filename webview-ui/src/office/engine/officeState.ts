@@ -323,6 +323,7 @@ export class OfficeState {
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
       isPlantThirsty: (uid: string) => this.plantDryness(uid) >= 1,
+      plantDryness: (uid: string) => this.plantDryness(uid),
       markPlantWatered: (uid: string) => { this.waterPlant(uid) },
       tidyableFurniture: this.tidyableFurniture(),
       takeLayoutItem: (uid: string) => this.takeLayoutItem(uid),

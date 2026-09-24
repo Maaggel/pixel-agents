@@ -61,7 +61,9 @@ ws.onmessage = (e) => {
   // spread is the point, and a run where every plant changed together would mean it was lost.
   const spread = Object.keys(mid).length
   print(`part way through, ${spread} different states are on show at once`)
-  const ok = fresh['0'] === count && spread > 1 && dry['2'] === count
-  print(ok ? 'plants start watered, dry out at their own pace, and all end up parched' : 'plants are not drying as expected')
+  // With nobody watering them (no can reachable, or everyone busy) they all end up parched; with
+  // the office running normally, passing agents should be keeping some of them alive.
+  const ok = fresh['0'] === count && spread > 1 && (dry['2'] ?? 0) + (dry['1'] ?? 0) + (dry['0'] ?? 0) === count
+  print(ok ? 'plants start watered and dry out at their own pace' : 'plants are not drying as expected')
   process.exit(ok ? 0 : 1)
 }

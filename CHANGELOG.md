@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.21.1
+
+- The door sign hangs high on the wall instead of halfway down it with its lower half past the wall's bottom edge: it is a 16x32 sprite on a 1x2 footprint now, so the tile you point at is where its bottom row lands and the plate sits up in the wall's face. It is also half-tile placeable, so it can be nudged eight pixels at a time rather than taken or left where it falls.
+
 ## v1.21.0
 
 - **A sign for a door, saying whether the room behind it is free, in a meeting, or in use.** Hang it on the wall (it is wall-placeable, in the Doors tab) and it finds the nearest room worth reporting on - one with a toilet in it, or one meetings are held in - and reads that room: green with a tick when it is empty, amber with two heads at a table while a meeting is running, red with a bar while someone is on the toilet. Which room a sign watches is settled once per layout; only the state is read each tick.

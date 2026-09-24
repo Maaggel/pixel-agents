@@ -40,7 +40,7 @@ ws.onmessage = (e) => {
   if (process.env.SIGN) {
     const sign = cat.find((a) => a.name === 'DOOR_SIGN')
     const wallBy = [gc - 1, gc + 1].find((c) => tile(c, gr) === WALL)
-    if (sign && wallBy !== undefined) lay.furniture.push({ uid: 'shot-sign', type: sign.id, col: wallBy, row: gr })
+    if (sign && wallBy !== undefined) lay.furniture.push({ uid: 'shot-sign', type: sign.id, col: wallBy, row: gr - (sign.footprintH - 1) }) // as the editor places a wall item: bottom row on the tile you point at
   }
   office.handleRelayMessage(m)
   setTimeout(() => {

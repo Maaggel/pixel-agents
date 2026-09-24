@@ -464,6 +464,16 @@ export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind:
   2: { dx: 5, dy: -13, behind: false },   // RIGHT - hand in front
   3: { dx: -12, dy: -13, behind: false }, // LEFT - mirrored
 }
+/**
+ * Where the phone sits relative to a character's bottom-centre, per direction. Nothing for UP:
+ * facing away, their own back is in the way.
+ */
+export const PHONE_OFFSETS: Record<number, { dx: number; dy: number } | null> = {
+  0: { dx: -1, dy: -14 },  // DOWN
+  1: null,                 // UP
+  2: { dx: 1, dy: -14 },   // RIGHT
+  3: { dx: -3, dy: -14 },  // LEFT
+}
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4
 /** Number of idle chat bubble emoji variants */
@@ -478,6 +488,8 @@ export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
  */
 export const TOILET_SIT_MIN_SEC = 12
 export const TOILET_SIT_MAX_SEC = 28
+/** How often somebody on the toilet is on their phone rather than just sitting there */
+export const TOILET_PHONE_CHANCE = 0.5
 /** Seconds at the sink afterwards */
 export const WASH_HANDS_SEC = 4
 /** How often anyone feels the need, against the other idle actions */

@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE, BUBBLE_IDLE_TIDY_SPRITE, getItemBubbleSprite } from '../sprites/spriteData.js'
+import { getCharacterSprites, PHONE_SPRITE, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, BUBBLE_THINKING_SPRITE, BUBBLE_WORKING_SPRITE, TOOL_BUBBLE_SPRITES, IDLE_CHAT_BUBBLE_VARIANTS, BUBBLE_IDLE_THINK_SPRITE, BUBBLE_IDLE_EAT_SPRITE, BUBBLE_IDLE_TIDY_SPRITE, getItemBubbleSprite } from '../sprites/spriteData.js'
 import { getCharacterSprite, isSittingState } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { renderSkillAura, renderSkillBubble } from './skillAura.js'
@@ -10,7 +10,7 @@ import { renderSunBeams } from './sunlight.js'
 import { computeLampLights, renderLampLights } from './lampLight.js'
 import { getCatalogEntry } from '../layout/furnitureCatalog.js'
 import { getColorizedSprite } from '../colorize.js'
-import { HELD_ITEM_OFFSETS } from '../../constants.js'
+import { HELD_ITEM_OFFSETS, PHONE_OFFSETS } from '../../constants.js'
 import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
 import type { WindowEffectFrameData } from './windowEffects.js'
 import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
@@ -409,6 +409,20 @@ export function renderScene(
         c.drawImage(cached, drawX, drawY)
       },
     })
+
+    // On their phone: held up in front of them, in the hands the typing pose already puts there
+    if (ch.sitPose === 'phone' && isSittingState(ch.state)) {
+      const anchor = PHONE_OFFSETS[ch.dir]
+      const phoneCached = getCachedSprite(PHONE_SPRITE, zoom)
+      if (anchor && phoneCached) {
+        const px = Math.round(offsetX + (ch.x + anchor.dx) * zoom)
+        const py = Math.round(offsetY + (ch.y + sittingOffset + anchor.dy) * zoom)
+        drawables.push({
+          zY: charZY + OUTLINE_Z_SORT_OFFSET / 2,
+          draw: (c) => c.drawImage(phoneCached, px, py),
+        })
+      }
+    }
 
     // Carried utensil (dynamic items) - anchored at the hand, behind the body when facing up
     if (ch.heldItem) {

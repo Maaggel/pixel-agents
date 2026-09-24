@@ -1830,6 +1830,18 @@ function hueShiftSprites(sprites: CharacterSprites, hueShift: number): Character
   }
 }
 
+/**
+ * A phone, for somebody sitting on the toilet. Six pixels of dark case around a lit screen, held
+ * in the typing pose so it reads as looking down at something rather than reading a newspaper.
+ */
+export const PHONE_SPRITE: SpriteData = [
+  ['#1a1a24', '#1a1a24', '#1a1a24'],
+  ['#1a1a24', '#9fd9f0', '#1a1a24'],
+  ['#1a1a24', '#cfeefb', '#1a1a24'],
+  ['#1a1a24', '#9fd9f0', '#1a1a24'],
+  ['#1a1a24', '#1a1a24', '#1a1a24'],
+]
+
 export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {
   const cacheKey = `${paletteIndex}:${hueShift}`
   const cached = spriteCache.get(cacheKey)

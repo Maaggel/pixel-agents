@@ -474,6 +474,8 @@ export interface Character {
   preConversationDir: Direction | null
   /** The seat to go back to afterwards, while borrowing a toilet as a seat */
   preToiletSeatId?: string | null
+  /** How they are sitting when it is not work: doing nothing, or looking at their phone */
+  sitPose?: 'still' | 'phone' | null
   /** Unique ID grouping characters in the same meeting (so multiple meetings can coexist) */
   meetingGroupId: number | null
   /** Catalog type of the utensil currently carried - drawn at the hand, placed on the desk when seated */

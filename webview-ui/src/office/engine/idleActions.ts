@@ -40,6 +40,7 @@ import {
   TOILET_SIT_MIN_SEC,
   TOILET_SIT_MAX_SEC,
   WASH_HANDS_SEC,
+  TOILET_PHONE_CHANCE,
   USE_TOILET_WEIGHT,
   TOILET_HOURS,
   PLANT_NOTICE_DISTANCE_TILES,
@@ -1499,6 +1500,7 @@ function startUseToilet(ch: Character, ctx: IdleActionContext): boolean {
 function leaveToiletForSink(ch: Character, ctx: IdleActionContext): void {
   ch.seatId = ch.preToiletSeatId ?? null
   ch.preToiletSeatId = null
+  ch.sitPose = null
   ch.itemTargetUid = null
   ch.state = CharacterState.IDLE
   ch.frame = 0
@@ -1529,6 +1531,8 @@ function updateUseToilet(ch: Character, dt: number, ctx: IdleActionContext): boo
       ch.state = CharacterState.SIT_IDLE
       ch.frame = 0
       ch.frameTimer = 0
+      // not reading a newspaper: either just sitting there, or on their phone
+      ch.sitPose = Math.random() < TOILET_PHONE_CHANCE ? 'phone' : 'still'
       ch.conversationPhase = 'talking'
     }
     return true

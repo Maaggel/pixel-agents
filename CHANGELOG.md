@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.26.0
+
+- Nobody reads a newspaper on the toilet. The seated idle animation holds up a sheet of paper, which was what an agent in there appeared to be doing; they now either just sit, or sit looking at their phone, picked at random when they sit down.
+
 ## v1.25.1
 
 - Walking past a plant that has gone properly parched is much harder to ignore: `WATER_NEAR_PARCHED_WEIGHT` goes from 32 to 70, on a par with walking past a stray mug. Over 30 office days that is 53 watering rounds rather than around 25, and the plants average 65% freshly watered against 19% parched.

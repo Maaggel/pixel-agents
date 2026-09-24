@@ -382,6 +382,8 @@ let streamConfig = { ...STREAM_DEFAULT }
 /** Latest FRAME_FULL payload per compression tag (0x01 lz4 block, 0x02 raw deflate) */
 const lastFramePayload = new Map()
 let lastFrameAt = 0
+/** The renderer whose frames go to the tablets; a second one is ignored while this is alive */
+let frameOwner = null
 let frameCount = 0
 /** @type {Set<{res: import('http').ServerResponse, comp: number, minIntervalMs: number, lastSentAt: number}>} */
 const streamClients = new Set()
@@ -1392,6 +1394,15 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (raw, isBinary) => {
       // Renderer frames arrive as binary WebSocket messages: [compression tag u8][FRAME_FULL payload]
       if (isBinary) {
+        // One renderer feeds the stream at a time. Two of them - a restart where the old process
+        // has not quite gone, or a debug run taking a screenshot - interleave frames from two
+        // separate simulations, and the tablet shows a picture running at double rate and
+        // jumping about. The first to send keeps it until it disconnects.
+        if (frameOwner && frameOwner !== ws && frameOwner.readyState === 1) return
+        if (frameOwner !== ws) {
+          frameOwner = ws
+          console.log('[Relay] Stream source is now a new renderer')
+        }
         const buf = Buffer.from(raw)
         const comp = buf[0]
         if (comp !== COMPRESSION_LZ4_BLOCK && comp !== COMPRESSION_DEFLATE_RAW) return
@@ -1445,6 +1456,7 @@ wss.on('connection', (ws, req) => {
     })
 
     ws.on('close', (code, reason) => {
+      if (frameOwner === ws) frameOwner = null
       publishers.delete(ws)
       if (publisherWindowId) {
         publisherStates.delete(publisherWindowId)

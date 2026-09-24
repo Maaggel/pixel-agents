@@ -1516,6 +1516,7 @@ function leaveToiletForSink(ch: Character, ctx: IdleActionContext): void {
     ch.moveProgress = 0
     if (path.length > 0) { ch.state = CharacterState.WALK; ch.frame = 0; ch.frameTimer = 0 }
     ch.conversationPhase = 'leaving'
+    ch.preConversationDir = adj.facingDir // turn to the sink on arrival, not to whatever way they walked
     ch.idleActionTimer = -1 // the wash has not started; it begins on arrival
     return
   }
@@ -1549,6 +1550,8 @@ function updateUseToilet(ch: Character, dt: number, ctx: IdleActionContext): boo
     if (ch.idleActionTimer < 0) {
       ch.idleActionTimer = WASH_HANDS_SEC
       ch.state = CharacterState.IDLE
+      ch.dir = ch.preConversationDir ?? ch.dir
+      ch.preConversationDir = null
       ch.frame = 0
       ch.bubbleType = 'idle_tidy'
       ch.bubbleTimer = WASH_HANDS_SEC + 1

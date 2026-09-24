@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.30.1
+
+- Someone washing their hands turns to face the sink, rather than standing at it facing whichever way they happened to walk in.
+
+## v1.30.0
+
+- **One renderer feeds the tablet at a time.** Two of them - a restart where the old process has not quite gone, or a debug run taking a screenshot, which also publishes - interleave frames from two separate simulations, and the tablet shows a picture at double rate that jumps about. The relay now takes the first renderer to send a frame as the stream's source and ignores the rest until it disconnects.
+- The simulation itself was never frame-rate dependent: the renderer's loop advances the office by real elapsed time, capped at 0.1 s, so a slow frame makes the office lag rather than speed up.
+
 ## v1.29.1
 
 - Proof of the above: a version-only deploy leaves the relay running and the tablet's stream untouched.

@@ -406,7 +406,7 @@ export const PLANT_NOTICE_DISTANCE_TILES = 7
 // Enough to keep the plants alive without the office becoming obsessed with them: at the first
 // numbers tried, watering was half of everything anyone did and nobody ever fetched a drink.
 /** Weight when a parched plant is close by */
-export const WATER_NEAR_PARCHED_WEIGHT = 32
+export const WATER_NEAR_PARCHED_WEIGHT = 70
 /** Weight when a merely fading plant is close by */
 export const WATER_NEAR_FADING_WEIGHT = 10
 /** Weight when something is parched, but nowhere near */

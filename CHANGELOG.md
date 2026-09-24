@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.25.1
+
+- Walking past a plant that has gone properly parched is much harder to ignore: `WATER_NEAR_PARCHED_WEIGHT` goes from 32 to 70, on a par with walking past a stray mug. Over 30 office days that is 53 watering rounds rather than around 25, and the plants average 65% freshly watered against 19% parched.
+
 ## v1.25.0
 
 - **Mugs actually get cleared away now.** Two things were in the way. Props aged by the wall clock rather than the office's own, so the audit - which fast-forwards - saw mugs eight seconds old after half an office day and reported two things tidied over thirty office days; they now age by `elapsedSec`, the way plants already did, and the same thirty days show thirty-five things cleared away against a hundred fetched. And "somebody is using this" meant *anyone* sitting within a tile of it, which protected a drink for ever, because a drink is put down on the desk of whoever fetched it and that person then sits there working. Only its own owner counts now, and only until `PROP_ABANDONED_SEC`.

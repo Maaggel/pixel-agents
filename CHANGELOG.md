@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.22.2
+
+- `reachability.mjs` also reports **seats an agent cannot get out of**. A chair tile is blocked for everyone but its own occupant, so a row of chairs walls a room into cells, and whoever spawns in one is stuck: they cannot reach a sink to fill a watering can, a coffee machine, or anything else. That is why a plant can be left parched with an agent standing right beside it - the only person who can reach it is the one who cannot fetch water.
+
 ## v1.22.1
 
 - `renderer/test/reachability.mjs`: which plants, utensils and machines nobody in the office can actually walk to. A plant that is never watered is usually not a watering bug but a plant in a nook - and a chair tile is blocked for everyone but its own occupant, so one chair across a gap seals the corner behind it. Run it after moving furniture about.

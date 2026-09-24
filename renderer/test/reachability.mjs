@@ -54,6 +54,20 @@ ws.onmessage = (e) => {
     : (e?.name && /COFFEE_MACHINE|SINK|WATER_COOLER|PRINTER|BIN|FRIDGE|BOOKSHELF/.test(e.name)) ? 'used by someone'
     : null
 
+  // Seats an agent cannot get out of. A chair tile is blocked for everyone but its own occupant,
+  // so a row of chairs walls a room into cells - and whoever spawns in one is stuck there, unable
+  // to reach a water source, the coffee machine or anything else. That is the usual reason a
+  // plant beside such a seat is never watered: the only person who can reach it cannot fetch a can.
+  const walledIn = []
+  for (const f of lay.furniture) {
+    const e = byId.get(f.type)
+    if (!e?.isSeat) continue
+    const col = Math.floor(f.col), row = Math.floor(f.row)
+    const out = [[col, row - 1], [col, row + 1], [col - 1, row], [col + 1, row]]
+      .some(([c, r]) => dbg.route(hub[0], hub[1], c, r).length > 0)
+    if (!out) walledIn.push(`  ${e.name.padEnd(28)} at ${col},${row}`)
+  }
+
   const stranded = { plant: [], utensil: [], 'used by someone': [] }
   for (const f of lay.furniture) {
     const e = byId.get(f.type)
@@ -64,11 +78,17 @@ ws.onmessage = (e) => {
     stranded[why].push(`  ${e.name.padEnd(28)} at ${col},${row}`)
   }
 
-  const total = Object.values(stranded).reduce((n, l) => n + l.length, 0)
+  const total = Object.values(stranded).reduce((n, l) => n + l.length, 0) + walledIn.length
   if (!total) { print('everything can be reached'); process.exit(0) }
 
+  if (walledIn.length) {
+    print('Seats an agent cannot get out of - whoever sits here is stuck in a cell:')
+    for (const line of walledIn) print(line)
+    print('')
+  }
+
   if (stranded.plant.length) {
-    print('Plants nobody can water - these will sit parched for ever:')
+    print('Plants nobody can reach from the office proper - they will sit parched:')
     for (const line of stranded.plant) print(line)
     print('')
   }
@@ -83,6 +103,8 @@ ws.onmessage = (e) => {
     print('')
   }
   print('Usually a chair is the cause: a chair tile is blocked for everyone but its own occupant,')
-  print('so one chair across a gap seals the corner behind it. Move the chair, or what is behind it.')
+  print('so a row of chairs walls a room into cells. Note that a plant listed above may still have')
+  print('someone standing next to it - the agent walled in beside it. They cannot water it, because')
+  print('the watering can is filled at a sink or cooler and they cannot get out to reach one.')
   process.exit(0)
 }

@@ -21,8 +21,16 @@ import { encodeConfig, frameFull, COMPRESSION_LZ4_BLOCK, COMPRESSION_DEFLATE_RAW
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '7601', 10)
 const RELAY_TOKEN = process.env.RELAY_TOKEN || ''
 const PROJECT_ROOT = resolve(import.meta.dirname, '..')
-const PKG = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf-8'))
-const VERSION = PKG.version || '?.?.?'
+const PKG_PATH = join(PROJECT_ROOT, 'package.json')
+const readVersion = () => {
+  try { return JSON.parse(readFileSync(PKG_PATH, 'utf-8')).version || '?.?.?' } catch { return '?.?.?' }
+}
+/**
+ * Re-read rather than captured at startup: a deploy that only changes the webview and the version
+ * should not have to restart this process, because restarting it drops every tablet's stream and
+ * they take over a minute to come back.
+ */
+let VERSION = readVersion()
 const WEBVIEW_DIST = join(PROJECT_ROOT, 'dist', 'webview')
 const ASSETS_DIR = join(PROJECT_ROOT, 'dist', 'assets')
 // Fallback to webview-ui/public/assets if dist/assets doesn't exist (dev mode)
@@ -337,6 +345,7 @@ function currentBuildId() {
   if (buildIdCache.key !== key) {
     let html = ''
     try { html = readFileSync(indexPath, 'utf-8') } catch { /* ignore */ }
+    VERSION = readVersion() // a new webview means a new package.json alongside it
     const id = createHash('sha256').update(html).update(SERVER_HASH).update(VERSION).digest('hex').slice(0, 12)
     buildIdCache = { key, id }
   }

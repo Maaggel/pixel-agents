@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.29.1
+
+- Proof of the above: a version-only deploy leaves the relay running and the tablet's stream untouched.
+
+## v1.29.0
+
+- **A deploy no longer blacks out the tablet.** Every deploy restarted the relay, which drops each tablet's HTTP stream, and their app takes over a minute to reconnect - measured at 73 seconds of a frozen picture. The relay is restarted only when its own code actually changed now, compared against a marker left on the host by the last deploy; a webview build and a version bump leave it running. The version itself is no longer captured at startup: the relay re-reads `package.json` whenever it recomputes the build id, which happens on every new webview anyway.
+
 ## v1.28.0
 
 - The version stamp burns bright for thirty seconds and then fades to half, so a deploy announces itself and then gets out of the way. The renderer restarts on every deploy, which is what resets it. Fading is a change nothing else would report - the corner it sits in can go a long time without the office repainting there - so the stamp pushes its own frame when its alpha moves, in twelve steps to keep that cheap.

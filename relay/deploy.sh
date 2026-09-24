@@ -40,6 +40,8 @@ if [ -z "$TOKEN" ] && [ -f "$HOME/.pixel-agents/daemon.json" ]; then
 fi
 
 BASE="ftp://$FTP_HOST"
+TMP_HASH="$(mktemp)"
+trap 'rm -f "$TMP_HASH"' EXIT
 C=(curl -sS --netrc-file "$NETRC" -m 120 --ftp-create-dirs)
 put() { # put <local> <remote-path>
   if [ "$DRY" = 1 ]; then echo "  PUT $2"; return; fi
@@ -100,13 +102,24 @@ put dist/webview/index.html dist/webview/index.html
 echo "==> index.html live"
 
 # 4. Relay code (inactive until the service restarts)
+# Only a change to the relay's own code needs a restart, and a restart drops every tablet's
+# stream for the minute or so their app takes to reconnect. A version bump alone does not: the
+# relay re-reads package.json whenever it recomputes the build id.
 RELAY_CHANGED=0
 if [ "$UI_ONLY" = 0 ]; then
   for f in relay/*.mjs; do put "$f" "$f"; done   # server.mjs and every module it imports
   put package.json package.json
   put relay/package.json relay/package.json
-  RELAY_CHANGED=1
-  echo "==> relay/server.mjs + package.json uploaded"
+  RELAY_HASH="$(cat relay/*.mjs relay/package.json | sha1sum | cut -d' ' -f1)"
+  PREV_HASH="$("${C[@]}" "$BASE/relay/.deployed-code" 2>/dev/null || true)"
+  if [ "$RELAY_HASH" != "$PREV_HASH" ]; then
+    RELAY_CHANGED=1
+    printf '%s' "$RELAY_HASH" > "$TMP_HASH"
+    put "$TMP_HASH" relay/.deployed-code
+    echo "==> relay code changed - it will be restarted"
+  else
+    echo "==> relay code unchanged - leaving it running (tablets keep their stream)"
+  fi
 fi
 
 # 5. Restart the relay through the SSH gate if its code changed

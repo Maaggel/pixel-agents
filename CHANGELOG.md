@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.6
+
+- The swung leaf falls away from its hinge instead of climbing, so the door reads as swinging out toward the viewer rather than up the wall - and it no longer runs into whatever is hanging above the doorway. One sign on the shear argument.
+
 ## v1.19.5
 
 - The north-south door's swung leaf reads as a door rather than a plank: shorter, deeper, a gentler angle, and sitting beside the doorway instead of climbing off over the wall above it. Its length, depth and angle are the arguments to `stampSwungLeaf`, so the swing can be tuned without redrawing anything.

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.2
+
+- A door in a north-south wall is seen edge on, so there is no door face to show from that direction. Closed, it is now simply a wooden beam filling the gap rather than a panelled door drawn as if we were looking at it square on. Swinging it open turns it toward the camera, and that is when its panels and handle appear.
+
 ## v1.19.1
 
 - The north-south door, standing open, was a thin bar across the top of an empty frame and read as a hole rather than a doorway. Its leaf now lies back against the top jamb as a proper panelled door, handle and all, with the way through left clear below it so whoever is walking through is not hidden behind it.

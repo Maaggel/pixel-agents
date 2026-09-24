@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.8
+
+- The door swings further: the leaf's angle goes from about 17 degrees to about 27, so an open side door reads as open rather than ajar.
+
 ## v1.19.7
 
 - The swung leaf is joined to the beam rather than outlined away from it - a black seam down the hinge edge made it read as a separate board standing beside the door - and it casts a shadow on the floor it has swung over, so it no longer floats.

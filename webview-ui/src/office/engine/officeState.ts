@@ -1182,6 +1182,7 @@ export class OfficeState {
     for (const [uid, seat] of this.seats) {
       if (uid === excludeSeatId) continue
       if (seat.assigned) continue
+      if (this.isPrivacySeat(uid)) continue // a toilet is not somewhere to be sent to sit
       if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
 
       if (zones) {
@@ -1811,6 +1812,7 @@ export class OfficeState {
     for (const [uid, seat] of this.seats) {
       if (uid === excludeSeatId) continue
       if (seat.assigned) continue
+      if (this.isPrivacySeat(uid)) continue // a toilet is not somewhere to be sent to sit
       if (this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
       const idx = seat.seatRow * this.layout.cols + seat.seatCol
       const zone = zones[idx]
@@ -2492,6 +2494,24 @@ export class OfficeState {
       // ── Dynamic items: put a carried item down once seated ───────
       if (ch.heldItem && ch.seatId && isSittingState(ch.state) && !ch.isRemote && ch.idleAction !== IdleActionType.TIDY_UP) {
         this.placeHeldItem(ch)
+      }
+
+      // Nobody holds a toilet as their seat except for the length of a visit. Seats are handed
+      // out in more than one place, and one of those getting it wrong means an agent sat on the
+      // loo all day with the newspaper animation, which is exactly what it looks like.
+      if (ch.seatId && ch.idleAction !== IdleActionType.USE_TOILET && !ch.preToiletSeatId
+        && this.isPrivacySeat(ch.seatId) && !ch.isRemote) {
+        const held = this.seats.get(ch.seatId)
+        if (held) held.assigned = false
+        ch.seatId = this.findFreeSeat(ch.tileCol, ch.tileRow)
+        const taken = ch.seatId ? this.seats.get(ch.seatId) : null
+        if (taken) this.assignSeat(taken)
+        ch.sitPose = null
+        if (isSittingState(ch.state)) {
+          ch.state = CharacterState.IDLE
+          ch.frame = 0
+          ch.idleAction = null
+        }
       }
 
       // ── Idle Action System ──────────────────────────────────────

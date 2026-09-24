@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.28.0
+
+- The version stamp burns bright for thirty seconds and then fades to half, so a deploy announces itself and then gets out of the way. The renderer restarts on every deploy, which is what resets it. Fading is a change nothing else would report - the corner it sits in can go a long time without the office repainting there - so the stamp pushes its own frame when its alpha moves, in twelve steps to keep that cheap.
+- **The toilet could still be handed out as a seat.** `findFreeSeat` skipped it, but the two pickers that move idle agents towards rest and kitchen seats walked `this.seats` directly and did not - so an idle agent could be sent to sit on the loo, where they read a newspaper all day. Both skip it now, and a net under all of them takes the toilet back off anyone holding it who is not actually on a visit.
+
 ## v1.27.0
 
 - **The build is stamped in the corner of the tablet's picture**, bottom left, where the app's own fps overlay (top left) will not cover it. It goes into the scene rather than onto the nametag overlay, because that overlay only exists when the scene is drawn at half size and doubled by the renderer - and it is not any more; the tablet does the doubling. Drawn with a 3x5 pixel font rather than a real one: at this size a font is anti-aliased into a smear, and the frame is quantised to RGB565 and doubled by the tablet on top of that.

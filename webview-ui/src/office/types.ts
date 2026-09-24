@@ -279,6 +279,12 @@ export interface FurnitureCatalogEntry {
   canPlaceOnWalls?: boolean
   /** A doorway: walked through rather than around, and it opens and closes (see DOOR_* constants) */
   isDoor?: boolean
+  /**
+   * Pixels to lift the sprite when drawing it, without moving the tile it belongs to. For hanging
+   * something a few pixels higher on a wall than its tile would put it - which the footprint
+   * cannot express, and changing the footprint would shift everything already placed.
+   */
+  yOffset?: number
   /** A seat you want the room to yourself for: while it is sat on, the room's doors shut and lock */
   privacySeat?: boolean
   /** Whether idle characters can walk up to and interact with this furniture */

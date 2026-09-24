@@ -4,10 +4,10 @@
 //   DOOR_SIGN_MEETING   amber, two heads round a table
 //   DOOR_SIGN_OCCUPIED  red, a bar
 //
-// Three 16x16 frames of one plate on a single tile, drawn in the top half of it so the plate sits
-// in the wall's lit face rather than hanging past its bottom edge. One tile is deliberate: the
-// entry is half-tile placeable, and on a two-tile footprint the only half step that stays on the
-// wall is upward, which is the wrong way for a sign that is already too high. The engine picks the frame from the nearest
+// Three 16x16 frames of one plate on a single tile, drawn in the top half of it. The catalog
+// entry carries `yOffset: 3` to hang it three pixels higher than its tile would - a footprint
+// cannot express that, and growing the footprint would shift every sign already placed. It is
+// half-tile placeable as well, for a bigger nudge. The engine picks the frame from the nearest
 // room that has something worth reporting - a toilet in it, or a meeting zone - so which frame
 // shows is state, not animation. Run by hand, output uploaded over FTP:
 //   cd renderer && OUT=<dir> node tools/make-door-signs.mjs

@@ -30,6 +30,7 @@ export interface LoadedAssetData {
     backgroundTiles?: number
     canPlaceOnWalls?: boolean
     isDoor?: boolean
+    yOffset?: number
     privacySeat?: boolean
     interactable?: boolean
     utensil?: boolean
@@ -239,6 +240,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
       ...(asset.isDoor ? { isDoor: true } : {}),
+      ...(asset.yOffset ? { yOffset: asset.yOffset } : {}),
       ...(asset.privacySeat ? { privacySeat: true } : {}),
       ...(asset.interactable ? { interactable: true } : {}),
       ...(asset.surface || asset.isDesk ? { isSurface: true } : {}),
@@ -471,7 +473,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'electronics', label: 'Tech' },
   { id: 'decor', label: 'Decor' },
   { id: 'lamps', label: 'Lamps' },
-  { id: 'wall', label: 'Wall' },
+  { id: 'wall', label: 'Wall Decor' },
   { id: 'windows', label: 'Windows' },
   { id: 'doors', label: 'Doors' },
   { id: 'misc', label: 'Misc' },

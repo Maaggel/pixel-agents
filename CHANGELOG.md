@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.22.0
+
+- **The Wall tab is Wall Decor, and holds only things you hang to look at.** The TV and the four wall panels moved to Tech, where a screen belongs; paintings, charts, mirrors, the chalkboard and the clocks stay. Twenty items in one tab was too many to find anything in.
+- The door sign hangs three pixels higher, by way of a new catalog field: **`yOffset` lifts what is drawn without moving the tile** an item sits on or how it sorts. A footprint cannot express three pixels, and growing the footprint to fake it shifted every sign already placed down by a tile - which is exactly what happened on the first attempt.
+
 ## v1.21.2
 
 - The door sign is back to a single tile, with a shorter plate drawn in the top half of it so it sits in the wall's lit face without hanging past the bottom edge. On the two-tile footprint it sat too high and the only half step that stayed on the wall was upward, which is the wrong way for a sign that is already too high; on one tile both the whole and the half position are valid, so it can be nudged either way.

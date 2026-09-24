@@ -214,12 +214,17 @@ ws.onmessage = async (e) => {
   if (sign && meetSeat && meetWall) {
     const meeter = frozen[1] ?? ch
     meeter.isRemote = false
-    meeter.tileCol = meetSeat.col; meeter.tileRow = meetSeat.row
-    meeter.path = []
-    meeter.idleAction = 'meeting'
-    office.tick(0.1); office.tick(0.1)
-    const f = dbg.furniture().find((x) => x.uid === 'meeting-sign')
-    const idx = f?.roomCycleSprites ? f.roomCycleSprites.indexOf(f.activeDataSprite) : -1
+    // held in the meeting each tick: left alone, the FSM ends an action it never started
+    let idx = -1
+    for (let i = 0; i < 8 && idx !== 1; i++) {
+      meeter.tileCol = meetSeat.col; meeter.tileRow = meetSeat.row
+      meeter.path = []
+      meeter.state = 'idle'
+      meeter.idleAction = 'meeting'
+      office.tick(0.1)
+      const f = dbg.furniture().find((x) => x.uid === 'meeting-sign')
+      idx = f?.roomCycleSprites ? f.roomCycleSprites.indexOf(f.activeDataSprite) : -1
+    }
     check(idx === 1, 'a sign by the meeting room says so while one is running',
       ['free', 'meeting', 'in use'][idx] ?? 'unset')
   }

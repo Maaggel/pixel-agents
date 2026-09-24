@@ -61,9 +61,10 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     const x = item.col * TILE_SIZE
-    const y = item.row * TILE_SIZE
+    // yOffset lifts what is drawn, not where the thing is, so depth still comes off the tile
+    const y = item.row * TILE_SIZE - (entry.yOffset ?? 0)
     const spriteH = entry.sprite.length
-    let zY = y + spriteH
+    let zY = item.row * TILE_SIZE + spriteH
 
     // Chair z-sorting: ensure characters sitting on chairs render correctly
     if (entry.isSeat) {

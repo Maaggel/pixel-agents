@@ -67,6 +67,7 @@ import {
   STEAM_SPEED_PX_SEC,
   STEAM_DRIFT_PX,
   STEAM_MAX_ALPHA,
+  STEAM_PUFF_AT,
   STEAM_COLOR,
 } from '../../constants.js'
 
@@ -223,6 +224,14 @@ function renderSteam(
     const wx = Math.round(x + width / 2 + (i - (STEAM_WISPS - 1) / 2) * 2 * zoom + drift * zoom)
     const wy = Math.round(y - phase * zoom)
     ctx.fillRect(wx, wy, px, px)
+    // a wisp leaves the cup as a single pixel and curls out into a puff as it climbs, or it is
+    // one dot at 16 pixels a tile and nobody ever sees the drink steam at all
+    if (rise > STEAM_PUFF_AT) {
+      ctx.fillRect(wx, wy - px, px, px)
+      ctx.globalAlpha = alpha * 0.7
+      ctx.fillRect(wx + (i % 2 === 0 ? px : -px), wy - px, px, px)
+      ctx.fillRect(wx + (i % 2 === 0 ? px : -px), wy - px * 2, px, px)
+    }
   }
   ctx.restore()
 }

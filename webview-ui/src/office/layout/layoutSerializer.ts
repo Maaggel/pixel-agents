@@ -78,6 +78,12 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       }
     }
 
+    // A door stands in the gap in a wall run, so it sorts exactly as those wall pieces do: by the
+    // bottom of its footprint, which is the tile people walk through
+    if (entry.isDoor) {
+      zY = (item.row + entry.footprintH) * TILE_SIZE
+    }
+
     // Surface items render in front of the desk they sit on
     if (entry.canPlaceOnSurfaces) {
       // Floor col/row for desk tile lookup (half-tile items straddle tiles)
@@ -115,6 +121,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[], layout?
       ...(entry.glassSections ? { glassSections: entry.glassSections } : {}),
       ...(entry.isLamp ? { isLamp: true } : {}),
       ...(entry.canPlaceOnWalls ? { onWall: true } : {}),
+      ...(entry.isDoor ? { isDoor: true } : {}),
       ...(entry.lightRadius !== undefined ? { lightRadius: entry.lightRadius } : {}),
       ...(entry.lightColor ? { lightColor: entry.lightColor } : {}),
       ...(entry.isCeiling ? { isCeiling: true } : {}),
@@ -196,9 +203,10 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
+    if (entry.isDoor) continue // a doorway is walked through, so it never blocks the way
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
-      if (dr < bgRows) continue // skip background rows — characters can walk through
+      if (dr < bgRows) continue // skip background rows - characters can walk through
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const key = `${item.col + dc},${item.row + dr}`
         if (excludeTiles && excludeTiles.has(key)) continue
@@ -209,7 +217,7 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
   return tiles
 }
 
-/** Get tiles blocked for placement purposes — skips top backgroundTiles rows per item */
+/** Get tiles blocked for placement purposes - skips top backgroundTiles rows per item */
 export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string): Set<string> {
   const tiles = new Set<string>()
   for (const item of furniture) {
@@ -413,7 +421,7 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
     return layout // Already migrated
   }
 
-  // Check if any tiles use old values (1-4) — these map directly to FLOOR_1-4
+  // Check if any tiles use old values (1-4) - these map directly to FLOOR_1-4
   // but need color assignments
   const tileColors: Array<FloorColor | null> = []
   for (const tile of layout.tiles) {
@@ -434,7 +442,7 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
         tileColors.push(DEFAULT_DOORWAY_COLOR)
         break
       default:
-        // New tile types (5-7) without colors — use neutral gray
+        // New tile types (5-7) without colors - use neutral gray
         tileColors.push(tile > 0 ? { h: 0, s: 0, b: 0, c: 0 } : null)
     }
   }

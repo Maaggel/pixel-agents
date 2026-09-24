@@ -149,6 +149,8 @@ export interface FurnitureInstance {
   isLamp?: boolean
   /** Placed on a wall (catalog `canPlaceOnWalls`), so it must draw in front of the wall it hangs on */
   onWall?: boolean
+  /** A door, which sits in the wall plane like a wall piece does */
+  isDoor?: boolean
   /** The frame a state-driven cycle is showing: a clock's dial, a panel's load level */
   activeDataSprite?: SpriteData | null
   /** 1 for a drink just poured, falling to 0 as it goes cold; drives the steam above it */
@@ -273,6 +275,10 @@ export interface FurnitureCatalogEntry {
   backgroundTiles?: number
   /** Whether this item can be placed on wall tiles */
   canPlaceOnWalls?: boolean
+  /** A doorway: walked through rather than around, and it opens and closes (see DOOR_* constants) */
+  isDoor?: boolean
+  /** A seat you want the room to yourself for: while it is sat on, the room's doors shut and lock */
+  privacySeat?: boolean
   /** Whether idle characters can walk up to and interact with this furniture */
   interactable?: boolean
   /** Dynamic item: can be picked up and carried by characters */

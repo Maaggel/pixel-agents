@@ -26,7 +26,7 @@ import { buildDynamicCatalog, getCatalogEntry } from '../office/layout/furniture
 import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
-import { TileType, TILE_SIZE } from '../office/types.js'
+import { TileType, TILE_SIZE, CharacterState } from '../office/types.js'
 import type { OfficeLayout, Character, SpriteData, FurnitureInstance } from '../office/types.js'
 import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS, BUBBLE_FADE_DURATION_SEC } from '../constants.js'
 
@@ -213,6 +213,12 @@ export interface HeadlessOffice {
     furniture: () => FurnitureInstance[]
     /** Drop a prop where a character could have left one, for tests */
     dropProp: (kind: string) => { col: number; row: number } | null
+    /** Every door and whether it stands open or locked, for tests */
+    doors: () => Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }>
+    /** The route a character would walk between two tiles, for tests */
+    route: (fromCol: number, fromRow: number, toCol: number, toRow: number) => Array<{ col: number; row: number }>
+    /** Sit a character on a seat, for tests */
+    sit: (id: number, seatId: string, col: number, row: number) => void
   }
   agentCount(): number
 }
@@ -787,6 +793,22 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
         if (!desk) return null
         const prop = os.addProp(kind, desk.col, desk.row, -1, null)
         return { col: prop.col, row: prop.row }
+      },
+      doors: () => os.getDoorStates(),
+      route: (fromCol: number, fromRow: number, toCol: number, toRow: number) => os.findRoute(fromCol, fromRow, toCol, toRow),
+      sit: (id: number, seatId: string, col: number, row: number) => {
+        const ch = os.characters.get(id)
+        if (!ch) return
+        ch.seatId = seatId
+        ch.tileCol = col
+        ch.tileRow = row
+        ch.x = col * 16 + 8
+        ch.y = row * 16 + 8
+        ch.path = []
+        ch.idleAction = null
+        ch.isActive = false
+        ch.state = CharacterState.SIT_IDLE
+        ch.seatTimer = 600 // or the FSM stands them straight back up
       },
     }),
     setFlags,

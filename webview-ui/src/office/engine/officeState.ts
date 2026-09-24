@@ -1,4 +1,4 @@
-import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, ZoneType as ZoneTypeValues } from '../types.js'
+import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, TileType, ZoneType as ZoneTypeValues } from '../types.js'
 import type { ZoneType } from '../types.js'
 import { resolveLook, setLookOverride } from '../lookFromName.js'
 import {
@@ -46,6 +46,12 @@ import {
   VACUUM_TRAIL_OPACITY,
   LAMP_ON_INTENSITY_THRESHOLD,
   LAMP_RANDOM_TOGGLE_MAX_DELAY_SEC,
+  DOOR_OPEN_AHEAD_TILES,
+  DOOR_CLOSE_BEHIND_CHANCE,
+  DOOR_PASSING_CLOSE_CHANCE_PER_SEC,
+  DOOR_MIN_OPEN_SEC,
+  DOOR_CLOSE_DELAY_SEC,
+  PRIVACY_ROOM_MAX_TILES,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
@@ -60,7 +66,7 @@ import {
   layoutToSeats,
   getBlockedTiles,
 } from '../layout/layoutSerializer.js'
-import { getCatalogEntry, getOnStateType, getCatalogTypesMatching } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getOnStateType, getOffStateType, getCatalogTypesMatching } from '../layout/furnitureCatalog.js'
 import { IdleActionType } from '../types.js'
 import { pickIdleAction, initIdleAction, updateIdleAction, disengageConversation, disengageMeeting, trySeatedConversation } from './idleActions.js'
 import type { IdleActionContext } from './idleActions.js'
@@ -136,6 +142,220 @@ export class OfficeState {
   /** Pending lamp toggle delays (uid → seconds remaining) */
   private lampPendingToggles: Map<string, number> = new Map()
 
+
+  // ── Doors ──────────────────────────────────────────────────
+  /** tile key -> the uid of the door standing there */
+  private doorByTile: Map<string, string> = new Map()
+  /** door uid -> the tile keys its footprint covers */
+  private doorTiles: Map<string, string[]> = new Map()
+  /** Doors currently standing open */
+  private openDoors: Set<string> = new Set()
+  /** Doors held shut because someone is on a privacy seat in the room behind them */
+  private lockedDoors: Set<string> = new Set()
+  /** Door uid -> office seconds when someone last stood in or stepped toward it */
+  private doorLastUsed: Map<string, number> = new Map()
+  /** Doors whose "did they close it behind them?" roll has already been made this opening */
+  private doorCloseRolled: Set<string> = new Set()
+  /** Tile keys this class has added to blockedTiles for locked doors, so it can take them back out */
+  private lockedDoorBlockKeys: Set<string> = new Set()
+
+  /** Index the doors in the layout. Their state survives a rebuild; doors that are gone do not. */
+  private rebuildDoorIndex(): void {
+    this.doorByTile.clear()
+    this.doorTiles.clear()
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type)
+      if (!entry?.isDoor || !item.uid) continue
+      // Only the bottom row counts: the rows above it hang in the wall, where nobody walks
+      const keys: string[] = []
+      const walkRow = Math.floor(item.row) + entry.footprintH - 1
+      for (let dc = 0; dc < entry.footprintW; dc++) keys.push(`${Math.floor(item.col) + dc},${walkRow}`)
+      this.doorTiles.set(item.uid, keys)
+      for (const k of keys) this.doorByTile.set(k, item.uid)
+      // A door placed in its open state in the editor starts open
+      if (getOffStateType(item.type) !== item.type) this.openDoors.add(item.uid)
+    }
+    for (const set of [this.openDoors, this.lockedDoors, this.doorCloseRolled]) {
+      for (const uid of [...set]) if (!this.doorTiles.has(uid)) set.delete(uid)
+    }
+    this.applyLockedDoorBlocks()
+  }
+
+  /** Locked doors block the way like any other furniture; unlocked ones never do. */
+  private applyLockedDoorBlocks(): void {
+    for (const key of this.lockedDoorBlockKeys) this.blockedTiles.delete(key)
+    this.lockedDoorBlockKeys.clear()
+    for (const uid of this.lockedDoors) {
+      for (const key of this.doorTiles.get(uid) ?? []) {
+        this.blockedTiles.add(key)
+        this.lockedDoorBlockKeys.add(key)
+      }
+    }
+  }
+
+  /** The placed item as it should render: the open variant when the door is standing open. */
+  private doorItemType(item: PlacedFurniture): PlacedFurniture {
+    if (!item.uid) return item
+    const entry = getCatalogEntry(item.type)
+    if (!entry?.isDoor) return item
+    const wanted = this.openDoors.has(item.uid) ? getOnStateType(item.type) : getOffStateType(item.type)
+    return wanted === item.type ? item : { ...item, type: wanted }
+  }
+
+  /** Every door and what it is doing, for tests and the debug overlay */
+  getDoorStates(): Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }> {
+    const out: Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }> = []
+    for (const [uid, keys] of this.doorTiles) {
+      const [col, row] = keys[0].split(',').map(Number)
+      out.push({ uid, col, row, open: this.openDoors.has(uid), locked: this.lockedDoors.has(uid) })
+    }
+    return out
+  }
+
+  /** Route between two tiles as a character would walk it, for tests. Empty when there is no way. */
+  findRoute(fromCol: number, fromRow: number, toCol: number, toRow: number): Array<{ col: number; row: number }> {
+    return findPath(fromCol, fromRow, toCol, toRow, this.tileMap, this.blockedTiles)
+  }
+
+  isDoorOpen(uid: string): boolean { return this.openDoors.has(uid) }
+  isDoorLocked(uid: string): boolean { return this.lockedDoors.has(uid) }
+
+  private openDoor(uid: string): void {
+    if (this.openDoors.has(uid)) return
+    this.openDoors.add(uid)
+    this.doorCloseRolled.delete(uid)
+    this.doorLastUsed.set(uid, this.elapsedSec)
+    this.rebuildFurnitureInstances()
+  }
+
+  private closeDoor(uid: string): void {
+    if (!this.openDoors.has(uid)) return
+    this.openDoors.delete(uid)
+    this.rebuildFurnitureInstances()
+  }
+
+  /** Is anyone standing on a tile orthogonally next to this door? */
+  private someoneBesideDoor(uid: string): boolean {
+    const keys = this.doorTiles.get(uid)
+    if (!keys) return false
+    for (const ch of this.characters.values()) {
+      if (ch.isRemote || ch.matrixEffect) continue
+      for (const key of keys) {
+        const [dc, dr] = key.split(',').map(Number)
+        if (Math.abs(ch.tileCol - dc) + Math.abs(ch.tileRow - dr) === 1) return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * Doors open for whoever reaches them and close again behind them - usually. Somebody who
+   * leaves one open is not chased down by a timer: the next person to walk past it shuts it,
+   * the same way a stray mug gets cleared away by whoever happens to see it.
+   */
+  private updateDoors(dt: number): void {
+    if (this.doorByTile.size === 0) return
+    const now = this.elapsedSec
+
+    // Which doors does somebody need open right now: standing on one, or a step away from one
+    const inUse = new Set<string>()
+    for (const ch of this.characters.values()) {
+      if (ch.isRemote || ch.matrixEffect) continue
+      const here = this.doorByTile.get(`${ch.tileCol},${ch.tileRow}`)
+      if (here) inUse.add(here)
+      for (let i = 0; i < DOOR_OPEN_AHEAD_TILES && i < ch.path.length; i++) {
+        const step = this.doorByTile.get(`${ch.path[i].col},${ch.path[i].row}`)
+        if (step) inUse.add(step)
+      }
+    }
+
+    for (const uid of inUse) {
+      this.doorLastUsed.set(uid, now)
+      if (!this.lockedDoors.has(uid)) this.openDoor(uid)
+    }
+
+    for (const uid of [...this.openDoors]) {
+      if (inUse.has(uid)) continue
+      if (now - (this.doorLastUsed.get(uid) ?? 0) < Math.max(DOOR_MIN_OPEN_SEC, DOOR_CLOSE_DELAY_SEC)) continue
+
+      // The one roll per opening: did whoever went through close it behind them?
+      if (!this.doorCloseRolled.has(uid)) {
+        this.doorCloseRolled.add(uid)
+        if (Math.random() < DOOR_CLOSE_BEHIND_CHANCE) { this.closeDoor(uid); continue }
+      }
+      // They did not. Someone passing it may notice and shut it.
+      if (this.someoneBesideDoor(uid) && Math.random() < DOOR_PASSING_CLOSE_CHANCE_PER_SEC * dt) this.closeDoor(uid)
+    }
+  }
+
+  /** The catalog entry of the furniture a seat belongs to (seat keys are `uid` or `uid:2`). */
+  private seatFurnitureEntry(seatId: string): ReturnType<typeof getCatalogEntry> {
+    const furnitureUid = seatId.split(':')[0]
+    const item = this.layout.furniture.find((f) => f.uid === furnitureUid)
+    return item ? getCatalogEntry(item.type) : undefined
+  }
+
+  /**
+   * Flood the room a tile stands in, stopping at walls, at the map's edge and at doors, and
+   * report the tiles it covers and the doors around its edge. A space with no door around it,
+   * or one too big to be a room at all, reports nothing to lock.
+   */
+  private roomAround(col: number, row: number): { tiles: Set<string>; doors: Set<string> } {
+    const tiles = new Set<string>()
+    const doors = new Set<string>()
+    const queue: Array<[number, number]> = [[col, row]]
+    const empty = { tiles: new Set<string>(), doors: new Set<string>() }
+    while (queue.length) {
+      const [c, r] = queue.shift()!
+      const key = `${c},${r}`
+      if (tiles.has(key)) continue
+      if (r < 0 || c < 0 || r >= this.layout.rows || c >= this.layout.cols) continue
+      const tile = this.tileMap[r]?.[c]
+      if (tile === undefined || tile === TileType.WALL || tile === TileType.VOID) continue
+      const door = this.doorByTile.get(key)
+      if (door) { doors.add(door); continue } // a door is the edge of the room, not part of it
+      tiles.add(key)
+      if (tiles.size > PRIVACY_ROOM_MAX_TILES) return empty // too big to be a private room
+      queue.push([c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1])
+    }
+    return doors.size ? { tiles, doors } : empty
+  }
+
+  /**
+   * A toilet is a seat you want the room to yourself for. While one is sat on, the doors of the
+   * room it stands in are shut and locked, so nobody else paths through. The lock waits for
+   * anyone else still inside to leave rather than shutting them in.
+   */
+  private updatePrivacyLocks(): void {
+    if (this.doorByTile.size === 0) return
+    const occupiedRooms: Array<{ tiles: Set<string>; doors: Set<string>; byId: number }> = []
+    for (const ch of this.characters.values()) {
+      if (ch.isRemote || !ch.seatId || !isSittingState(ch.state)) continue
+      if (!this.seatFurnitureEntry(ch.seatId)?.privacySeat) continue
+      const seat = this.seats.get(ch.seatId)
+      if (!seat) continue
+      const room = this.roomAround(seat.seatCol, seat.seatRow)
+      if (room.doors.size) occupiedRooms.push({ ...room, byId: ch.id })
+    }
+
+    const locked = new Set<string>()
+    for (const room of occupiedRooms) {
+      // Shut the doors either way; only lock them when the occupant has the room to themselves
+      for (const uid of room.doors) this.closeDoor(uid)
+      let someoneElseInside = false
+      for (const ch of this.characters.values()) {
+        if (ch.id === room.byId || ch.isRemote || ch.matrixEffect) continue
+        if (room.tiles.has(`${ch.tileCol},${ch.tileRow}`)) { someoneElseInside = true; break }
+      }
+      if (someoneElseInside) continue
+      for (const uid of room.doors) locked.add(uid)
+    }
+
+    const changed = locked.size !== this.lockedDoors.size || [...locked].some((u) => !this.lockedDoors.has(u))
+    this.lockedDoors = locked
+    if (changed) this.applyLockedDoorBlocks()
+  }
+
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
@@ -145,6 +365,7 @@ export class OfficeState {
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
+    this.rebuildDoorIndex()
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -160,6 +381,7 @@ export class OfficeState {
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.rebuildZoneTiles()
     this.rebuildVacuumInstances()
+    this.rebuildDoorIndex()
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -1813,7 +2035,8 @@ export class OfficeState {
       ? this.layout.furniture
       : this.layout.furniture.filter((f) => !f.uid || !this.clearedLayoutUids.has(f.uid))
     if (autoOnTiles.size === 0 && !anyLampOn) {
-      this.furniture = layoutToFurnitureInstances(propItems.length ? [...placed, ...propItems] : placed, this.layout)
+      const withDoors = this.doorByTile.size === 0 ? placed : placed.map((item) => this.doorItemType(item))
+      this.furniture = layoutToFurnitureInstances(propItems.length ? [...withDoors, ...propItems] : withDoors, this.layout)
       return
     }
 
@@ -1821,6 +2044,9 @@ export class OfficeState {
     const modifiedFurniture: PlacedFurniture[] = placed.map((item) => {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
+
+      // Doors are opened by people, not by an agent working nearby
+      if (entry.isDoor) return this.doorItemType(item)
 
       // Lamps: use per-lamp individual ON state (supports staggered toggling)
       const onType = getOnStateType(item.type)
@@ -2244,6 +2470,9 @@ export class OfficeState {
     this.updateIdleCycleSprites(dt)
 
     // Remove temporary vacuum blocks before vacuum update
+    this.updatePrivacyLocks()
+    this.updateDoors(dt)
+
     for (const key of vacuumBlockKeys) {
       this.blockedTiles.delete(key)
     }

@@ -382,16 +382,18 @@ export const PLANT_DRY_VARIATION = 0.45
 /** How long a fresh drink steams for, in office seconds */
 export const STEAM_DURATION_SEC = 100
 /** Wisps drawn above a steaming cup */
-export const STEAM_WISPS = 3
+export const STEAM_WISPS = 4
 /** How far a wisp climbs before it fades out, in sprite pixels */
-export const STEAM_RISE_PX = 7
+export const STEAM_RISE_PX = 10
 /** Sprite pixels a wisp climbs per second */
 export const STEAM_SPEED_PX_SEC = 3.2
 /** How far a wisp wanders sideways as it climbs, in sprite pixels */
 export const STEAM_DRIFT_PX = 1.6
 /** The thickest a wisp gets, before its own fade and the drink going cold */
-export const STEAM_MAX_ALPHA = 0.45
+export const STEAM_MAX_ALPHA = 0.8
 export const STEAM_COLOR = '#ffffff'
+/** How far up its climb a wisp stops being a single pixel and curls out into a puff */
+export const STEAM_PUFF_AT = 0.28
 
 /** A plant starts looking faded at this fraction of the way to wanting water */
 export const PLANT_FADE_AT_DRYNESS = 0.6
@@ -460,6 +462,32 @@ export const SEATED_CONVERSATION_MAX_DISTANCE = 4
 export const IDLE_CHAT_BUBBLE_VARIANT_COUNT = 16
 /** Chance per second that a SIT_IDLE character will try to start a seated conversation */
 export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
+
+// ── Doors ──────────────────────────────────────────────────
+/**
+ * A door is walked through, never walked around: it is not in the blocked set, so pathfinding
+ * behaves as if the doorway were open floor. What a door does is open when someone reaches it
+ * and close again afterwards - and, when it is the door to a room with a toilet in it, lock.
+ */
+/** How far ahead on the path a door opens - 1 tile, so it is open by the time they step in. */
+export const DOOR_OPEN_AHEAD_TILES = 1
+/** Chance that someone closes the door behind them. People mostly do. */
+export const DOOR_CLOSE_BEHIND_CHANCE = 0.65
+/**
+ * Chance per second that someone standing next to a door another person left open closes it.
+ * This is how an open door eventually shuts without a timer doing it invisibly: the same
+ * walking-past-it-and-noticing that gets a mug cleared away or a plant watered.
+ */
+export const DOOR_PASSING_CLOSE_CHANCE_PER_SEC = 0.22
+/** A door stays open at least this long, so it cannot shut in the face of whoever opened it. */
+export const DOOR_MIN_OPEN_SEC = 1.6
+/** Seconds a door holds open behind the last person through before it may be closed. */
+export const DOOR_CLOSE_DELAY_SEC = 0.8
+/**
+ * A room bigger than this is not a room worth locking. It stops a toilet placed out in the open
+ * plan from flood-filling the whole office and locking every door in the building.
+ */
+export const PRIVACY_ROOM_MAX_TILES = 140
 
 // ── Meetings ───────────────────────────────────────────────
 export const MEETING_MIN_DURATION_SEC = 45.0

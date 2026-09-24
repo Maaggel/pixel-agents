@@ -29,6 +29,8 @@ export interface LoadedAssetData {
     canPlaceOnSurfaces?: boolean
     backgroundTiles?: number
     canPlaceOnWalls?: boolean
+    isDoor?: boolean
+    privacySeat?: boolean
     interactable?: boolean
     utensil?: boolean
     utensilOrigin?: string
@@ -82,7 +84,7 @@ export interface LoadedAssetData {
   sprites: Record<string, SpriteData>
 }
 
-export type FurnitureCategory = 'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'lamps' | 'wall' | 'windows' | 'misc'
+export type FurnitureCategory = 'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'lamps' | 'wall' | 'windows' | 'doors' | 'misc'
 
 export interface CatalogEntryWithCategory extends FurnitureCatalogEntry {
   category: FurnitureCategory
@@ -226,6 +228,8 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       ...(asset.canPlaceOnSurfaces ? { canPlaceOnSurfaces: true } : {}),
       ...(asset.backgroundTiles ? { backgroundTiles: asset.backgroundTiles } : {}),
       ...(asset.canPlaceOnWalls ? { canPlaceOnWalls: true } : {}),
+      ...(asset.isDoor ? { isDoor: true } : {}),
+      ...(asset.privacySeat ? { privacySeat: true } : {}),
       ...(asset.interactable ? { interactable: true } : {}),
       ...(asset.surface || asset.isDesk ? { isSurface: true } : {}),
       ...(asset.useSide ? { useSide: asset.useSide as 'front' | 'back' | 'left' | 'right' } : {}),
@@ -367,7 +371,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
     if (asset.state === 'on') onStateIds.add(asset.id)
   }
 
-  // Store full internal catalog (all variants — for getCatalogEntry lookups)
+  // Store full internal catalog (all variants - for getCatalogEntry lookups)
   internalCatalog = allEntries
 
   // Visible catalog: exclude non-front variants and "on" state variants
@@ -458,6 +462,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'lamps', label: 'Lamps' },
   { id: 'wall', label: 'Wall' },
   { id: 'windows', label: 'Windows' },
+  { id: 'doors', label: 'Doors' },
   { id: 'misc', label: 'Misc' },
 ]
 

@@ -100,12 +100,15 @@ export function toggleFurnitureState(layout: OfficeLayout, uid: string): OfficeL
  *  For dual items (canPlaceOnWalls + canPlaceOnSurfaces), only offset when hovering a wall tile. */
 export function getWallPlacementRow(type: string, row: number, col?: number, layout?: OfficeLayout): number {
   const entry = getCatalogEntry(type)
+  // A door hangs in the wall above the gap you walk through, so the tile you point at is the
+  // one its bottom row lands on, exactly as for something hung on a wall
+  if (entry?.isDoor) return row - (entry.footprintH - 1)
   if (!entry?.canPlaceOnWalls) return row
   // Dual items: only use wall offset if the hovered tile is actually a wall
   if (entry.canPlaceOnSurfaces && layout != null && col != null) {
     if (row >= 0 && row < layout.rows && col >= 0 && col < layout.cols) {
       const tileVal = layout.tiles[row * layout.cols + col]
-      if (tileVal !== TileType.WALL) return row // Floor placement — no offset
+      if (tileVal !== TileType.WALL) return row // Floor placement - no offset
     }
   }
   return row - (entry.footprintH - 1)
@@ -126,7 +129,7 @@ export function canPlaceFurniture(
   const tileCol = Math.floor(col)
   const tileRow = Math.floor(row)
 
-  // Check bounds — wall items may extend above the map (top rows hang above the wall)
+  // Check bounds - wall items may extend above the map (top rows hang above the wall)
   if (entry.canPlaceOnWalls) {
     const bottomRow = tileRow + entry.footprintH - 1
     if (tileCol < 0 || tileCol + entry.footprintW > layout.cols || bottomRow < 0 || bottomRow >= layout.rows) {
@@ -220,7 +223,7 @@ export function canPlaceFurniture(
     }
   }
 
-  // Check overlap — also skip the NEW item's own background rows
+  // Check overlap - also skip the NEW item's own background rows
   const newBgRows = entry.backgroundTiles || 0
   for (let dr = 0; dr < entry.footprintH; dr++) {
     if (dr < newBgRows) continue // new item's background rows can overlap existing items

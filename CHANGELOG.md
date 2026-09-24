@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.7
+
+- The swung leaf is joined to the beam rather than outlined away from it - a black seam down the hinge edge made it read as a separate board standing beside the door - and it casts a shadow on the floor it has swung over, so it no longer floats.
+
 ## v1.19.6
 
 - The swung leaf falls away from its hinge instead of climbing, so the door reads as swinging out toward the viewer rather than up the wall - and it no longer runs into whatever is hanging above the doorway. One sign on the shear argument.

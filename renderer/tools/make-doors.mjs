@@ -205,7 +205,9 @@ function stampSwungLeaf(g, ax, ay, len, depthNear, depthFar, shear) {
     const top = ay - lift
     for (let j = 0; j < depth; j++) {
       const x = ax + i, y = top + j
-      const first = i === 0, last = i === len - 1
+      // no outline down the hinge edge: it butts onto the beam, and a black seam there makes the
+      // leaf read as a separate board standing beside the door rather than hanging off it
+      const first = false, last = i === len - 1
       const edgeTop = j === 0, edgeBottom = j === depth - 1
       if (first || last || edgeTop || edgeBottom) { put(x, y, 'K'); continue }
       if (j === 1) { put(x, y, 'w'); continue }          // the lit top face of the leaf
@@ -216,6 +218,13 @@ function stampSwungLeaf(g, ax, ay, len, depthNear, depthFar, shear) {
       put(x, y, groove ? 'D' : inPanel ? 'd' : 'W')
     }
   }
+  // a shadow under the leaf, so it sits on the floor it has swung over instead of floating
+  for (let i = 1; i < len; i++) {
+    const lift = Math.round(i * shear)
+    const depth = Math.round(depthNear + (depthFar - depthNear) * (i / (len - 1)))
+    put(ax + i, ay - lift + depth, 'h')
+  }
+
   // the handle sits on the swinging edge, furthest from the hinge
   const hi = len - 4, lift = Math.round(hi * shear)
   const depth = Math.round(depthNear + (depthFar - depthNear) * (hi / (len - 1)))
@@ -232,7 +241,7 @@ const SIDE_CLOSED = rows(sideClosedGrid)
 
 const sideOpenGrid = grid(32, 48)
 stampBeam(sideOpenGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
-stampSwungLeaf(sideOpenGrid, BEAM_X + 6, BEAM_TOP + 4, 14, 12, 12, -0.3)
+stampSwungLeaf(sideOpenGrid, BEAM_X + 5, BEAM_TOP + 4, 15, 12, 12, -0.3)
 const SIDE_OPEN = rows(sideOpenGrid)
 
 console.log('doors ->')

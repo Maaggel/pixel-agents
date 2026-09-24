@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.26.3
+
+- The phone sits a pixel further left, centred in the lap.
+
 ## v1.26.2
 
 - The phone is a pixel wider, with two screen pixels instead of one, and the screen is never quite still - two frames alternating on the seated animation's own clock, about every 0.8 s. Riding that clock rather than a new one means the damage tracker already knows the character changed, so an animated screen costs the tablet nothing.

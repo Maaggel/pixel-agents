@@ -470,10 +470,10 @@ export const HELD_ITEM_OFFSETS: Record<number, { dx: number; dy: number; behind:
  * the way.
  */
 export const PHONE_OFFSETS: Record<number, { dx: number; dy: number } | null> = {
-  0: { dx: -1, dy: -9 },   // DOWN
+  0: { dx: -2, dy: -9 },   // DOWN
   1: null,                 // UP
-  2: { dx: 1, dy: -9 },    // RIGHT
-  3: { dx: -3, dy: -9 },   // LEFT
+  2: { dx: 0, dy: -9 },    // RIGHT
+  3: { dx: -4, dy: -9 },   // LEFT
 }
 /** Max Manhattan distance (in tiles) for two seated agents to have a seated conversation */
 export const SEATED_CONVERSATION_MAX_DISTANCE = 4

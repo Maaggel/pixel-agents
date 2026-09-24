@@ -66,6 +66,7 @@ export const IdleActionType = {
   FETCH_ITEM: 'fetch_item',
   TIDY_UP: 'tidy_up',
   WATER_PLANTS: 'water_plants',
+  USE_TOILET: 'use_toilet',
 } as const
 export type IdleActionType = (typeof IdleActionType)[keyof typeof IdleActionType]
 
@@ -471,6 +472,8 @@ export interface Character {
   chatBubbleVariant: number
   /** Direction before conversation started (to restore after) */
   preConversationDir: Direction | null
+  /** The seat to go back to afterwards, while borrowing a toilet as a seat */
+  preToiletSeatId?: string | null
   /** Unique ID grouping characters in the same meeting (so multiple meetings can coexist) */
   meetingGroupId: number | null
   /** Catalog type of the utensil currently carried - drawn at the hand, placed on the desk when seated */

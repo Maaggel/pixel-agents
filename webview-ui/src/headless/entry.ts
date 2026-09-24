@@ -217,6 +217,8 @@ export interface HeadlessOffice {
     doors: () => Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }>
     /** The route a character would walk between two tiles, for tests */
     route: (fromCol: number, fromRow: number, toCol: number, toRow: number) => Array<{ col: number; row: number }>
+    /** Start an idle action on a character, for tests */
+    startIdle: (id: number, action: string) => boolean
     /** Sit a character on a seat, for tests */
     sit: (id: number, seatId: string, col: number, row: number) => void
   }
@@ -796,6 +798,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       },
       doors: () => os.getDoorStates(),
       route: (fromCol: number, fromRow: number, toCol: number, toRow: number) => os.findRoute(fromCol, fromRow, toCol, toRow),
+      startIdle: (id: number, action: string) => os.startIdleAction(id, action as never),
       sit: (id: number, seatId: string, col: number, row: number) => {
         const ch = os.characters.get(id)
         if (!ch) return

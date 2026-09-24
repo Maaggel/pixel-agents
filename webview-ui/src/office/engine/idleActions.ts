@@ -36,6 +36,11 @@ import {
   OFFICE_DRINK_HOURS,
   NEAREST_PATH_CANDIDATES,
   PLANT_FADE_AT_DRYNESS,
+  TOILET_SIT_MIN_SEC,
+  TOILET_SIT_MAX_SEC,
+  WASH_HANDS_SEC,
+  USE_TOILET_WEIGHT,
+  TOILET_HOURS,
   PLANT_NOTICE_DISTANCE_TILES,
   WATER_NEAR_PARCHED_WEIGHT,
   WATER_NEAR_FADING_WEIGHT,
@@ -63,6 +68,8 @@ interface IdleActionEntry {
   needsZone?: string
   /** Action is part of the "dynamic items" feature (toggleable in View options) */
   needsDynamicItems?: boolean
+  /** Action requires a toilet nobody is using */
+  needsToilet?: boolean
 }
 
 const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
@@ -75,6 +82,7 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
   // weight comes from wateringUrge(): what is dry, and whether they are walking past it
   { type: IdleActionType.WATER_PLANTS, weight: 0, needsDynamicItems: true },
+  { type: IdleActionType.USE_TOILET, weight: USE_TOILET_WEIGHT, needsToilet: true },
 ]
 
 /**
@@ -601,6 +609,11 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
     if (entry.needsPartner && idlePartnerCount === 0) continue
     if (entry.needsFurniture && !hasInterestingFurniture) continue
     if (entry.needsZone && !isCharacterInZone(ch, entry.needsZone, ctx)) continue
+    if (entry.needsToilet) {
+      if (findFreeToilets(ch, ctx).length === 0) continue
+      eligible.push({ type: entry.type, weight: entry.weight * hourMultiplier(TOILET_HOURS) })
+      continue
+    }
     if (entry.needsDynamicItems) {
       if (!ctx.dynamicItems || ch.heldItem !== null) continue
       if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'break').length === 0)) continue
@@ -737,6 +750,9 @@ export function initIdleAction(
       logIdle(ch, `starting a conversation with ${partner.nametag || `Agent ${partner.id}`}`)
       return true
     }
+
+    case IdleActionType.USE_TOILET:
+      return startUseToilet(ch, ctx)
 
     case IdleActionType.VISIT_FURNITURE: {
       // Pick a random interesting furniture piece - try several until one works
@@ -919,6 +935,8 @@ export function updateIdleAction(
       return updateFetchItem(ch, dt, ctx)
     case IdleActionType.TIDY_UP:
       return updateTidyUp(ch, dt, ctx)
+    case IdleActionType.USE_TOILET:
+      return updateUseToilet(ch, dt, ctx)
     case IdleActionType.WATER_PLANTS:
       return updateWaterPlants(ch, dt, ctx)
     default:
@@ -1374,6 +1392,131 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
 }
 
 /** Clear idle action state and prepare character to return to seat */
+/** Toilets nobody is using and nobody else is on their way to. */
+function findFreeToilets(ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
+  const taken = new Set<string>()
+  for (const other of ctx.characters.values()) {
+    if (other.id !== ch.id && other.itemTargetUid) taken.add(other.itemTargetUid)
+  }
+  const free: PlacedFurniture[] = []
+  for (const f of ctx.furniture) {
+    if (!f.uid || taken.has(f.uid)) continue
+    if (!getCatalogEntry(f.type)?.privacySeat) continue
+    const seat = ctx.seats.get(f.uid)
+    if (!seat) continue
+    let occupied = false
+    for (const other of ctx.characters.values()) {
+      if (other.tileCol === seat.seatCol && other.tileRow === seat.seatRow) { occupied = true; break }
+    }
+    if (!occupied) free.push(f)
+  }
+  return nearestFirst(free, ch, ctx)
+}
+
+/**
+ * Go to the toilet, and wash your hands afterwards.
+ *
+ * A toilet is borrowed as a seat for the duration - which is what unblocks the tile for whoever is
+ * walking to it, and what tells the room to shut and lock its doors - and given back on the way to
+ * the sink, so they head home to their own desk when they are done.
+ */
+function startUseToilet(ch: Character, ctx: IdleActionContext): boolean {
+  for (const toilet of findFreeToilets(ch, ctx)) {
+    const seat = ctx.seats.get(toilet.uid!)
+    if (!seat) continue
+    const previousSeat = ch.seatId
+    ch.seatId = toilet.uid!
+    const path = ctx.findPathUnblocked(ch, seat.seatCol, seat.seatRow)
+    const alreadyThere = ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow
+    if (path.length === 0 && !alreadyThere) { ch.seatId = previousSeat; continue }
+
+    ch.preToiletSeatId = previousSeat
+    ch.itemTargetUid = toilet.uid!
+    ch.idleActionTimer = randomRange(TOILET_SIT_MIN_SEC, TOILET_SIT_MAX_SEC)
+    ch.conversationPhase = 'approaching'
+    if (path.length > 0) {
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+    }
+    logIdle(ch, 'off to the toilet')
+    return true
+  }
+  return false
+}
+
+/** Give the toilet back and head for the nearest sink, or straight home if there is not one. */
+function leaveToiletForSink(ch: Character, ctx: IdleActionContext): void {
+  ch.seatId = ch.preToiletSeatId ?? null
+  ch.preToiletSeatId = null
+  ch.itemTargetUid = null
+  ch.state = CharacterState.IDLE
+  ch.frame = 0
+  ch.frameTimer = 0
+
+  for (const sink of nearestFirst(findFurnitureByAssetName(ctx, 'SINK'), ch, ctx)) {
+    const fp = ctx.getFurnitureFootprint(sink.type)
+    const adj = findAdjacentWalkableTile(sink, fp?.w ?? 1, fp?.h ?? 1, ctx.tileMap, ctx.blockedTiles, useSideFor(sink.type))
+    if (!adj) continue
+    const path = ctx.findPathUnblocked(ch, adj.col, adj.row)
+    if (path.length === 0 && (ch.tileCol !== adj.col || ch.tileRow !== adj.row)) continue
+    ch.path = path
+    ch.moveProgress = 0
+    if (path.length > 0) { ch.state = CharacterState.WALK; ch.frame = 0; ch.frameTimer = 0 }
+    ch.conversationPhase = 'leaving'
+    ch.idleActionTimer = -1 // the wash has not started; it begins on arrival
+    return
+  }
+  // no sink to be found: that is the end of it
+  clearIdleAction(ch)
+}
+
+function updateUseToilet(ch: Character, dt: number, ctx: IdleActionContext): boolean {
+  if (ch.conversationPhase === 'approaching') {
+    if (ch.state !== CharacterState.WALK && ch.path.length === 0) {
+      const seat = ch.seatId ? ctx.seats.get(ch.seatId) : null
+      ch.dir = seat ? seat.facingDir : ch.dir
+      ch.state = CharacterState.SIT_IDLE
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.conversationPhase = 'talking'
+    }
+    return true
+  }
+
+  if (ch.conversationPhase === 'talking') {
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer <= 0) leaveToiletForSink(ch, ctx)
+    return ch.idleAction === IdleActionType.USE_TOILET
+  }
+
+  if (ch.conversationPhase === 'leaving') {
+    if (ch.state === CharacterState.WALK || ch.path.length > 0) return true
+    if (ch.idleActionTimer < 0) {
+      ch.idleActionTimer = WASH_HANDS_SEC
+      ch.state = CharacterState.IDLE
+      ch.frame = 0
+      ch.bubbleType = 'idle_tidy'
+      ch.bubbleTimer = WASH_HANDS_SEC + 1
+      return true
+    }
+    ch.idleActionTimer -= dt
+    if (ch.idleActionTimer <= 0) {
+      ch.bubbleType = null
+      ch.bubbleTimer = 0
+      logIdle(ch, 'washed their hands')
+      clearIdleAction(ch)
+      return false
+    }
+    return true
+  }
+
+  clearIdleAction(ch)
+  return false
+}
+
 function clearIdleAction(ch: Character): void {
   // Restore pre-conversation direction (e.g. facing their desk) if they were seated
   if (ch.preConversationDir !== null) {

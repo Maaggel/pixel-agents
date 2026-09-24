@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.23.0
+
+- **The toilet is an actual toilet.** It is a chair, so an agent could be assigned one as their working seat and sit on it for the rest of the day, coming back to it after every break. A seat marked `privacySeat` is now left out of seat assignment entirely, and visited by a new idle action instead: walk over, sit a short while, **wash your hands at the nearest sink**, then back to your own desk. The room still shuts and locks its doors while it is in use.
+- The toilet is borrowed as a seat for the trip and given back on the way to the sink. That is what unblocks the tile for whoever is walking to it - a chair blocks everyone but its own occupant - and what tells the room to lock, without either being a special case.
+
 ## v1.22.3
 
 - `reachability.mjs` measures from the largest connected patch of floor rather than from a character's own tile. A character sitting on a chair can step off it into a cell nobody else can enter, so measuring from one made everything behind that chair look reachable - and the answer changed depending on which character happened to be picked.

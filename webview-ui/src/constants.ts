@@ -463,6 +463,20 @@ export const IDLE_CHAT_BUBBLE_VARIANT_COUNT = 16
 /** Chance per second that a SIT_IDLE character will try to start a seated conversation */
 export const SEATED_CONVERSATION_CHANCE_PER_SEC = 0.05
 
+// ── The toilet ─────────────────────────────────────────────
+/**
+ * A toilet is not a desk. It is left out of seat assignment entirely, and visited by the
+ * USE_TOILET idle action instead: go, sit a short while, wash your hands, come back.
+ */
+export const TOILET_SIT_MIN_SEC = 12
+export const TOILET_SIT_MAX_SEC = 28
+/** Seconds at the sink afterwards */
+export const WASH_HANDS_SEC = 4
+/** How often anyone feels the need, against the other idle actions */
+export const USE_TOILET_WEIGHT = 30
+/** Quieter overnight, like the other bodily business (from, to, factor) */
+export const TOILET_HOURS: Array<[number, number, number]> = [[9, 11, 1.6], [13, 15, 1.4], [22, 6, 0.2]]
+
 // ── Doors ──────────────────────────────────────────────────
 /**
  * A door is walked through, never walked around: it is not in the blocked set, so pathfinding

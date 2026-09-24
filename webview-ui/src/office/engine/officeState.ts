@@ -290,6 +290,17 @@ export class OfficeState {
     return wanted === item.type ? item : { ...item, type: wanted }
   }
 
+  /** Start an idle action on demand, for tests. Returns false if it could not be started. */
+  startIdleAction(id: number, action: IdleActionType): boolean {
+    const ch = this.characters.get(id)
+    if (!ch) return false
+    ch.isActive = false
+    ch.idleAction = null
+    const ok = initIdleAction(ch, action, this.buildIdleActionContext())
+    if (ok) ch.idleAction = action
+    return ok
+  }
+
   /** Every door and what it is doing, for tests and the debug overlay */
   getDoorStates(): Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }> {
     const out: Array<{ uid: string; col: number; row: number; open: boolean; locked: boolean }> = []
@@ -1033,6 +1044,11 @@ export class OfficeState {
   }
 
   /** Check if a seat tile is inside a MEETING_ROOM zone */
+  /** A toilet is a seat you visit, never one you are given: it is left out of seat assignment. */
+  private isPrivacySeat(seatId: string): boolean {
+    return !!this.seatFurnitureEntry(seatId)?.privacySeat
+  }
+
   private isMeetingZoneSeat(seat: Seat): boolean {
     const zones = this.layout.zones
     if (!zones) return false
@@ -1076,6 +1092,7 @@ export class OfficeState {
     // Prefer non-meeting-zone seats, unoccupied
     const candidates: string[] = []
     for (const [uid, seat] of this.seats) {
+      if (this.isPrivacySeat(uid)) continue
       if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow) && !this.isMeetingZoneSeat(seat)) candidates.push(uid)
     }
     if (candidates.length > 0) {
@@ -1086,6 +1103,7 @@ export class OfficeState {
     // Fallback: any seat not flagged as assigned (even if someone is walking through), still skip meeting
     const fallback1: string[] = []
     for (const [uid, seat] of this.seats) {
+      if (this.isPrivacySeat(uid)) continue
       if (!seat.assigned && !this.isMeetingZoneSeat(seat)) fallback1.push(uid)
     }
     if (fallback1.length > 0) {
@@ -1096,6 +1114,7 @@ export class OfficeState {
     // Last resort: meeting zone seats
     const fallback2: string[] = []
     for (const [uid, seat] of this.seats) {
+      if (this.isPrivacySeat(uid)) continue
       if (!seat.assigned && !this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) fallback2.push(uid)
     }
     if (fallback2.length > 0) {

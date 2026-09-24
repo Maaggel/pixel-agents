@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.10
+
+- The open side door is drawn square: no skew, no taper, just the door itself swung the whole way and lying flat beside its frame, at the proportions a door actually has. Every attempt at an angle read as a plank.
+
 ## v1.19.9
 
 - The swung leaf lies nearly horizontal: a door standing wide open sticks straight out from the wall it hangs on, rather than at the diagonal it had before.

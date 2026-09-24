@@ -6,9 +6,9 @@
 //
 // A door in a north-south wall is seen edge on, so closed it is only the narrow beam of the leaf
 // itself, a third of the tile wide and standing in the middle of the doorway - there is no door
-// face to show from that direction. Open, that beam stays as the frame and the leaf swings out
-// beside it, sheared so it reads as a door standing open, which is why that sprite is two tiles
-// wide: the leaf reaches past the doorway it belongs to. Their band is shorter than the east-west
+// face to show from that direction. Open, that beam stays as the frame and the door itself is
+// shown beside it, swung the whole way so it lies flat - which is why that sprite is two tiles
+// wide: a door standing open reaches well past the doorway it belongs to. Their band is shorter than the east-west
 // door's, because in a vertical wall run the wall below the gap draws in front of the doorway and
 // anything below sprite row 31 is covered anyway.
 //
@@ -192,9 +192,9 @@ function stampBeam(g, x0, top, bottom) {
 }
 
 /**
- * The leaf swung open beside the frame. It is drawn as a door seen at an angle: it climbs as it
- * travels away from its hinge (SHEAR) and gets shallower with distance (depthNear -> depthFar),
- * which is what stops it reading as a plank nailed to the wall.
+ * The door itself, swung the whole way open and lying flat beside its frame. `shear` tilts it and
+ * `depthFar` tapers it for a door caught part way, but a door standing open is drawn square: every
+ * attempt at an angle here read as a plank rather than a door.
  */
 function stampSwungLeaf(g, ax, ay, len, depthNear, depthFar, shear) {
   const H = g.length, W = g[0].length
@@ -241,7 +241,7 @@ const SIDE_CLOSED = rows(sideClosedGrid)
 
 const sideOpenGrid = grid(32, 48)
 stampBeam(sideOpenGrid, BEAM_X, BEAM_TOP, BEAM_BOTTOM)
-stampSwungLeaf(sideOpenGrid, BEAM_X + 5, BEAM_TOP + 6, 15, 12, 12, -0.12)
+stampSwungLeaf(sideOpenGrid, BEAM_X + 5, BEAM_TOP + 6, 21, 12, 12, 0)
 const SIDE_OPEN = rows(sideOpenGrid)
 
 console.log('doors ->')

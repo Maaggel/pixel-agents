@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.22.1
+
+- `renderer/test/reachability.mjs`: which plants, utensils and machines nobody in the office can actually walk to. A plant that is never watered is usually not a watering bug but a plant in a nook - and a chair tile is blocked for everyone but its own occupant, so one chair across a gap seals the corner behind it. Run it after moving furniture about.
+
 ## v1.22.0
 
 - **The Wall tab is Wall Decor, and holds only things you hang to look at.** The TV and the four wall panels moved to Tech, where a screen belongs; paintings, charts, mirrors, the chalkboard and the clocks stay. Twenty items in one tab was too many to find anything in.

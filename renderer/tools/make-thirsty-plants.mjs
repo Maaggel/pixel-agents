@@ -16,7 +16,7 @@ const PLANTS = ['PLANT_1', 'PLANT_2', 'PLANT_3', 'WHITE_PLANT_1', 'WHITE_PLANT_2
  * leaves from green through yellow-green to a dry olive. A first pass was too subtle to read at
  * this size: the difference has to survive being sixteen pixels tall.
  */
-const LEVELS = [[-0.085, 0.95, 1.0], [-0.175, 0.7, 0.86]]
+const LEVELS = [[-0.12, 1.0, 1.0], [-0.225, 0.78, 0.84]]
 
 const rgbToHsl = (r, g, b) => {
   r /= 255; g /= 255; b /= 255

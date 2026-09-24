@@ -67,7 +67,7 @@ import type { IdleActionContext } from './idleActions.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 import type { RobotVacuumInstance } from './robotVacuum.js'
 import { isRobotVacuumType, createVacuumInstance, updateVacuum, resetVacuumCycle, getVacuumSprite, getVacuumDockSprite, startCleaningCycle, VacuumState, pauseVacuum, sendVacuumHome, detectRooms, checkAutoCycleReady, setVacuumSpeech, orientationToDir } from './robotVacuum.js'
-import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, PLANT_FADE_AT_DRYNESS, STEAM_DURATION_SEC, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
+import { VACUUM_MAX_TILES_PER_CHARGE, CLOCK_DIAL_FRAMES, PLANT_DRY_AFTER_SEC, PLANT_DRY_VARIATION, PLANT_FADE_AT_DRYNESS, STEAM_DURATION_SEC, LAMP_OCCUPANCY_RADIUS_TILES, LAMP_OCCUPANCY_CHECK_SEC, OFFICE_FULL_LOAD_AGENTS, LOAD_REACTIVE_SPEEDUP } from '../../constants.js'
 
 export type IdleEventType = 'conversation' | 'meeting' | 'eating' | 'furniture_visit'
 export interface IdleEvent {
@@ -323,7 +323,7 @@ export class OfficeState {
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),
       isPlantThirsty: (uid: string) => this.plantDryness(uid) >= 1,
-      markPlantWatered: (uid: string) => { this.plantWateredAt.set(uid, this.elapsedSec) },
+      markPlantWatered: (uid: string) => { this.waterPlant(uid) },
       tidyableFurniture: this.tidyableFurniture(),
       takeLayoutItem: (uid: string) => this.takeLayoutItem(uid),
       finishFoodNear: (ch: Character) => this.finishFoodNear(ch),
@@ -1521,6 +1521,9 @@ export class OfficeState {
   /** When each plant was last watered, in office seconds */
   private plantWateredAt = new Map<string, number>()
 
+  /** How long each plant personally lasts between drinks, in office seconds */
+  private plantDryAfter = new Map<string, number>()
+
   /** When each hot drink was poured, in office seconds, so it can steam and then go cold */
   private pouredAt = new Map<string, number>()
 
@@ -1531,8 +1534,15 @@ export class OfficeState {
    */
   private plantDryness(uid: string): number {
     const last = this.plantWateredAt.get(uid)
-    if (last === undefined) { this.plantWateredAt.set(uid, this.elapsedSec); return 0 }
-    return (this.elapsedSec - last) / PLANT_DRY_AFTER_SEC
+    if (last === undefined) { this.waterPlant(uid); return 0 }
+    return (this.elapsedSec - last) / (this.plantDryAfter.get(uid) ?? PLANT_DRY_AFTER_SEC)
+  }
+
+  /** Mark a plant watered and give it a fresh idea of how long that will last */
+  private waterPlant(uid: string): void {
+    this.plantWateredAt.set(uid, this.elapsedSec)
+    const spread = 1 + (Math.random() * 2 - 1) * PLANT_DRY_VARIATION
+    this.plantDryAfter.set(uid, PLANT_DRY_AFTER_SEC * spread)
   }
 
   /** Layout-placed utensils that could be cleared away: anything drinkable or edible, with a home to go to */

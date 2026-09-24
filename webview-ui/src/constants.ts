@@ -366,8 +366,14 @@ export const ITEM_FETCH_SEC = 2.5
 export const ITEM_DISPOSE_SEC = 1.0
 /** Standing over a plant with the can */
 export const WATER_PLANT_SEC = 2.0
-/** A plant is worth watering again this long after its last drink (seconds) */
+/** A plant is worth watering again this long after its last drink (seconds), give or take */
 export const PLANT_DRY_AFTER_SEC = 600
+/**
+ * How much plants differ from each other in how fast they dry, as a fraction either way.
+ * A fresh figure is drawn each time one is watered, so the office never wilts in lockstep: one
+ * plant is drooping while its neighbour is still fine.
+ */
+export const PLANT_DRY_VARIATION = 0.45
 // ── Steam ────────────────────────────────────────────────────────
 /** How long a fresh drink steams for, in office seconds */
 export const STEAM_DURATION_SEC = 100

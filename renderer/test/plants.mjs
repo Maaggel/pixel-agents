@@ -40,8 +40,8 @@ ws.onmessage = (e) => {
     return counts
   }
   const fresh = capture('just watered')
-  run(8); const half = capture('8 minutes on')
-  run(3); const dry = capture('11 minutes on')
+  run(9); const mid = capture('9 minutes on')
+  run(11); const dry = capture('20 minutes on')
 
   if (OUT && shots.length) {
     const SC = 8
@@ -56,8 +56,12 @@ ws.onmessage = (e) => {
     })
     writeFileSync(`${OUT}/plants.png`, sheet.toBuffer('image/png'))
   }
-  const count = String(plants().length)
-  const ok = fresh["0"] === Number(count) && half["1"] === Number(count) && dry["2"] === Number(count)
-  print(ok ? 'plants pass through watered, fading and parched as they dry' : 'plants are not changing as they dry')
+  const count = plants().length
+  // Plants dry at their own pace, so partway through the office should be showing a mix: that
+  // spread is the point, and a run where every plant changed together would mean it was lost.
+  const spread = Object.keys(mid).length
+  print(`part way through, ${spread} different states are on show at once`)
+  const ok = fresh['0'] === count && spread > 1 && dry['2'] === count
+  print(ok ? 'plants start watered, dry out at their own pace, and all end up parched' : 'plants are not drying as expected')
   process.exit(ok ? 0 : 1)
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.16.1
+
+- Plants dry at their own pace: each draws a fresh figure for how long its watering lasts, within about half again either way, so the office no longer wilts in lockstep - one plant droops while its neighbour is still fine.
+- The drying colours go further still: clearly yellow-green partway, golden-olive and darker when parched.
+
 ## v1.16.0
 
 - **Fresh coffee steams.** Three wisps climb out of a cup on their own rhythm, wandering sideways and fading as they rise, thinning out over a minute and a half until the drink is cold. Which drinks are served hot is catalog data (`steams: true`, set on the coffee mug), so tea or soup can steam later without touching the engine.

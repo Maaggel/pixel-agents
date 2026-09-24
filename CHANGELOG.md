@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.17.1
+
+- Breaks and plant care rebalanced. Making watering prompt-on-sight had turned it into most of what the office did: over 30 office days there were 48 trips with the watering can and only 5 drinks fetched, so a glass of water was a sight nobody ever saw. Watering weights are roughly halved, a break is more likely to be taken, drinks are picked three times as often as something to read, and plants last 16 minutes rather than 10 - sixteen plants on a ten minute cycle is a treadmill. Now around 30 drinks to 35 waterings, with the plants still averaging about half freshly watered.
+- `renderer/test/office-audit.mjs` reports the whole mix - actions chosen, items fetched and tidied, plant health, steam - so balance can be measured rather than guessed at.
+
 ## v1.17.0
 
 - **Walking past a dry plant is what sets someone off to water it**, the same way walking past a stray mug is what gets it cleared away. A plant that has merely started to fade is now worth watering at all, and one that is parched and close by is acted on far more readily (`PLANT_NOTICE_DISTANCE_TILES` and the `WATER_*_WEIGHT` constants). Someone with a canful waters the worst plants first, nearest within that.

@@ -366,8 +366,12 @@ export const ITEM_FETCH_SEC = 2.5
 export const ITEM_DISPOSE_SEC = 1.0
 /** Standing over a plant with the can */
 export const WATER_PLANT_SEC = 2.0
-/** A plant is worth watering again this long after its last drink (seconds), give or take */
-export const PLANT_DRY_AFTER_SEC = 600
+/**
+ * A plant is worth watering again this long after its last drink (seconds), give or take.
+ * Sixteen plants on a ten minute cycle made watering the office's main occupation, so they last
+ * longer than that: the wilt is still plain to see, there is just less of a treadmill.
+ */
+export const PLANT_DRY_AFTER_SEC = 960
 /**
  * How much plants differ from each other in how fast they dry, as a fraction either way.
  * A fresh figure is drawn each time one is watered, so the office never wilts in lockstep: one
@@ -397,14 +401,23 @@ export const PLANT_FADE_AT_DRYNESS = 0.6
 // stray mug is what gets it cleared away. A parched plant is noticed from further off and acted
 // on far more readily than one that has merely started to fade.
 export const PLANT_NOTICE_DISTANCE_TILES = 7
+// Enough to keep the plants alive without the office becoming obsessed with them: at the first
+// numbers tried, watering was half of everything anyone did and nobody ever fetched a drink.
 /** Weight when a parched plant is close by */
-export const WATER_NEAR_PARCHED_WEIGHT = 65
+export const WATER_NEAR_PARCHED_WEIGHT = 32
 /** Weight when a merely fading plant is close by */
-export const WATER_NEAR_FADING_WEIGHT = 22
+export const WATER_NEAR_FADING_WEIGHT = 10
 /** Weight when something is parched, but nowhere near */
-export const WATER_PARCHED_ELSEWHERE_WEIGHT = 12
+export const WATER_PARCHED_ELSEWHERE_WEIGHT = 6
 /** Weight when nothing is worse than fading, and none of it is close */
-export const WATER_FADING_ELSEWHERE_WEIGHT = 4
+export const WATER_FADING_ELSEWHERE_WEIGHT = 2
+
+/**
+ * How much more likely someone is to fetch a drink than a thing to read.
+ * People wander off for coffee and water far more often than for a book or a printout, and
+ * without this the four of them came up equally and a glass of water was a rare sight.
+ */
+export const FETCH_DRINK_PREFERENCE = 3
 /** Plants one canful stretches to before a trip back to the tap, if the can says nothing else */
 export const WATERING_CAN_DEFAULT_USES = 3
 /** A prop must lie around at least this long before someone tidies it away */

@@ -41,6 +41,7 @@ import {
   WATER_NEAR_FADING_WEIGHT,
   WATER_PARCHED_ELSEWHERE_WEIGHT,
   WATER_FADING_ELSEWHERE_WEIGHT,
+  FETCH_DRINK_PREFERENCE,
   WATER_PLANT_SEC,
   WATERING_CAN_DEFAULT_USES,
 } from '../../constants.js'
@@ -70,7 +71,7 @@ const IDLE_ACTION_REGISTRY: IdleActionEntry[] = [
   { type: IdleActionType.VISIT_FURNITURE, weight: 35, needsFurniture: true },
   { type: IdleActionType.STAND_AND_THINK, weight: 10 },
   { type: IdleActionType.EATING, weight: 230, needsZone: 'kitchen' },
-  { type: IdleActionType.FETCH_ITEM, weight: 25, needsDynamicItems: true },
+  { type: IdleActionType.FETCH_ITEM, weight: 55, needsDynamicItems: true },
   { type: IdleActionType.TIDY_UP, weight: 15, needsDynamicItems: true },
   // weight comes from wateringUrge(): what is dry, and whether they are walking past it
   { type: IdleActionType.WATER_PLANTS, weight: 0, needsDynamicItems: true },
@@ -159,6 +160,19 @@ function startFetch(ch: Character, utensil: FetchableUtensil, ctx: IdleActionCon
     return true
   }
   return false
+}
+
+/** Pick something to fetch on a break, leaning towards a drink over something to read */
+function pickBreakItem(options: FetchableUtensil[]): FetchableUtensil | null {
+  if (options.length === 0) return null
+  const weight = (u: FetchableUtensil) => (u.use === 'drink' ? FETCH_DRINK_PREFERENCE : 1)
+  const total = options.reduce((sum, u) => sum + weight(u), 0)
+  let roll = Math.random() * total
+  for (const option of options) {
+    roll -= weight(option)
+    if (roll <= 0) return option
+  }
+  return options[options.length - 1]
 }
 
 function utensilLabel(type: string | null): string {
@@ -844,7 +858,7 @@ export function initIdleAction(
 
     case IdleActionType.FETCH_ITEM: {
       // Walk to a drink's origin (coffee machine...), wait, walk away carrying it
-      const choice = pickRandom(findFetchableUtensils(ctx, 'break'))
+      const choice = pickBreakItem(findFetchableUtensils(ctx, 'break'))
       if (!choice || !startFetch(ch, choice, ctx)) return false
       ch.conversationPhase = 'approaching'
       showItemBubble(ch, choice.type)

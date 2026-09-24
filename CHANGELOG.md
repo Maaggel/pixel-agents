@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.19.11
+
+- The open side door is about a tile long rather than two, and its top edge lines up with the top of the beam it hangs on.
+
 ## v1.19.10
 
 - The open side door is drawn square: no skew, no taper, just the door itself swung the whole way and lying flat beside its frame, at the proportions a door actually has. Every attempt at an angle read as a plank.

@@ -73,14 +73,42 @@ ws.onmessage = (e) => {
       }
     }
   }
+  // A chair blocks everyone but its own occupant, so tiles behind one are not out of reach - they
+  // are reachable by exactly the people who sit there. Flood again allowing a step through a seat
+  // to tell "nobody can get there" apart from "only whoever sits here can".
+  const seatTiles = new Set()
+  for (const f of lay.furniture) {
+    const e = byId.get(f.type)
+    if (!e?.isSeat) continue
+    for (let dr = 0; dr < (e.footprintH || 1); dr++) for (let dc = 0; dc < (e.footprintW || 1); dc++) {
+      seatTiles.add(`${Math.floor(f.col) + dc},${Math.floor(f.row) + dr}`)
+    }
+  }
+  const throughSeats = new Set(openFloor)
+  {
+    const queue = [...openFloor].map((k) => k.split(',').map(Number))
+    while (queue.length) {
+      const [c, r] = queue.shift()
+      for (const n of [[c + 1, r], [c - 1, r], [c, r + 1], [c, r - 1]]) {
+        const k = key(n)
+        if (throughSeats.has(k)) continue
+        if (!floorSet.has(k)) continue
+        // step onto a seat, or off one onto ordinary floor
+        if (!seatTiles.has(k) && !seatTiles.has(key([c, r]))) continue
+        throughSeats.add(k)
+        queue.push(n)
+      }
+    }
+  }
   const reaches = (c, r) => openFloor.has(`${c},${r}`)
+  const reachesViaSeat = (c, r) => throughSeats.has(`${c},${r}`)
   print(`the office proper is ${openFloor.size} of ${floors.length} floor tiles, measured from ${hub.join(',')}\n`)
 
-  const canStandBeside = (col, row, w, h) => {
+  const canStandBeside = (col, row, w, h, test = reaches) => {
     const sides = []
     for (let dc = 0; dc < w; dc++) { sides.push([col + dc, row - 1], [col + dc, row + h]) }
     for (let dr = 0; dr < h; dr++) { sides.push([col - 1, row + dr], [col + w, row + dr]) }
-    return sides.some(([c, r]) => reaches(c, r))
+    return sides.some(([c, r]) => test(c, r))
   }
 
   const wanted = (e) => e?.thirstCycle?.length ? 'plant'
@@ -109,7 +137,8 @@ ws.onmessage = (e) => {
     if (!why) continue
     const col = Math.floor(f.col), row = Math.floor(f.row)
     if (canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1)) continue
-    stranded[why].push(`  ${e.name.padEnd(28)} at ${col},${row}`)
+    const viaSeat = canStandBeside(col, row, e.footprintW || 1, e.footprintH || 1, reachesViaSeat)
+    stranded[why].push(`  ${e.name.padEnd(28)} at ${col},${row}${viaSeat ? '   (only from someone\'s own chair)' : ''}`)
   }
 
   const total = Object.values(stranded).reduce((n, l) => n + l.length, 0) + walledIn.length
@@ -122,7 +151,7 @@ ws.onmessage = (e) => {
   }
 
   if (stranded.plant.length) {
-    print('Plants nobody can reach from the office proper - they will sit parched:')
+    print('Plants not reachable from the open floor:')
     for (const line of stranded.plant) print(line)
     print('')
   }

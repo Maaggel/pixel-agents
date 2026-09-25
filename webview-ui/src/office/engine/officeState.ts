@@ -55,7 +55,7 @@ import {
   PRIVACY_ROOM_MAX_TILES,
   SIGN_ROOM_MAX_DISTANCE_TILES,
 } from '../../constants.js'
-import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
+import type { Character, Seat, FurnitureInstance, SpriteData, TileType as TileTypeVal, OfficeLayout, PlacedFurniture, PlacedProp, FloorColor } from '../types.js'
 import { createCharacter, updateCharacter, isSittingState, directionBetween } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
 import { getSunState, getOfficeDialFraction } from './sunlight.js'
@@ -2241,7 +2241,13 @@ export class OfficeState {
   }
 
   rebuildFurnitureInstances(): void {
-    // the new instances have no state sprite yet; the updater only acts when its input changes
+    // Carry the state-driven sprite across the rebuild. A fresh instance has none, and until the
+    // next tick sets it again the renderer falls back to the item's base sprite - which for a door
+    // sign is the vacant green one, so the sign flashes "free" while somebody is on the toilet.
+    const carried = new Map<string, SpriteData>()
+    for (const f of this.furniture) {
+      if (f.uid && f.activeDataSprite) carried.set(f.uid, f.activeDataSprite)
+    }
     this.clockDialIdx = -1
     this.loadLevelIdx = -1
     // Collect tiles where active agents face desks (only when seated, not while walking to seat)
@@ -2286,6 +2292,7 @@ export class OfficeState {
     if (autoOnTiles.size === 0 && !anyLampOn) {
       const withDoors = this.doorByTile.size === 0 ? placed : placed.map((item) => this.doorItemType(item))
       this.furniture = layoutToFurnitureInstances(propItems.length ? [...withDoors, ...propItems] : withDoors, this.layout)
+      this.restoreDataSprites(carried)
       return
     }
 
@@ -2324,6 +2331,20 @@ export class OfficeState {
     })
 
     this.furniture = layoutToFurnitureInstances(propItems.length ? [...modifiedFurniture, ...propItems] : modifiedFurniture, this.layout)
+    this.restoreDataSprites(carried)
+  }
+
+  /** Put the state-driven sprites back on the rebuilt instances that still have the same uid. */
+  private restoreDataSprites(carried: Map<string, SpriteData>): void {
+    if (carried.size === 0) return
+    for (const f of this.furniture) {
+      if (!f.uid) continue
+      const sprite = carried.get(f.uid)
+      // only if it is still one of this item's own frames: a swapped type has different ones
+      if (!sprite) continue
+      const frames = f.roomCycleSprites ?? f.timeCycleSprites ?? f.loadCycleSprites ?? f.thirstCycleSprites
+      if (frames && frames.includes(sprite)) f.activeDataSprite = sprite
+    }
   }
 
   setAgentTool(id: number, tool: string | null): void {

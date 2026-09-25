@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.34.1
+
+- **A door sign flashed "free" while the toilet was in use.** Rebuilding the furniture instances - which happens whenever a door opens, a lamp turns on or somebody sits down at a desk - gave every item a fresh instance with no state sprite, and until the next tick set it again the renderer fell back to the item's *base* sprite. For a sign that base is the vacant green one, so it showed free at exactly the moment it mattered. State sprites are now carried across the rebuild. Measured against the live office: 12 wrong ticks out of 1575 with somebody on the toilet before, 0 out of 3001 after.
+- The same blip applied to clocks, load gauges and thirsty plants; nobody noticed because their base frame looks near enough to their current one. A sign's does not.
+
 ## v1.34.0
 
 - **Two agents could be given the same seat, and it was a release-before-check.** `reassignToWeightedIdleZoneSeat` freed the character's current seat *before* checking the new one was still free, and on that early return the character carried on sitting where they were with their seat marked free - so the next thing to hand seats out, a meeting, gave it to somebody who came and sat on top of them. `reassignSeat` had the same shape. Both secure the new seat before letting go of the old.

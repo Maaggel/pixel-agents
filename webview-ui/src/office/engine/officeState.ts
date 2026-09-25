@@ -146,6 +146,9 @@ export class OfficeState {
 
 
   // ── Doors ──────────────────────────────────────────────────
+  /** tile key -> which room it belongs to. Walls, the void and doors are what separate them. */
+  private roomIdByTile: Map<string, number> = new Map()
+
   /** Every tile a chair stands on. Empty chairs are walked past; occupied ones are blocked. */
   private seatTiles: Set<string> = new Set()
   /** Tile keys blocked this tick because someone is sitting there */
@@ -261,6 +264,43 @@ export class OfficeState {
     this.seatTiles.clear()
     for (const seat of this.seats.values()) this.seatTiles.add(`${seat.seatCol},${seat.seatRow}`)
     this.walkableTiles = this.walkableTiles.filter((t) => !this.seatTiles.has(`${t.col},${t.row}`))
+  }
+
+  /**
+   * Label every tile with the room it is in, so "in the same room as that plant" is answerable.
+   * Walls, the void and doorways separate them - a room being what you can close a door on.
+   */
+  private rebuildRooms(): void {
+    this.roomIdByTile.clear()
+    let next = 0
+    for (let r = 0; r < this.layout.rows; r++) {
+      for (let c = 0; c < this.layout.cols; c++) {
+        const key = `${c},${r}`
+        if (this.roomIdByTile.has(key)) continue
+        const tile = this.tileMap[r]?.[c]
+        if (tile === undefined || tile === TileType.WALL || tile === TileType.VOID) continue
+        if (this.doorByTile.has(key)) continue
+        const id = next++
+        const queue: Array<[number, number]> = [[c, r]]
+        this.roomIdByTile.set(key, id)
+        while (queue.length) {
+          const [qc, qr] = queue.shift()!
+          for (const [nc, nr] of [[qc + 1, qr], [qc - 1, qr], [qc, qr + 1], [qc, qr - 1]]) {
+            const nk = `${nc},${nr}`
+            if (this.roomIdByTile.has(nk) || this.doorByTile.has(nk)) continue
+            const t = this.tileMap[nr]?.[nc]
+            if (t === undefined || t === TileType.WALL || t === TileType.VOID) continue
+            this.roomIdByTile.set(nk, id)
+            queue.push([nc, nr])
+          }
+        }
+      }
+    }
+  }
+
+  /** Which room a tile is in, or -1 for a wall, the void or a doorway */
+  roomIdAt(col: number, row: number): number {
+    return this.roomIdByTile.get(`${Math.floor(col)},${Math.floor(row)}`) ?? -1
   }
 
   /** Index the doors in the layout. Their state survives a rebuild; doors that are gone do not. */
@@ -482,6 +522,7 @@ export class OfficeState {
     this.rebuildVacuumInstances()
     this.rebuildSeatTiles()
     this.rebuildDoorIndex()
+    this.rebuildRooms()
     this.rebuildSignRooms()
   }
 
@@ -500,6 +541,7 @@ export class OfficeState {
     this.rebuildVacuumInstances()
     this.rebuildSeatTiles()
     this.rebuildDoorIndex()
+    this.rebuildRooms()
     this.rebuildSignRooms()
 
     // Shift character positions when grid expands left/up
@@ -661,6 +703,7 @@ export class OfficeState {
         )
       },
       nowSec: this.elapsedSec,
+      roomIdAt: (col: number, row: number) => this.roomIdAt(col, row),
       dynamicItems: this.dynamicItemsEnabled,
       props: [...this.props.values()],
       takeProp: (uid: string) => this.takeProp(uid),

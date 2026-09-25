@@ -268,7 +268,12 @@ function wateringUrge(ch: Character, ctx: IdleActionContext): number {
   for (const f of candidates) {
     const parched = f.uid ? ctx.plantDryness(f.uid) >= 1 : false
     if (parched) anyParched = true
-    if (tileDistance(f, ch) <= PLANT_NOTICE_DISTANCE_TILES) {
+    // Walking past it counts, and for one that has withered completely, so does simply being in
+    // the same room: you would not stand about next to a dead plant and not deal with it.
+    const walkingPast = tileDistance(f, ch) <= PLANT_NOTICE_DISTANCE_TILES
+    const sameRoom = parched && ctx.roomIdAt(f.col, f.row) === ctx.roomIdAt(ch.tileCol, ch.tileRow)
+      && ctx.roomIdAt(ch.tileCol, ch.tileRow) !== -1
+    if (walkingPast || sameRoom) {
       if (parched) nearParched = true
       else nearFading = true
     }
@@ -618,6 +623,8 @@ export interface IdleActionContext {
   /** The office's own clock in seconds, which is what props age by - not the wall clock, or a
    * simulation that fast-forwards sees mugs that never get old enough to clear away */
   nowSec: number
+  /** Which room a tile is in, so "the same room as that plant" is answerable; -1 for walls and doorways */
+  roomIdAt: (col: number, row: number) => number
   /** Dynamic items feature enabled (View options) */
   dynamicItems: boolean
   /** Props currently lying around the office */

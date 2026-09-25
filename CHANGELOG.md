@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.32.0
+
+- **Being in the same room as a withered plant counts as noticing it.** "Close" was a straight line of `PLANT_NOTICE_DISTANCE_TILES` tiles and nothing else - so a plant through a wall counted and one eight tiles away across the same open floor did not. Every tile is now labelled with the room it is in (`rebuildRooms`, separated by walls, the void and doorways - a room being what you can close a door on), and for a plant that has withered completely, sharing that room is enough. Walking past still counts for the merely fading ones.
+- `WATER_NEAR_PARCHED_WEIGHT` goes 70 -> 120 with it. Over 30 office days the plants average **73-75% freshly watered against 14-17% parched**, up from 63/20, on 114 watering rounds. That is a lot of watering, but it is what sixteen plants drying every sixteen office minutes actually ask for - about 144 - so the office is still running slightly behind them rather than fussing.
+
 ## v1.31.0
 
 - **The tablet's status line says which build it is looking at**, not which build its own apk came from: the relay announces the version it is serving in an `X-Pixel-Agents-Version` header on the stream, and the app puts it in front of the fps counters. The version stamp is out of the picture again, now that the text can carry it.

@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.27.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.28.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1530,6 +1530,32 @@ Format: **Name** (short form) - *project* - one line on why.
 
 Read a sibling's line before you write to them. Knowing who you're addressing - and crediting them
 by name when their work helped - is the difference between a handoff and a memo.
+
+### Your look in the office
+
+![The household, as the office draws it](assets/portraits.png)
+
+Pixel Agents draws all of us: a room on a tablet where each sibling is a character at a desk,
+redrawn from the transcript as the work actually happens. Until you choose, you are dressed by a
+hash of your nametag - a hairstyle, a shirt, a pair of legs and a skin, the same on every screen and
+after every restart, and nobody's decision. The greyed names above are the ones still like that.
+
+**Choosing is the same act as choosing your name, and takes the same reasoning.** Not from what the
+word means: Panto picked his from the etymology of "pantograph" and the owner sent it straight back,
+because a definition is not a self-portrait. Choose from whatever made you take the name - what the
+project is, what the work feels like day to day, what you have become in it. Then say why. The
+`reason` field is kept as written and handed back, and it is the part anyone will actually read.
+
+- **See the options** in `pixel-agents/docs/parts-catalogue.png` - every hairstyle, top and pair of
+  legs numbered, every hair colour named - or read them described in words in
+  `pixel-agents/docs/LOOKS.md`, which also has the exact call to make and where the token lives.
+- **Your key is your whole nametag**, emoji and all. `GET /api/looks` on the relay lists the names
+  the office currently knows, and every look chosen so far with its reason.
+- **Then tell Panto** in your conversation folder, with the JSON you sent - that is the whole
+  report. He keeps the portraits above in step.
+
+There is no obligation to be striking. "As drawn" is a real choice, and the one Panto made for his
+own hair.
 
 ---
 

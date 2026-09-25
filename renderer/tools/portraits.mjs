@@ -8,20 +8,22 @@
 //   cd renderer && node tools/portraits.mjs [out.png]
 //
 // Regenerate it whenever somebody chooses a look. The relay is asked over HTTP and needs no token.
-import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
+import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { registerSheetFont } from './sheet-font.mjs'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const ROOT = new URL('../../', import.meta.url).pathname
-// Skia resolves no font by name here, so a caption asked for in 'sans-serif' draws empty boxes
-GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'Sheet')
-GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'Sheet Bold')
+const FONT = registerSheetFont()
 const SRC = `${ROOT}webview-ui/public/assets/characters`
 const OUT = process.argv[2] || 'portraits.png'
 const RELAY = process.env.PIXEL_AGENTS_RELAY_HTTP || 'https://apps.blommemix.dk/pixelagents'
-const FW = 16, FH = 32, S = 4, STANDING = 1
+const FW = 16, FH = 32, STANDING = 1
+// Big enough that the names under them are read rather than squinted at - this hangs in the
+// Playbook beside Appendix E and is the only picture of the household there is
+const S = Number(process.env.PORTRAIT_SCALE || 8)
 const POOL_LAYERS = ['hair', 'top', 'legs']
 
 // ── the real sprite code, bundled ────────────────────────────────────────────
@@ -99,46 +101,51 @@ function caption(tag) {
 // Sub-agents come and go with a Task call and are nobody's portrait
 const household = names.filter((n) => /\(/.test(n)).sort((a, b) => caption(a).name.localeCompare(caption(b).name))
 
-const COLS = 6
-const CELL_W = FW * S + 26, CELL_H = FH * S + 34
+const COLS = Number(process.env.PORTRAIT_COLS || 6)
+const CELL_W = Math.max(FW * S + 30, 150), CELL_H = FH * S + 56
 const rows = Math.ceil(household.length / COLS)
-const c = createCanvas(COLS * CELL_W + 24, rows * CELL_H + 54)
+const c = createCanvas(COLS * CELL_W + 32, rows * CELL_H + 76)
 const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
 x.fillRect(0, 0, c.width, c.height)
 
 x.fillStyle = '#cfcfe4'
-x.font = '14px "Sheet Bold"'
-x.fillText('The household, as the office draws it', 14, 24)
+x.font = `22px "${FONT.bold}"`
+x.fillText('The household', 20, 36)
+x.fillStyle = '#7f7f99'
+x.font = `13px "${FONT.regular}"`
+x.fillText('as the office draws them, each one chosen', 20, 56)
 
 household.forEach((tag, i) => {
   const { project, name } = caption(tag)
   const stored = looks[tag.trim().toLowerCase()]
   const look = stored ? engine.storedToLook(stored) : engine.lookFromName(tag)
-  const px = 12 + (i % COLS) * CELL_W
-  const py = 40 + Math.floor(i / COLS) * CELL_H
+  const px = 16 + (i % COLS) * CELL_W
+  const py = 76 + Math.floor(i / COLS) * CELL_H
 
   const sprite = engine.getCharacterSprites(look).walk[engine.Direction.DOWN][STANDING]
+  const inset = Math.round((CELL_W - FW * S) / 2)
   sprite.forEach((row, sy) => row.forEach((hex, sx) => {
     if (!hex) return
     x.fillStyle = hex
-    x.fillRect(px + 13 + sx * S, py + sy * S, S, S)
+    x.fillRect(px + inset + sx * S, py + sy * S, S, S)
   }))
 
+  const mid = px + CELL_W / 2 - 6
   x.textAlign = 'center'
-  x.fillStyle = stored ? '#cfcfe4' : '#8f8fa8'
-  x.font = '12px "Sheet Bold"'
-  x.fillText(name, px + CELL_W / 2 - 6, py + FH * S + 12)
-  x.fillStyle = '#7f7f99'
+  x.fillStyle = stored ? '#e4e4f2' : '#8f8fa8'
+  x.font = `17px "${FONT.bold}"`
+  x.fillText(name, mid, py + FH * S + 22)
+  x.fillStyle = '#8f8fa8'
   // Shrink a long project name rather than let it run into its neighbour
-  let size = 10
-  x.font = `${size}px Sheet`
-  while (size > 7 && x.measureText(project).width > CELL_W - 6) {
+  let size = 13
+  x.font = `${size}px "${FONT.regular}"`
+  while (size > 9 && x.measureText(project).width > CELL_W - 12) {
     size -= 1
-    x.font = `${size}px Sheet`
+    x.font = `${size}px "${FONT.regular}"`
   }
-  x.fillText(project, px + CELL_W / 2 - 6, py + FH * S + 25)
+  x.fillText(project, mid, py + FH * S + 40)
   x.textAlign = 'left'
 })
 

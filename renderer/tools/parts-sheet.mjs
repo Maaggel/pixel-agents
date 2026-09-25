@@ -11,17 +11,15 @@
 //
 // The sheet shows every hairstyle on every body, then hair, clothes and skin varied one at a time.
 // The anim sheet is the one that catches a bad cut: a seam only the walk or the side view shows.
-import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
+import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { registerSheetFont } from './sheet-font.mjs'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const ROOT = new URL('../../', import.meta.url).pathname
-// Skia resolves no font by name on this box, so every label came out as a row of empty boxes and
-// nobody could read the numbers the sheet exists to show. Register one and ask for it by name.
-GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'Sheet')
-GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'Sheet Bold')
+const FONT = registerSheetFont()
 const SRC = `${ROOT}webview-ui/public/assets/characters`
 const OUT = 'parts-sheet.png'
 const writeIndex = process.argv.indexOf('--write')
@@ -163,7 +161,7 @@ function animSheet() {
   x.imageSmoothingEnabled = false
   x.fillStyle = '#20202e'
   x.fillRect(0, 0, c.width, c.height)
-  x.font = '12px "Sheet Bold"'
+  x.font = `12px "${FONT.bold}"`
 
   x.fillStyle = '#cfcfe4'
   const heads = ['walk 1', 'walk 2', 'walk 3', 'walk 4', 'type 1', 'type 2', 'read 1', 'read 2']
@@ -205,13 +203,13 @@ const PER_ROW = 10
 const PART_HAIR_COLOR_ROWS = Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW)
 const catalogue = POOL_LAYERS.map((l) => ({ layer: l, n: count(l) }))
 const gridRows = catalogue.reduce((a, b) => a + Math.ceil(b.n / PER_ROW), 0)
-  + Math.ceil(PART_HAIR_COLOR_ROWS) + 3
-const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + (catalogue.length + 4) * 26 + 140)
+  + Math.ceil(PART_HAIR_COLOR_ROWS) + 4
+const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + (catalogue.length + 5) * 26 + 150)
 const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
 x.fillRect(0, 0, c.width, c.height)
-x.font = '12px "Sheet Bold"'
+x.font = `12px "${FONT.bold}"`
 const label = (t, px, py) => { x.fillStyle = '#cfcfe4'; x.fillText(t, px, py) }
 const num = (t, px, py) => { x.fillStyle = '#7f7f99'; x.fillText(t, px, py) }
 
@@ -235,9 +233,9 @@ engine.PART_HAIR_COLORS.forEach((colour, i) => {
   const py = y + Math.floor(i / PER_ROW) * (CELL_H + 8)
   drawLook(x, px, py, parts({ hair: 7, hairColor: i }))
   num(String(i), px + 6, py + CELL_H - 14)
-  x.font = '9px Sheet'
+  x.font = `9px "${FONT.regular}"`
   num(colour.name, px + 2, py + CELL_H - 3)
-  x.font = '12px "Sheet Bold"'
+  x.font = `12px "${FONT.bold}"`
 })
 y += Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW) * (CELL_H + 8) + 26
 
@@ -251,6 +249,15 @@ for (const top of [5, 6]) {
   })
   y += CELL_H + 26
 }
+
+// legsHue takes the same eight rotations and was demonstrated nowhere, so anybody dyeing their legs
+// was extrapolating from a picture of a jumper - the position a striped-top chooser was in above
+label('legs hue on legs 2, in degrees', 14, y - 4)
+HUES.forEach((h, i) => {
+  drawLook(x, 96 + i * CELL_W, y, parts({ legs: 2, legsHue: h }))
+  num(String(h), 96 + i * CELL_W + 6, y + CELL_H - 4)
+})
+y += CELL_H + 26
 
 label('names, as the office hashes them', 14, y - 4)
 ;['Pantograph', 'Blommemix', 'TabScreen', 'Oriel', 'Playbook', 'Iacta'].forEach((name, i) =>

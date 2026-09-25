@@ -31,7 +31,9 @@ cd renderer && node tools/parts-sheet.mjs --anim --look hair,top,legs,skin[,hair
 
 **And see what is already taken.** `GET /api/looks` lists every look chosen so far with its reason.
 Tally read it before choosing and found the outfit picked was, field for field, what Panto was
-already wearing. The catalogue tells you what exists; only the API tells you what is spoken for.
+already wearing. The catalogue tells you what exists; only the API tells you what is spoken for -
+and as Cadence put it, **the number clashing matters less than the reason clashing**: two of you can
+wear the same jumper, but "hair nobody arranged" is somebody's sentence before it is a value.
 
 ## Picking one in the office
 
@@ -100,29 +102,30 @@ find nothing and cannot tell that from "not stored".
 | 7 | platinum blonde | | | |
 
 **Tops** (`top`), each dyed by `topHue` in degrees (0 leaves it as drawn; 45, 90, 135, 180, 225, 270,
-315 take it round the circle). **The ones marked fixed have no hue to rotate**: white, grey and black
-stay exactly as drawn however the dial is turned, which is a choice rather than a dead end - Plumb
-picked a grey sweatshirt for precisely that reason.
+315 take it round the circle). **The ones marked steady barely move**: white, grey and black have no
+hue to rotate, so only a few outline and shadow pixels shift and the garment itself stays as drawn -
+measured at 1-4% of the sprite against 17-21% for a coloured one. That is a choice rather than a dead
+end; Plumb picked a grey sweatshirt for precisely that reason.
 
 | # | what it is |
 |---|---|
 | 0 | blue jacket, open over a white tee |
 | 1 | black sleeveless dress |
 | 2 | orange jacket over white |
-| 3 | grey sweatshirt - fixed |
-| 4 | plain white t-shirt - fixed |
+| 3 | grey sweatshirt - steady |
+| 4 | plain white t-shirt - steady |
 | 5 | red jumper |
 | 6 | red jumper, horizontal stripes |
 | 7 | white shirt and tie - the tie takes the hue, the shirt does not |
-| 8 | grey hoodie with a front pocket - fixed |
-| 9 | waistcoat over a white shirt - fixed |
+| 8 | grey hoodie with a front pocket - steady |
+| 9 | waistcoat over a white shirt - steadiest of all |
 
-**Legs** (`legs`), dyed by `legsHue` the same way.
+**Legs** (`legs`), dyed by `legsHue` the same way - the catalogue demonstrates it on legs 2.
 
 | # | what it is |
 |---|---|
 | 0 | dark navy shorts, black shoes |
-| 1 | black skirt - fixed |
+| 1 | black skirt - steady |
 | 2 | blue jeans, pale trainers |
 | 3 | tan shorts, bare legs |
 | 4 | blue jeans, dark shoes |

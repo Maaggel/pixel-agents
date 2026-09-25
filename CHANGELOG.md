@@ -2,6 +2,7 @@
 
 ## v1.35.1
 
+- The version the relay reports lagged a deploy behind. It recomputes the build id the first time it is asked after index.html changes, reading package.json as it goes, and caches it until index.html changes again - but the deploy uploaded package.json afterwards, so the first request in between baked the old version in. package.json goes up first now.
 - The bald head no longer pokes up through a hairstyle in profile. The base that fills gaps under the hair started at a fixed row, but seen from the side the head sits a row lower, so the base reached above where the sleek hairstyle's crown begins; it is measured from each frame's own head now.
 
 ## v1.35.0

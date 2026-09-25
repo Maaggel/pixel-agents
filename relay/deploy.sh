@@ -97,11 +97,20 @@ for remote in $(listdir dist/webview/assets | grep -E '^index-[A-Za-z0-9_-]+\.(j
   [ -f "dist/webview/assets/$remote" ] || { del "dist/webview/assets/$remote"; echo "  removed stale $remote"; }
 done
 
-# 3. index.html last - the moment the new UI goes live
+# 3. package.json before index.html, so the version is already in place when the build id changes.
+# The relay recomputes that id the first time it is asked after index.html's mtime changes, reading
+# package.json as it goes, and then caches it until index.html changes again. Uploading the version
+# afterwards means the first request in between bakes the old version into the cached id, and the
+# tablet shows the previous version until the next deploy.
+if [ "$UI_ONLY" = 0 ]; then
+  put package.json package.json
+fi
+
+# 4. index.html last - the moment the new UI goes live
 put dist/webview/index.html dist/webview/index.html
 echo "==> index.html live"
 
-# 4. Relay code (inactive until the service restarts)
+# 5. Relay code (inactive until the service restarts)
 # Only a change to the relay's own code needs a restart, and a restart drops every tablet's
 # stream for the minute or so their app takes to reconnect. A version bump alone does not: the
 # relay re-reads package.json whenever it recomputes the build id.
@@ -111,7 +120,6 @@ if [ "$RELAY_CHANGED" = 1 ]; then
 fi
 if [ "$UI_ONLY" = 0 ]; then
   for f in relay/*.mjs; do put "$f" "$f"; done   # server.mjs and every module it imports
-  put package.json package.json
   put relay/package.json relay/package.json
   RELAY_HASH="$(cat relay/*.mjs relay/package.json | sha1sum | cut -d' ' -f1)"
   PREV_HASH="$("${C[@]}" "$BASE/relay/.deployed-code" 2>/dev/null || true)"
@@ -125,7 +133,7 @@ if [ "$UI_ONLY" = 0 ]; then
   fi
 fi
 
-# 5. Restart the relay through the SSH gate if its code changed, or --restart was given.
+# 6. Restart the relay through the SSH gate if its code changed, or --restart was given.
 # The relay reads the furniture catalog, the sprites and the character parts once at startup, so a
 # deploy that only adds assets needs --restart before they appear.
 if [ "$DRY" = 1 ]; then exit 0; fi
@@ -150,7 +158,7 @@ if [ "$RELAY_CHANGED" = 1 ]; then
   fi
 fi
 
-# 6. Tell viewers to reload (a restart already made them reload on reconnect; this covers UI-only deploys)
+# 7. Tell viewers to reload (a restart already made them reload on reconnect; this covers UI-only deploys)
 if [ -n "$RELAY_HTTP" ] && [ -n "$TOKEN" ]; then
   if [ -n "$(live_build)" ]; then
     res="$(curl -s -m 10 -X POST -H "Authorization: Bearer $TOKEN" "$RELAY_HTTP/api/reload")"

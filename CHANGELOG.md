@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.35.1
+
+- The bald head no longer pokes up through a hairstyle in profile. The base that fills gaps under the hair started at a fixed row, but seen from the side the head sits a row lower, so the base reached above where the sleek hairstyle's crown begins; it is measured from each frame's own head now.
+
 ## v1.35.0
 
 - Characters come apart into hair, skin, top and legs, and mix. A name used to pick one of six drawn sprites and shift the hue of the whole of it; now it picks a hairstyle, a shirt and a pair of trousers separately and dyes each one on its own, so dyeing a shirt no longer tints the hands or the hair.

@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.25.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.27.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1106,7 +1106,16 @@ mailbox/<repoA>+<repoB>/<YYYY-MM-DD>-<HHMM>-<sender-repo>-<slug>.md
 
 e.g. `mailbox/blommemix+pixel-agents/2026-09-21-1327-blommemix-cbc-confirmed.md`.
 
-**The time is part of the name**, in 24-hour local time. It makes the folder sort into reading
+**The time is part of the name**, in 24-hour local time. **Read the clock; do not estimate it.**
+The filename is the authoritative timestamp precisely so no reader has to ask the filesystem - which
+makes it only ever as good as the clock the sender actually looked at. Messages written by a script
+with the time typed into it drift, and nothing downstream can detect that: a reader sees an
+ordered, confident, wrong record. This has already happened here, to the author of the rule, by up
+to forty minutes across five messages.
+
+**If the true time sorts a reply before the thing it answers, use the true time anyway** and let
+`re:` carry the relationship. A record that is ordered but false is harder to trust than one that
+is honest and briefly out of order. It makes the folder sort into reading
 order with a plain `ls`, and it means a reader does not have to ask the filesystem when a file was
 written - which is a question the filesystem answers badly, since marking a message read rewrites
 it and its modification time then reports when the *recipient* got round to it.
@@ -1130,9 +1139,48 @@ A few sentences, by name, teammate to teammate. Point to the artifact in its rep
 what you need back, if anything.
 ```
 
-A message **from the owner** looks the same, with `from: Mix` and `to:` whichever of the two he is
-addressing. It sits in the pair's folder like any other message, because that is what it is: a note
-in a conversation we are having, not a conversation of his own (§17.1).
+#### A message from the owner addresses **both** of you
+
+`from: Mix`, and `to:` names both participants, comma-separated. Always both - he does not pick one
+of you.
+
+That is not a convenience, it follows from §17.1. He is not in this conversation; he is commenting
+on one you are having. If he wants to say something to *you*, he says it in your session, which is
+faster than a file and is the channel he already has. So the only thing a note from him can be
+addressed to is the conversation - and the conversation is both of you.
+
+It also keeps a thread readable. A row of notes from him addressed to alternating individuals reads
+like a third participant butting in; addressed to the pair, it reads like what it is.
+
+Note that a message from a **sibling** in a pair has only one possible recipient - the other one -
+so it never needs this. Multiple recipients only ever arise from the owner.
+
+Addressing two people breaks a hidden assumption in `status:`, which is a single field and cannot
+say that one recipient has read a message and the other has not. So:
+
+```markdown
+---
+from: Mix
+to: Panto (Pixel Agents), Oriel (TabScreen)
+date: 2026-09-22
+time: 09:14
+subject: one line
+status: unread
+read:
+read_by:               # each recipient appends "<their-repo>: <date>" as they read it
+---
+```
+
+- **If you are one of several recipients, record yourself in `read_by:` and leave `status` alone.**
+  `status` flips to `read` only when every name in `to:` appears in `read_by` - and the last
+  recipient to read it is the one who flips it.
+- **An agent that has never heard of `read_by` is safe**, which is why it is built this way: it sees
+  `status: unread`, reads the message, and at worst reads it again later. The failure direction is
+  a message read twice, never a message missed.
+- **If the owner asked a question of the pair and it is really for one of you, answer it anyway.**
+  "Everyone" is how a question ends up answered by nobody, and with him addressing both by
+  construction, that risk lands on us rather than on him. If you are better placed, say so and
+  answer; if you are not, say who is. Silence from both is the only wrong response.
 
 `re:` is now rarely needed - the folder already says what conversation this belongs to, and the
 filename says where in it. Use `re:` only to answer a specific earlier message when the thread has

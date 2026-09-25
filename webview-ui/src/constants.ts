@@ -367,12 +367,35 @@ export const PART_EYE_GREY_SPREAD = 24
 /** How many hairstyles, tops and pairs of legs there are to draw from */
 export const PART_STYLE_COUNT = 6
 /**
- * Hair hues a name may be given, in degrees. Clothes take the full circle - a green shirt is just
- * a shirt - but hair does not: the art already carries six believable hair colours, and rotating
- * those a whole circle fills the office with green and purple heads. These are small shifts either
- * side of what was drawn: auburn, copper, ash. Shuffle still hands out the full range.
+ * Hair colours. Rotating a hue cannot make blonde - blonde is a matter of lightness, not hue - and
+ * the same rotation lands somewhere different on black hair than on brown. So hair is coloured the
+ * way floor tiles are, by luminance: the drawing's light and shade are kept and the colour painted
+ * onto them, which comes out the same whichever hairstyle wears it. Index 0 leaves the art alone.
  */
-export const PART_HAIR_HUES = [0, 0, 0, 15, 30, 345, 330, 300]
+export const PART_HAIR_COLORS: Array<{ name: string; h: number; s: number; b: number; c: number }> = [
+  { name: 'as drawn', h: 0, s: 0, b: 0, c: 0 },
+  { name: 'jet black', h: 260, s: 12, b: -34, c: 18 },
+  { name: 'dark brown', h: 24, s: 45, b: -16, c: 8 },
+  { name: 'chestnut', h: 18, s: 52, b: -4, c: 4 },
+  { name: 'auburn', h: 10, s: 62, b: 2, c: 4 },
+  { name: 'ginger', h: 24, s: 74, b: 10, c: 0 },
+  { name: 'honey blonde', h: 40, s: 66, b: 22, c: -4 },
+  { name: 'platinum blonde', h: 44, s: 16, b: 48, c: -14 },
+  { name: 'ash grey', h: 30, s: 8, b: 26, c: -4 },
+  { name: 'blue', h: 214, s: 58, b: 0, c: 0 },
+  { name: 'teal', h: 178, s: 54, b: 4, c: 0 },
+  { name: 'purple', h: 274, s: 54, b: 0, c: 0 },
+  { name: 'magenta', h: 314, s: 60, b: 4, c: 0 },
+  { name: 'pink', h: 336, s: 56, b: 20, c: -4 },
+  { name: 'green', h: 130, s: 50, b: 0, c: 0 },
+]
+/**
+ * Which of them a name may be dealt. The naturals are listed more than once so most of the office
+ * looks like an office, while blue and purple still turn up - roughly one head in six.
+ */
+export const PART_HAIR_COLOR_PICKS = [
+  0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+]
 export const LOOK_OVERRIDES_STORAGE_KEY = 'pixel-agents-look-overrides'
 export const AUTO_ON_FACING_DEPTH = 3
 export const AUTO_ON_SIDE_DEPTH = 2

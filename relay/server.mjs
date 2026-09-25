@@ -430,7 +430,7 @@ function saveKioskOptions(opts) {
 // with a hue of its own. A name with no entry here still gets a look, hashed from the name itself,
 // so this only holds the ones somebody chose. Set from the office by anyone looking at it, or over
 // POST /api/looks by the agents themselves, and pushed to every viewer and the tablet alike.
-const LOOK_FIELDS = ['skin', 'hair', 'hairHue', 'top', 'topHue', 'legs', 'legsHue']
+const LOOK_FIELDS = ['skin', 'hair', 'hairColor', 'top', 'topHue', 'legs', 'legsHue']
 let looks = {}
 try { if (existsSync(LOOKS_FILE)) looks = JSON.parse(readFileSync(LOOKS_FILE, 'utf-8')).looks || {} } catch { /* start empty */ }
 
@@ -440,13 +440,22 @@ function isLook(value) {
     LOOK_FIELDS.every((f) => typeof value[f] === 'number' && Number.isFinite(value[f]))
 }
 
-/** Merge chosen looks in. A name mapped to null is set back to whatever its name hashes to. */
+/**
+ * Merge chosen looks in. A name mapped to null is set back to whatever its name hashes to. A look
+ * may carry a `reason`, which is kept as written and handed back: it is the only record of why
+ * somebody looks the way they do, and worth more than the numbers beside it.
+ */
 function saveLooks(update) {
   for (const [name, look] of Object.entries(update)) {
     const key = String(name).trim().toLowerCase()
     if (!key) continue
-    if (look === null) delete looks[key]
-    else if (isLook(look)) looks[key] = Object.fromEntries(LOOK_FIELDS.map((f) => [f, Math.round(look[f])]))
+    if (look === null) { delete looks[key]; continue }
+    if (!isLook(look)) continue
+    const entry = Object.fromEntries(LOOK_FIELDS.map((f) => [f, Math.round(look[f])]))
+    const reason = typeof look.reason === 'string' ? look.reason.trim().slice(0, 400) : ''
+    if (reason) entry.reason = reason
+    else if (looks[key]?.reason) entry.reason = looks[key].reason
+    looks[key] = entry
   }
   try {
     mkdirSync(LAYOUT_DIR, { recursive: true })
@@ -1265,8 +1274,17 @@ const server = createServer((req, res) => {
     return
   }
   if (pathname === '/api/looks' && req.method === 'GET') {
+    // The names the office knows right now, so whoever is choosing can find their own nametag
+    const names = []
+    for (const win of getAllWindowStates()) {
+      for (const agent of win.agents || []) {
+        const name = agent.folderName || agent.name
+        if (name && !names.includes(name)) names.push(name)
+      }
+    }
+    names.sort()
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-    res.end(JSON.stringify({ looks }))
+    res.end(JSON.stringify({ looks, names }))
     return
   }
   if (pathname === '/api/looks' && req.method === 'POST') {

@@ -1,6 +1,7 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
-import { adjustSprite } from '../colorize.js'
+import { adjustSprite, colorizeSprite } from '../colorize.js'
+import { PART_HAIR_COLORS } from '../../constants.js'
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
@@ -1805,6 +1806,11 @@ export function setCharacterTemplates(
   spriteCache.clear()
 }
 
+/** Rotate a garment's hue, or leave it alone when there is nothing to rotate it by. */
+function rotate(hue: number): (sprite: SpriteData) => SpriteData {
+  return (sprite) => (hue === 0 ? sprite : adjustSprite(sprite, { h: hue, s: 0, b: 0, c: 0 }))
+}
+
 /** How many of each part there are to choose from. Zero until the assets have arrived. */
 export function getPartCounts(): Record<CharacterLayer, number> {
   return {
@@ -1819,20 +1825,25 @@ export function getPartCounts(): Record<CharacterLayer, number> {
 function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterData {
   const p = look.parts!
   const pick = (layer: CharacterLayer, style: number) => pools[layer][style % pools[layer].length]
-  const sources: Array<{ frames: CharacterFrames; hue: number }> = [
-    { frames: pick('skin', look.palette), hue: 0 },
-    { frames: pick('legs', p.legs), hue: p.legsHue },
-    { frames: pick('top', p.top), hue: p.topHue },
-    { frames: pick('hair', p.hair), hue: p.hairHue },
+  // Clothes are hue-rotated: the garment keeps its own shading and simply becomes another colour.
+  // Hair is painted on by luminance instead, so blonde is reachable at all and so a colour lands
+  // the same whether the hairstyle underneath was drawn black or brown.
+  const hairColor = PART_HAIR_COLORS[p.hairColor % PART_HAIR_COLORS.length]
+  const sources: Array<{ frames: CharacterFrames; paint: (s: SpriteData) => SpriteData }> = [
+    { frames: pick('skin', look.palette), paint: (sprite) => sprite },
+    { frames: pick('legs', p.legs), paint: rotate(p.legsHue) },
+    { frames: pick('top', p.top), paint: rotate(p.topHue) },
+    {
+      frames: pick('hair', p.hair),
+      paint: (sprite) => (p.hairColor === 0 ? sprite : colorizeSprite(sprite, { ...hairColor, colorize: true })),
+    },
   ]
-  const tint = (sprite: SpriteData, hue: number) =>
-    hue === 0 ? sprite : adjustSprite(sprite, { h: hue, s: 0, b: 0, c: 0 })
 
   const out: LoadedCharacterData = { down: [], up: [], right: [] }
   for (const dir of ['down', 'up', 'right'] as const) {
     const count = sources[0].frames[dir].length
     for (let f = 0; f < count; f++) {
-      out[dir].push(composeParts(sources.map((src) => tint(src.frames[dir][f], src.hue))))
+      out[dir].push(composeParts(sources.map((src) => src.paint(src.frames[dir][f]))))
     }
   }
   return out

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.36.0
+
+- Hair has colours rather than hue nudges: fifteen named ones, from jet black through chestnut and ginger to honey and platinum blonde, and on to blue, teal, purple, magenta, pink and green. Rotating a hue cannot make blonde - blonde is lightness, not hue - so hair is painted by luminance the way floor tiles are, which also means a colour comes out the same whether the hairstyle under it was drawn black or brown. Names are dealt mostly naturals, with roughly one head in six a bright one.
+- A chosen look can carry a `reason`, kept as written and handed back by `GET /api/looks`, so there is a record of why somebody looks the way they do.
+- `GET /api/looks` also lists the nametags the office currently knows, so an agent choosing its own look can find its own name rather than guess at it.
+- `docs/parts-catalogue.png` is every part, numbered, and every hair colour, named - and `docs/LOOKS.md` now describes them all in words too, for choosing without opening the picture.
+
 ## v1.35.2
 
 - The version the relay reports is read when it is asked, not when the build id was last recomputed. Refreshing it was a side effect of recomputing that id, and happened part-way through building the answer, so the first request after a deploy still gave the old version - and a tablet, told the version once in the headers that open its stream, could keep the old one for the whole connection.

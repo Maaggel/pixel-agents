@@ -1,4 +1,4 @@
-import { PALETTE_COUNT, LOOK_HUE_STEPS, LOOK_HUE_STEP_DEG, LOOK_OVERRIDES_STORAGE_KEY, PART_STYLE_COUNT, PART_HAIR_HUES } from '../constants.js'
+import { PALETTE_COUNT, LOOK_HUE_STEPS, LOOK_HUE_STEP_DEG, LOOK_OVERRIDES_STORAGE_KEY, PART_STYLE_COUNT, PART_HAIR_COLORS, PART_HAIR_COLOR_PICKS } from '../constants.js'
 
 /**
  * What a character looks like, by the name on its nametag.
@@ -19,10 +19,15 @@ export interface CharacterLook {
   parts?: CharacterParts
 }
 
-/** A character assembled from four independent layers, each colourable on its own. */
+/**
+ * A character assembled from four independent layers, each colourable on its own. Clothes take a
+ * hue in degrees, because rotating the hue of something already coloured is all a shirt needs.
+ * Hair takes an index into PART_HAIR_COLORS instead: blonde is a matter of lightness rather than
+ * hue, and the same rotation lands somewhere different on black hair than on brown.
+ */
 export interface CharacterParts {
   hair: number
-  hairHue: number
+  hairColor: number
   top: number
   topHue: number
   legs: number
@@ -57,7 +62,7 @@ function partsFromHash(h: number): CharacterParts {
   const hue = (shift: number) => ((h >>> shift) % LOOK_HUE_STEPS) * LOOK_HUE_STEP_DEG
   return {
     hair: (h >>> 5) % PART_STYLE_COUNT,
-    hairHue: PART_HAIR_HUES[(h >>> 9) % PART_HAIR_HUES.length],
+    hairColor: PART_HAIR_COLOR_PICKS[(h >>> 9) % PART_HAIR_COLOR_PICKS.length],
     top: (h >>> 13) % PART_STYLE_COUNT,
     topHue: hue(17),
     legs: (h >>> 21) % PART_STYLE_COUNT,
@@ -69,7 +74,7 @@ function partsFromHash(h: number): CharacterParts {
 export function lookKey(look: CharacterLook): string {
   const p = look.parts
   if (!p) return `${look.palette}:${look.hueShift}`
-  return `${look.palette}:${look.hueShift}:${p.hair}:${p.hairHue}:${p.top}:${p.topHue}:${p.legs}:${p.legsHue}`
+  return `${look.palette}:${look.hueShift}:${p.hair}:${p.hairColor}:${p.top}:${p.topHue}:${p.legs}:${p.legsHue}`
 }
 
 /** A look built from whole-character values, as older publishers and explicit choices send them. */
@@ -81,14 +86,15 @@ export function legacyLook(palette: number, hueShift = 0): CharacterLook {
 export function randomParts(): CharacterParts {
   const style = () => Math.floor(Math.random() * PART_STYLE_COUNT)
   const hue = () => Math.floor(Math.random() * LOOK_HUE_STEPS) * LOOK_HUE_STEP_DEG
-  return { hair: style(), hairHue: hue(), top: style(), topHue: hue(), legs: style(), legsHue: hue() }
+  const hairColor = Math.floor(Math.random() * PART_HAIR_COLORS.length)
+  return { hair: style(), hairColor, top: style(), topHue: hue(), legs: style(), legsHue: hue() }
 }
 
 /** A look as it is stored and shared: flat, and skin rather than palette. */
 export interface StoredLook {
   skin: number
   hair: number
-  hairHue: number
+  hairColor: number
   top: number
   topHue: number
   legs: number
@@ -114,7 +120,7 @@ export function storedToLook(stored: StoredLook): CharacterLook {
     hueShift: 0,
     parts: {
       hair: stored.hair,
-      hairHue: stored.hairHue,
+      hairColor: stored.hairColor,
       top: stored.top,
       topHue: stored.topHue,
       legs: stored.legs,
@@ -128,7 +134,7 @@ export function lookToStored(look: CharacterLook): StoredLook {
   return {
     skin: look.palette,
     hair: p.hair,
-    hairHue: p.hairHue,
+    hairColor: p.hairColor,
     top: p.top,
     topHue: p.topHue,
     legs: p.legs,

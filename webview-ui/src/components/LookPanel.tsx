@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { CharacterLook } from '../office/lookFromName.js'
 import { lookFromName, lookToStored } from '../office/lookFromName.js'
 import { getPartCounts } from '../office/sprites/spriteData.js'
-import { LOOK_HUE_STEP_DEG, LOOK_HUE_STEPS } from '../constants.js'
+import { LOOK_HUE_STEP_DEG, LOOK_HUE_STEPS, PART_HAIR_COLORS } from '../constants.js'
 
 /**
  * Picking what somebody wears: a hairstyle, a shirt, a pair of legs and a skin, each with a hue of
@@ -36,7 +36,7 @@ export function LookPanel({ name, look, onChange, onClose }: LookPanelProps) {
       palette: next.skin,
       hueShift: 0,
       parts: {
-        hair: next.hair, hairHue: next.hairHue,
+        hair: next.hair, hairColor: next.hairColor,
         top: next.top, topHue: next.topHue,
         legs: next.legs, legsHue: next.legsHue,
       },
@@ -44,11 +44,13 @@ export function LookPanel({ name, look, onChange, onClose }: LookPanelProps) {
   }
 
   const rows: Array<{ label: string; part: keyof typeof stored; count: number; hue?: keyof typeof stored }> = [
-    { label: 'Hair', part: 'hair', count: counts.hair, hue: 'hairHue' },
+    { label: 'Hair', part: 'hair', count: counts.hair },
     { label: 'Top', part: 'top', count: counts.top, hue: 'topHue' },
     { label: 'Legs', part: 'legs', count: counts.legs, hue: 'legsHue' },
     { label: 'Skin', part: 'skin', count: counts.skin },
   ]
+
+  const hairColor = PART_HAIR_COLORS[stored.hairColor % PART_HAIR_COLORS.length]
 
   return (
     <div style={panel}>
@@ -91,6 +93,23 @@ export function LookPanel({ name, look, onChange, onClose }: LookPanelProps) {
           ) : <div style={swatches} />}
         </div>
       ))}
+
+      <div style={line}>
+        <span style={label}>Colour</span>
+        <div style={stepper}>
+          <button
+            style={stepButton}
+            onClick={() => set('hairColor', (stored.hairColor + PART_HAIR_COLORS.length - 1) % PART_HAIR_COLORS.length)}
+            title="Previous hair colour"
+          >&#x25C0;</button>
+          <span style={{ ...value, width: 'auto', minWidth: 96 }}>{hairColor.name}</span>
+          <button
+            style={stepButton}
+            onClick={() => set('hairColor', (stored.hairColor + 1) % PART_HAIR_COLORS.length)}
+            title="Next hair colour"
+          >&#x25B6;</button>
+        </div>
+      </div>
 
       <button
         style={resetButton}

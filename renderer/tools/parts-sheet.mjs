@@ -34,6 +34,7 @@ writeFileSync(entry, `
 export { splitCharacters } from '${ROOT}webview-ui/src/office/sprites/characterParts.js'
 export { setCharacterTemplates, getCharacterSprites } from '${ROOT}webview-ui/src/office/sprites/spriteData.js'
 export { lookFromName } from '${ROOT}webview-ui/src/office/lookFromName.js'
+export { PART_HAIR_COLORS } from '${ROOT}webview-ui/src/constants.js'
 export { Direction } from '${ROOT}webview-ui/src/office/types.js'
 `)
 const bundle = join(stage, 'engine.mjs')
@@ -139,13 +140,13 @@ function animSheet() {
   const pick = process.argv.indexOf('--look')
   const looks = pick >= 0
     ? [[process.argv[pick + 1], (() => {
-        const [hair, top, legs, palette] = process.argv[pick + 1].split(',').map(Number)
-        return { palette, hueShift: 0, parts: { hair, hairHue: 0, top, topHue: 0, legs, legsHue: 0 } }
+        const [hair, top, legs, palette, hairColor] = process.argv[pick + 1].split(',').map(Number)
+        return { palette, hueShift: 0, parts: { hair, hairColor: hairColor || 0, top, topHue: 0, legs, legsHue: 0 } }
       })()]]
     : [
-      ['hair 2 / top 5 / legs 0', { palette: 3, hueShift: 0, parts: { hair: 2, hairHue: 0, top: 5, topHue: 0, legs: 0, legsHue: 0 } }],
-      ['hair 5 / top 0 / legs 3', { palette: 1, hueShift: 0, parts: { hair: 5, hairHue: 0, top: 0, topHue: 0, legs: 3, legsHue: 0 } }],
-      ['hair 1 / top 2 / legs 4', { palette: 5, hueShift: 30, parts: { hair: 1, hairHue: 330, top: 2, topHue: 180, legs: 4, legsHue: 0 } }],
+      ['hair 2 / top 5 / legs 0', { palette: 3, hueShift: 0, parts: { hair: 2, hairColor: 0, top: 5, topHue: 0, legs: 0, legsHue: 0 } }],
+      ['hair 5 / top 0 / legs 3', { palette: 1, hueShift: 0, parts: { hair: 5, hairColor: 0, top: 0, topHue: 0, legs: 3, legsHue: 0 } }],
+      ['hair 1 / top 2 / legs 4', { palette: 5, hueShift: 30, parts: { hair: 1, hairColor: 6, top: 2, topHue: 180, legs: 4, legsHue: 0 } }],
     ]
   const DIRS = [['down', 'DOWN'], ['up', 'UP'], ['left', 'LEFT'], ['right', 'RIGHT']]
   const COLS = 8 // walk x4, type x2, read x2
@@ -187,13 +188,15 @@ if (process.argv.includes('--anim')) {
 // A coloured shirt, so the sweep is visible: rotating the hue of a white one changes nothing
 const parts = (over) => ({
   palette: 4, hueShift: 0,
-  parts: { hair: 4, hairHue: 0, top: 5, topHue: 0, legs: 0, legsHue: 0, ...over },
+  parts: { hair: 4, hairColor: 0, top: 5, topHue: 0, legs: 0, legsHue: 0, ...over },
 })
 const HUES = [0, 45, 90, 135, 180, 225]
 const PER_ROW = 10
+const PART_HAIR_COLOR_ROWS = Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW)
 const catalogue = POOL_LAYERS.map((l) => ({ layer: l, n: count(l) }))
-const gridRows = catalogue.reduce((a, b) => a + Math.ceil(b.n / PER_ROW), 0) + 3
-const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + catalogue.length * 26 + 130)
+const gridRows = catalogue.reduce((a, b) => a + Math.ceil(b.n / PER_ROW), 0)
+  + Math.ceil(PART_HAIR_COLOR_ROWS) + 2
+const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + (catalogue.length + 3) * 26 + 130)
 const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
@@ -215,15 +218,22 @@ for (const { layer, n } of catalogue) {
   y += Math.ceil(n / PER_ROW) * CELL_H + 26
 }
 
-for (const [title, key, tag] of [
-  ['hair hue swept - clothes and skin untouched', 'hairHue', 'hair'],
-  ['top hue swept - hair and skin untouched', 'topHue', 'top'],
-]) {
-  label(title, 14, y - 4)
-  HUES.forEach((h, i) => drawLook(x, 96 + i * CELL_W, y, parts({ [key]: h })))
-  label(tag, 14, y + CELL_H / 2)
-  y += CELL_H + 26
-}
+// Every hair colour there is, numbered and named
+label(`hair colours 0-${engine.PART_HAIR_COLORS.length - 1}`, 14, y - 4)
+engine.PART_HAIR_COLORS.forEach((colour, i) => {
+  const px = 96 + (i % PER_ROW) * CELL_W
+  const py = y + Math.floor(i / PER_ROW) * CELL_H
+  drawLook(x, px, py, parts({ hair: 7, hairColor: i }))
+  num(`${i} ${colour.name}`, px + 2, py + CELL_H - 4)
+})
+y += Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW) * CELL_H + 26
+
+label('top hue, in degrees - hair and skin untouched', 14, y - 4)
+HUES.forEach((h, i) => {
+  drawLook(x, 96 + i * CELL_W, y, parts({ topHue: h }))
+  num(String(h), 96 + i * CELL_W + 6, y + CELL_H - 4)
+})
+y += CELL_H + 26
 
 label('names, as the office hashes them', 14, y - 4)
 ;['Pantograph', 'Blommemix', 'TabScreen', 'Oriel', 'Playbook', 'Iacta'].forEach((name, i) =>

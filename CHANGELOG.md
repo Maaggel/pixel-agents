@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.33.1
+
+- Two agents can no longer sit on the same tile. Seats are handed out in several places - meetings, idle zones, restored agents, the toilet - and any one of them getting it wrong puts two characters on one chair, which is unmistakable on screen. Whoever does not hold that seat now gets up and takes a free one, leaving the meeting first if they were in one. It logs `[Seats] N was sitting on top of M at x,y` when it fires, because 66 office minutes of simulation did not reproduce it and the log is what will say where it comes from.
+
 ## v1.33.0
 
 - **One person sees to the plants at a time** (`MAX_CONCURRENT_WATERERS`). Three agents crossing the office with watering cans reads as an obsession rather than an office. Nobody sets off while somebody else is already on the rounds.

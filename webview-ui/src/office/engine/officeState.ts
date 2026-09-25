@@ -2557,6 +2557,37 @@ export class OfficeState {
         }
       }
 
+      // Two people on one chair. Seats are handed out in several places - meetings, idle zones,
+      // restored agents, the toilet - and any one of them getting it wrong puts two characters on
+      // the same tile, which is unmistakable on screen. Whoever does not hold that seat gets up.
+      if (isSittingState(ch.state) && !ch.isRemote) {
+        for (const other of this.characters.values()) {
+          if (other.id === ch.id || other.isRemote || !isSittingState(other.state)) continue
+          if (other.tileCol !== ch.tileCol || other.tileRow !== ch.tileRow) continue
+          const seatHere = ch.seatId ? this.seats.get(ch.seatId) : null
+          const holdsIt = !!seatHere && seatHere.seatCol === ch.tileCol && seatHere.seatRow === ch.tileRow
+          const mover = holdsIt ? other : ch
+          console.log(`[Seats] ${mover.id} was sitting on top of ${mover === ch ? other.id : ch.id} at ${ch.tileCol},${ch.tileRow} - moving them`)
+          if (mover.idleAction === IdleActionType.MEETING) {
+            disengageMeeting(mover, this.buildIdleActionContext())
+            this.meetingOriginalSeats.delete(mover.id)
+          }
+          if (mover.seatId) {
+            const held = this.seats.get(mover.seatId)
+            if (held && !(held.seatCol === mover.tileCol && held.seatRow === mover.tileRow)) break
+            if (held) held.assigned = false
+          }
+          mover.seatId = this.findFreeSeat(mover.tileCol, mover.tileRow)
+          const taken = mover.seatId ? this.seats.get(mover.seatId) : null
+          if (taken) this.assignSeat(taken)
+          mover.state = CharacterState.IDLE
+          mover.idleAction = null
+          mover.frame = 0
+          mover.path = []
+          break
+        }
+      }
+
       // ── Idle Action System ──────────────────────────────────────
       // When a character enters IDLE with no action assigned, pick one from the weighted registry
       if (ch.state === CharacterState.IDLE && ch.idleAction === null && !ch.isActive && !ch.isSubagent && !ch.isRemote) {

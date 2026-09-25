@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.34.0
+
+- **Two agents could be given the same seat, and it was a release-before-check.** `reassignToWeightedIdleZoneSeat` freed the character's current seat *before* checking the new one was still free, and on that early return the character carried on sitting where they were with their seat marked free - so the next thing to hand seats out, a meeting, gave it to somebody who came and sat on top of them. `reassignSeat` had the same shape. Both secure the new seat before letting go of the old.
+- **A booked room is cleared.** Anyone sitting in the meeting room who is not in the meeting gets up and takes a free seat elsewhere when it starts, the way it goes in an office.
+- **A net under all of it:** if two characters are ever on one tile, whoever does not hold that seat stands up and takes another, leaving the meeting first if they were in one. It logs `[Seats] N was sitting on top of M` so the cause is findable.
+- **Every seat pathfound to was left blocked for good.** `withOwnSeatUnblocked` unblocks the caller's seat for a query and put it back unconditionally - harmless when every chair was blocked, but since v1.24.0 only an occupied chair is, so each query walled off another seat tile until the office was carved up. It now restores only what it removed. Over 30 office days: parched plants fall from 15% to **3%**, tidying goes 52 -> 79 and drinks 53 -> 78, all of it work that was quietly being blocked.
+- A claim on a thing - a toilet, a plant, a mug - is released when the action ends, and a claim held by a remote agent (another window's, replayed here) no longer reserves anything locally. A stale claim on the only toilet in the building reserved it for ever.
+
 ## v1.33.1
 
 - Two agents can no longer sit on the same tile. Seats are handed out in several places - meetings, idle zones, restored agents, the toilet - and any one of them getting it wrong puts two characters on one chair, which is unmistakable on screen. Whoever does not hold that seat now gets up and takes a free one, leaving the meeting first if they were in one. It logs `[Seats] N was sitting on top of M at x,y` when it fires, because 66 office minutes of simulation did not reproduce it and the log is what will say where it comes from.

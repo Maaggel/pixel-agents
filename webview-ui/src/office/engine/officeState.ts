@@ -676,9 +676,13 @@ export class OfficeState {
   /** Temporarily unblock a character's own seat, run fn, then re-block */
   private withOwnSeatUnblocked<T>(ch: Character, fn: () => T): T {
     const key = this.ownSeatKey(ch)
-    if (key) this.blockedTiles.delete(key)
+    // Put it back only if it was blocked to begin with. Chairs are not blocked by default any
+    // more - only the one someone is sitting on is - so re-adding unconditionally left every
+    // seat that had ever been pathfound to blocked for good, which quietly walls the office up.
+    const wasBlocked = key !== null && this.blockedTiles.has(key)
+    if (wasBlocked) this.blockedTiles.delete(key!)
     const result = fn()
-    if (key) this.blockedTiles.add(key)
+    if (wasBlocked) this.blockedTiles.add(key!)
     return result
   }
 
@@ -932,6 +936,33 @@ export class OfficeState {
 
     // Distribute seats across facing directions so participants sit across from each other
     const distributedSeats = this.distributeMeetingSeats(freeSeats, participants.length)
+
+    // Anyone sitting in the room who is not in the meeting gives it up, the way a booked room is
+    // cleared when the meeting is about to start. It also means a stray seat handed out twice
+    // cannot leave somebody sitting under a participant.
+    const meetingSeatTiles = new Set<string>()
+    for (const uid of distributedSeats) {
+      const seat = this.seats.get(uid)
+      if (seat) meetingSeatTiles.add(`${seat.seatCol},${seat.seatRow}`)
+    }
+    for (const other of this.characters.values()) {
+      if (other.isRemote || participants.includes(other)) continue
+      if (!isSittingState(other.state)) continue
+      if (!meetingSeatTiles.has(`${other.tileCol},${other.tileRow}`)) continue
+      if (other.seatId) {
+        const held = this.seats.get(other.seatId)
+        if (held) held.assigned = false
+      }
+      other.seatId = this.findFreeSeat(other.tileCol, other.tileRow)
+      const taken = other.seatId ? this.seats.get(other.seatId) : null
+      if (taken) this.assignSeat(taken)
+      other.state = CharacterState.IDLE
+      other.idleAction = null
+      other.sitPose = null
+      other.frame = 0
+      other.path = []
+      console.log(`[Meeting] ${other.id} was sitting in the room and is not in the meeting - moved out`)
+    }
 
     // Assign a unique meeting group ID so multiple meetings can coexist
     const meetingGroupId = this.nextMeetingGroupId++
@@ -1444,14 +1475,14 @@ export class OfficeState {
   reassignSeat(agentId: number, seatId: string): void {
     const ch = this.characters.get(agentId)
     if (!ch) return
-    // Unassign old seat
+    // The new seat first: releasing the old one and then bailing out would leave them sitting on
+    // a seat marked free, which the next meeting will hand to somebody else
+    const seat = this.seats.get(seatId)
+    if (!seat || seat.assigned) return
     if (ch.seatId) {
       const old = this.seats.get(ch.seatId)
       if (old) old.assigned = false
     }
-    // Assign new seat
-    const seat = this.seats.get(seatId)
-    if (!seat || seat.assigned) return
     this.assignSeat(seat)
     ch.seatId = seatId
     // Pathfind to new seat (unblock own seat tile for this query)
@@ -1834,12 +1865,15 @@ export class OfficeState {
     const newSeatId = this.findWeightedIdleZoneSeat(ch.seatId)
     if (!newSeatId || newSeatId === ch.seatId) return
 
+    // Secure the new seat before letting go of the old one. Freeing first and then bailing out
+    // leaves the character sitting on a seat marked free, and the next thing to hand seats out -
+    // a meeting, usually - gives it to somebody else, who comes and sits on top of them.
+    const seat = this.seats.get(newSeatId)
+    if (!seat || seat.assigned) return
     if (ch.seatId) {
       const old = this.seats.get(ch.seatId)
       if (old) old.assigned = false
     }
-    const seat = this.seats.get(newSeatId)
-    if (!seat || seat.assigned) return
     this.assignSeat(seat)
     ch.seatId = newSeatId
   }

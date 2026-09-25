@@ -1457,9 +1457,16 @@ function updateEating(ch: Character, dt: number, ctx: IdleActionContext): boolea
 /** Clear idle action state and prepare character to return to seat */
 /** Toilets nobody is using and nobody else is on their way to. */
 function findFreeToilets(ch: Character, ctx: IdleActionContext): PlacedFurniture[] {
+  // Only somebody actually on their way counts as having claimed it: a stale claim left by an
+  // interrupted visit would reserve the only toilet in the building for ever.
   const taken = new Set<string>()
   for (const other of ctx.characters.values()) {
-    if (other.id !== ch.id && other.itemTargetUid) taken.add(other.itemTargetUid)
+    // Remote agents are somebody else's window replayed here; their actions run over there, so a
+    // claim of theirs must not reserve this office's only toilet.
+    if (other.isRemote) continue
+    if (other.id !== ch.id && other.itemTargetUid && other.idleAction === IdleActionType.USE_TOILET) {
+      taken.add(other.itemTargetUid)
+    }
   }
   const free: PlacedFurniture[] = []
   for (const f of ctx.furniture) {
@@ -1597,6 +1604,9 @@ function clearIdleAction(ch: Character): void {
   ch.conversationPhase = null
   ch.idleActionTimer = 0
   ch.fetchOriginUid = null
+  // Whatever they had claimed - a toilet, a plant, a stray mug - is released with the action.
+  // A claim that outlives its action reserves that thing for good and nobody can use it again.
+  ch.itemTargetUid = null
   ch.meetingGroupId = null
   ch.currentTool = null
   // Don't clear bubbleType here - let it fade naturally or get cleared by the caller

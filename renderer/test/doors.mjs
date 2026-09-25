@@ -108,6 +108,7 @@ ws.onmessage = async (e) => {
     c.idleAction = null
     c.isActive = false
     c.matrixEffect = null
+    c.itemTargetUid = null // frozen mid-action, they would hold a claim on things for ever
   }
   office.tick(0.1)
 
@@ -183,6 +184,7 @@ ws.onmessage = async (e) => {
   // 4. Sitting on the toilet shuts and locks the room.
   const sitter = frozen[0] ?? ch
   sitter.isRemote = false
+  const ownSeatOfSitter = sitter.seatId
   // keep everyone else well clear, or the lock politely waits for them to leave
   for (const other of dbg.characters()) {
     if (other.id === sitter.id) continue
@@ -190,7 +192,28 @@ ws.onmessage = async (e) => {
     other.tileRow = outside.row + 4
     other.path = []
   }
-  dbg.sit(sitter.id, placed.uid, placed.col, placed.row)
+  // Start them inside the room, a step from the toilet: this is testing the lock, not how long a
+  // walk across the office takes, and a walk that does not finish in the window is just a flake.
+  sitter.tileCol = placed.col
+  sitter.tileRow = placed.row + 1
+  sitter.x = sitter.tileCol * 16 + 8
+  sitter.y = sitter.tileRow * 16 + 8
+  sitter.path = []
+  sitter.state = 'idle'
+  sitter.idleAction = null
+
+  // A real visit, not a seat handed over: sitting someone on the toilet directly is undone by the
+  // engine's own guard that nobody keeps a toilet as their seat.
+  sitter.isActive = false
+  let onLoo = false
+  for (let a = 0; a < 8 && !onLoo; a++) {
+    if (!dbg.startIdle(sitter.id, 'use_toilet')) { office.tick(0.5); continue }
+    for (let i = 0; i < 900 && !onLoo; i++) {
+      office.tick(0.1)
+      const c = dbg.characters().find((x) => x.id === sitter.id)
+      onLoo = c.tileCol === placed.col && c.tileRow === placed.row && String(c.state).startsWith('sit')
+    }
+  }
   office.tick(0.1)
   const locked = door()
   check(locked.locked && !locked.open, 'the door shuts and locks while the toilet is in use', JSON.stringify(locked))
@@ -231,7 +254,8 @@ ws.onmessage = async (e) => {
 
   // 7. Standing up lets it go again.
   sitter.state = 'idle'
-  sitter.seatId = null
+  sitter.idleAction = null
+  sitter.seatId = ownSeatOfSitter
   office.tick(0.1)
   check(!door().locked, 'the lock lifts when they leave the seat')
   if (sign && signTile !== undefined) {

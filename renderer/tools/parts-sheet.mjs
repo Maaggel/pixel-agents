@@ -11,7 +11,7 @@
 // The sheet shows every hairstyle on every body, then hair, clothes and skin varied one at a time.
 // The anim sheet is the one that catches a bad cut: a seam only the walk or the side view shows.
 import { createCanvas, loadImage } from '@napi-rs/canvas'
-import { writeFileSync, mkdirSync, rmSync } from 'fs'
+import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -64,16 +64,29 @@ function toFrames(data, width) {
   return out
 }
 
-const characters = []
-for (let i = 0; i < 6; i++) {
-  const img = await loadImage(`${SRC}/char_${i}.png`)
+async function sheet(path) {
+  const img = await loadImage(path)
   const c = createCanvas(img.width, img.height)
   const g = c.getContext('2d')
   g.imageSmoothingEnabled = false
   g.drawImage(img, 0, 0)
-  characters.push(toFrames(g.getImageData(0, 0, img.width, img.height).data, img.width))
+  return toFrames(g.getImageData(0, 0, img.width, img.height).data, img.width)
 }
-engine.setCharacterTemplates(characters)
+
+const characters = []
+for (let i = 0; i < 6; i++) characters.push(await sheet(`${SRC}/char_${i}.png`))
+
+// The part files, read the way the extension and the relay read them
+const pools = {}
+for (const layer of POOL_LAYERS) {
+  const sheets = []
+  for (let n = 0; existsSync(`${SRC}/parts/${layer}_${n}.png`); n++) {
+    sheets.push(await sheet(`${SRC}/parts/${layer}_${n}.png`))
+  }
+  if (sheets.length > 0) pools[layer] = sheets
+}
+engine.setCharacterTemplates(characters, pools)
+const count = (layer) => pools[layer]?.length ?? characters.length
 
 if (WRITE_DIR) {
   mkdirSync(WRITE_DIR, { recursive: true })
@@ -122,11 +135,17 @@ function drawLook(ctx, px, py, look) {
 function animSheet() {
   const A = 6
   const CW = FW * A + 6, CH = FH * A + 6
-  const looks = [
-    ['hair 2 / top 5 / legs 0', { palette: 3, hueShift: 0, parts: { hair: 2, hairHue: 0, top: 5, topHue: 0, legs: 0, legsHue: 0 } }],
-    ['hair 5 / top 0 / legs 3', { palette: 1, hueShift: 0, parts: { hair: 5, hairHue: 0, top: 0, topHue: 0, legs: 3, legsHue: 0 } }],
-    ['hair 1 / top 2 / legs 4', { palette: 5, hueShift: 30, parts: { hair: 1, hairHue: 330, top: 2, topHue: 180, legs: 4, legsHue: 0 } }],
-  ]
+  const pick = process.argv.indexOf('--look')
+  const looks = pick >= 0
+    ? [[process.argv[pick + 1], (() => {
+        const [hair, top, legs, palette] = process.argv[pick + 1].split(',').map(Number)
+        return { palette, hueShift: 0, parts: { hair, hairHue: 0, top, topHue: 0, legs, legsHue: 0 } }
+      })()]]
+    : [
+      ['hair 2 / top 5 / legs 0', { palette: 3, hueShift: 0, parts: { hair: 2, hairHue: 0, top: 5, topHue: 0, legs: 0, legsHue: 0 } }],
+      ['hair 5 / top 0 / legs 3', { palette: 1, hueShift: 0, parts: { hair: 5, hairHue: 0, top: 0, topHue: 0, legs: 3, legsHue: 0 } }],
+      ['hair 1 / top 2 / legs 4', { palette: 5, hueShift: 30, parts: { hair: 1, hairHue: 330, top: 2, topHue: 180, legs: 4, legsHue: 0 } }],
+    ]
   const DIRS = [['down', 'DOWN'], ['up', 'UP'], ['left', 'LEFT'], ['right', 'RIGHT']]
   const COLS = 8 // walk x4, type x2, read x2
   const c = createCanvas(COLS * CW + 120, looks.length * (4 * CH + 34) + 30)
@@ -170,38 +189,45 @@ const parts = (over) => ({
   parts: { hair: 4, hairHue: 0, top: 5, topHue: 0, legs: 0, legsHue: 0, ...over },
 })
 const HUES = [0, 45, 90, 135, 180, 225]
-const c = createCanvas(6 * CELL_W + 100, 10 * CELL_H + 110)
+const PER_ROW = 10
+const catalogue = POOL_LAYERS.map((l) => ({ layer: l, n: count(l) }))
+const gridRows = catalogue.reduce((a, b) => a + Math.ceil(b.n / PER_ROW), 0) + 3
+const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + catalogue.length * 26 + 130)
 const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
 x.fillRect(0, 0, c.width, c.height)
 x.font = 'bold 12px sans-serif'
 const label = (t, px, py) => { x.fillStyle = '#cfcfe4'; x.fillText(t, px, py) }
+const num = (t, px, py) => { x.fillStyle = '#7f7f99'; x.fillText(t, px, py) }
 
-label('every hairstyle (down) on every body (across)', 14, 18)
-for (let hair = 0; hair < 6; hair++) {
-  for (let body = 0; body < 6; body++) {
-    drawLook(x, 96 + body * CELL_W, 26 + hair * CELL_H,
-      { palette: body, hueShift: 0, parts: { hair, hairHue: 0, top: body, topHue: 0, legs: body, legsHue: 0 } })
+// The catalogue: every part there is, numbered, on one unchanging body
+let y = 22
+for (const { layer, n } of catalogue) {
+  label(`${layer} 0-${n - 1}`, 14, y - 4)
+  for (let i = 0; i < n; i++) {
+    const px = 96 + (i % PER_ROW) * CELL_W
+    const py = y + Math.floor(i / PER_ROW) * CELL_H
+    drawLook(x, px, py, parts({ [layer]: i }))
+    num(String(i), px + 6, py + CELL_H - 4)
   }
-  label(`hair ${hair}`, 14, 26 + hair * CELL_H + CELL_H / 2)
+  y += Math.ceil(n / PER_ROW) * CELL_H + 26
 }
 
-let y = 26 + 6 * CELL_H + 24
 for (const [title, key, tag] of [
   ['hair hue swept - clothes and skin untouched', 'hairHue', 'hair'],
   ['top hue swept - hair and skin untouched', 'topHue', 'top'],
 ]) {
-  label(title, 14, y - 6)
+  label(title, 14, y - 4)
   HUES.forEach((h, i) => drawLook(x, 96 + i * CELL_W, y, parts({ [key]: h })))
   label(tag, 14, y + CELL_H / 2)
-  y += CELL_H + 24
+  y += CELL_H + 26
 }
 
-label('names, as the office would hash them', 14, y - 6)
+label('names, as the office hashes them', 14, y - 4)
 ;['Pantograph', 'Blommemix', 'TabScreen', 'Oriel', 'Playbook', 'Iacta'].forEach((name, i) =>
   drawLook(x, 96 + i * CELL_W, y, engine.lookFromName(name)))
 label('by name', 14, y + CELL_H / 2)
 
 writeFileSync(OUT, c.toBuffer('image/png'))
-console.log(`wrote ${OUT}`)
+console.log(`wrote ${OUT}: ${catalogue.map((b) => `${b.n} ${b.layer}`).join(', ')}`)

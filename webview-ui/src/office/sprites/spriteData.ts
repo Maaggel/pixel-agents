@@ -12,7 +12,7 @@ const _ = '' // transparent
 
 // ── Furniture Sprites ───────────────────────────────────────────
 
-/** Square desk: 32x32 pixels (2x2 tiles) — top-down wood surface */
+/** Square desk: 32x32 pixels (2x2 tiles) - top-down wood surface */
 export const DESK_SQUARE_SPRITE: SpriteData = (() => {
   const W = '#8B6914' // wood edge
   const L = '#A07828' // lighter wood
@@ -172,7 +172,7 @@ export const COOLER_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Whiteboard: 32x16 (2 tiles wide, 1 tile tall) — hangs on wall */
+/** Whiteboard: 32x16 (2 tiles wide, 1 tile tall) - hangs on wall */
 export const WHITEBOARD_SPRITE: SpriteData = (() => {
   const F = '#AAAAAA'
   const W = '#EEEEFF'
@@ -198,7 +198,7 @@ export const WHITEBOARD_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Chair: 16x16 — top-down desk chair */
+/** Chair: 16x16 - top-down desk chair */
 export const CHAIR_SPRITE: SpriteData = (() => {
   const W = '#8B6914'
   const D = '#6B4E0A'
@@ -224,7 +224,7 @@ export const CHAIR_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** PC monitor: 16x16 — top-down monitor on stand */
+/** PC monitor: 16x16 - top-down monitor on stand */
 export const PC_SPRITE: SpriteData = (() => {
   const F = '#555555'
   const S = '#3A3A5C'
@@ -250,7 +250,7 @@ export const PC_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Desk lamp: 16x16 — top-down lamp with light cone */
+/** Desk lamp: 16x16 - top-down lamp with light cone */
 export const LAMP_SPRITE: SpriteData = (() => {
   const Y = '#FFDD55'
   const L = '#FFEE88'
@@ -549,7 +549,7 @@ export const BUBBLE_TOOL_INSTALL: SpriteData = (() => {
   ])
 })()
 
-/** Default working bubble: gear/cog icon — used for unknown tools and active-no-tool states (11x13) */
+/** Default working bubble: gear/cog icon - used for unknown tools and active-no-tool states (11x13) */
 export const BUBBLE_WORKING_SPRITE: SpriteData = (() => {
   const B = '#555566' // border
   const F = '#EEEEFF' // fill
@@ -612,7 +612,7 @@ export const BUBBLE_THINKING_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: smiley face (11x13) — softer green tint */
+/** Idle chat bubble: smiley face (11x13) - softer green tint */
 const BUBBLE_IDLE_CHAT_SMILEY: SpriteData = (() => {
   const B = '#557766'
   const F = '#E8F5E9'
@@ -635,7 +635,7 @@ const BUBBLE_IDLE_CHAT_SMILEY: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: heart (11x13) — soft pink tint */
+/** Idle chat bubble: heart (11x13) - soft pink tint */
 const BUBBLE_IDLE_CHAT_HEART: SpriteData = (() => {
   const B = '#775566'
   const F = '#FDE8F0'
@@ -657,7 +657,7 @@ const BUBBLE_IDLE_CHAT_HEART: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: star (11x13) — warm yellow tint */
+/** Idle chat bubble: star (11x13) - warm yellow tint */
 const BUBBLE_IDLE_CHAT_STAR: SpriteData = (() => {
   const B = '#776644'
   const F = '#FFF8E1'
@@ -679,7 +679,7 @@ const BUBBLE_IDLE_CHAT_STAR: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: music note (11x13) — soft blue tint */
+/** Idle chat bubble: music note (11x13) - soft blue tint */
 const BUBBLE_IDLE_CHAT_MUSIC: SpriteData = (() => {
   const B = '#445577'
   const F = '#E3F2FD'
@@ -701,7 +701,7 @@ const BUBBLE_IDLE_CHAT_MUSIC: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: lightning bolt (11x13) — soft orange tint */
+/** Idle chat bubble: lightning bolt (11x13) - soft orange tint */
 const BUBBLE_IDLE_CHAT_LIGHTNING: SpriteData = (() => {
   const B = '#776644'
   const F = '#FFF3E0'
@@ -723,7 +723,7 @@ const BUBBLE_IDLE_CHAT_LIGHTNING: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: question mark (11x13) — soft purple tint */
+/** Idle chat bubble: question mark (11x13) - soft purple tint */
 const BUBBLE_IDLE_CHAT_QUESTION: SpriteData = (() => {
   const B = '#665577'
   const F = '#F3E5F5'
@@ -745,7 +745,7 @@ const BUBBLE_IDLE_CHAT_QUESTION: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: thumbs up (11x13) — soft teal tint */
+/** Idle chat bubble: thumbs up (11x13) - soft teal tint */
 const BUBBLE_IDLE_CHAT_THUMBSUP: SpriteData = (() => {
   const B = '#446666'
   const F = '#E0F2F1'
@@ -767,7 +767,7 @@ const BUBBLE_IDLE_CHAT_THUMBSUP: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: coffee cup (11x13) — warm brown tint */
+/** Idle chat bubble: coffee cup (11x13) - warm brown tint */
 const BUBBLE_IDLE_CHAT_COFFEE: SpriteData = (() => {
   const B = '#665544'
   const F = '#EFEBE9'
@@ -790,7 +790,7 @@ const BUBBLE_IDLE_CHAT_COFFEE: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: sun (11x13) — bright yellow tint */
+/** Idle chat bubble: sun (11x13) - bright yellow tint */
 const BUBBLE_IDLE_CHAT_SUN: SpriteData = (() => {
   const B = '#887744'
   const F = '#FFFDE7'
@@ -813,7 +813,7 @@ const BUBBLE_IDLE_CHAT_SUN: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: fire (11x13) — warm red-orange tint */
+/** Idle chat bubble: fire (11x13) - warm red-orange tint */
 const BUBBLE_IDLE_CHAT_FIRE: SpriteData = (() => {
   const B = '#774433'
   const F = '#FBE9E7'
@@ -837,7 +837,7 @@ const BUBBLE_IDLE_CHAT_FIRE: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: light bulb (11x13) — soft yellow tint */
+/** Idle chat bubble: light bulb (11x13) - soft yellow tint */
 const BUBBLE_IDLE_CHAT_BULB: SpriteData = (() => {
   const B = '#776644'
   const F = '#FFFDE7'
@@ -860,7 +860,7 @@ const BUBBLE_IDLE_CHAT_BULB: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: diamond gem (11x13) — soft cyan tint */
+/** Idle chat bubble: diamond gem (11x13) - soft cyan tint */
 const BUBBLE_IDLE_CHAT_DIAMOND: SpriteData = (() => {
   const B = '#446677'
   const F = '#E0F7FA'
@@ -883,7 +883,7 @@ const BUBBLE_IDLE_CHAT_DIAMOND: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: flower (11x13) — soft pink-green tint */
+/** Idle chat bubble: flower (11x13) - soft pink-green tint */
 const BUBBLE_IDLE_CHAT_FLOWER: SpriteData = (() => {
   const B = '#667755'
   const F = '#F1F8E9'
@@ -907,7 +907,7 @@ const BUBBLE_IDLE_CHAT_FLOWER: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: laughing face (XD) (11x13) — warm green tint */
+/** Idle chat bubble: laughing face (XD) (11x13) - warm green tint */
 const BUBBLE_IDLE_CHAT_LAUGH: SpriteData = (() => {
   const B = '#557766'
   const F = '#E8F5E9'
@@ -930,7 +930,7 @@ const BUBBLE_IDLE_CHAT_LAUGH: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: winking face (11x13) — soft blue-green tint */
+/** Idle chat bubble: winking face (11x13) - soft blue-green tint */
 const BUBBLE_IDLE_CHAT_WINK: SpriteData = (() => {
   const B = '#557766'
   const F = '#E8F5E9'
@@ -953,7 +953,7 @@ const BUBBLE_IDLE_CHAT_WINK: SpriteData = (() => {
   ]
 })()
 
-/** Idle chat bubble: exclamation marks (!!) (11x13) — soft red tint */
+/** Idle chat bubble: exclamation marks (!!) (11x13) - soft red tint */
 const BUBBLE_IDLE_CHAT_EXCLAIM: SpriteData = (() => {
   const B = '#775555'
   const F = '#FFEBEE'
@@ -998,7 +998,7 @@ export const IDLE_CHAT_BUBBLE_VARIANTS: SpriteData[] = [
 /** @deprecated Use IDLE_CHAT_BUBBLE_VARIANTS instead */
 export const BUBBLE_IDLE_CHAT_SPRITE: SpriteData = BUBBLE_IDLE_CHAT_SMILEY
 
-/** Idle think bubble: thought cloud with exclamation mark icon (11x14) — warm yellow tint */
+/** Idle think bubble: thought cloud with exclamation mark icon (11x14) - warm yellow tint */
 export const BUBBLE_IDLE_THINK_SPRITE: SpriteData = (() => {
   const B = '#887755' // warm border
   const F = '#FFF8E1' // warm cream fill
@@ -1021,7 +1021,7 @@ export const BUBBLE_IDLE_THINK_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Idle eat bubble: fork and knife silhouette (11x13) — warm orange tint */
+/** Idle eat bubble: fork and knife silhouette (11x13) - warm orange tint */
 export const BUBBLE_IDLE_EAT_SPRITE: SpriteData = (() => {
   const B = '#886644' // warm border
   const F = '#FFF3E0' // warm cream fill
@@ -1043,7 +1043,7 @@ export const BUBBLE_IDLE_EAT_SPRITE: SpriteData = (() => {
   ]
 })()
 
-/** Idle tidy bubble: broom (11x13) — cool tint */
+/** Idle tidy bubble: broom (11x13) - cool tint */
 export const BUBBLE_IDLE_TIDY_SPRITE: SpriteData = (() => {
   const B = '#556688' // cool border
   const F = '#EEF3FF' // cool fill
@@ -1067,7 +1067,7 @@ export const BUBBLE_IDLE_TIDY_SPRITE: SpriteData = (() => {
 })()
 
 /**
- * Bubble showing an arbitrary (cropped) item sprite — used while a character
+ * Bubble showing an arbitrary (cropped) item sprite - used while a character
  * is off to fetch a utensil. Frame grows with the item; cached per item sprite.
  */
 const itemBubbleCache = new WeakMap<SpriteData, SpriteData>()

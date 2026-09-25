@@ -31,6 +31,17 @@ const readVersion = () => {
  * they take over a minute to come back.
  */
 let VERSION = readVersion()
+/**
+ * The version on disk right now, for the two places that report it. Recomputing the build id also
+ * refreshes VERSION, but only when index.html has changed, and it does so part-way through - so
+ * whichever of these ran first answered with the previous version. Harmless once for /api/build;
+ * not harmless for the stream, where the tablet is told once and keeps the answer for the whole
+ * connection.
+ */
+function reportedVersion() {
+  VERSION = readVersion()
+  return VERSION
+}
 /** The build the currently connected tablets were told about when their stream opened */
 let streamVersion = VERSION
 const WEBVIEW_DIST = join(PROJECT_ROOT, 'dist', 'webview')
@@ -1234,7 +1245,7 @@ const server = createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       // what the tablet is looking at, so its status line can say so without a protocol change
-      'X-Pixel-Agents-Version': VERSION,
+      'X-Pixel-Agents-Version': reportedVersion(),
       'Cache-Control': 'no-cache, no-store',
       'X-Accel-Buffering': 'no',
       'Connection': 'keep-alive',
@@ -1313,7 +1324,7 @@ const server = createServer((req, res) => {
 
   if (pathname === '/api/build' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-    res.end(JSON.stringify({ version: VERSION, buildId: currentBuildId(), viewers: viewers.size, publishers: publishers.size }))
+    res.end(JSON.stringify({ version: reportedVersion(), buildId: currentBuildId(), viewers: viewers.size, publishers: publishers.size }))
     return
   }
   if (pathname === '/api/reload' && req.method === 'POST') {

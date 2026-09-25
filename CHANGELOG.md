@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.35.2
+
+- The version the relay reports is read when it is asked, not when the build id was last recomputed. Refreshing it was a side effect of recomputing that id, and happened part-way through building the answer, so the first request after a deploy still gave the old version - and a tablet, told the version once in the headers that open its stream, could keep the old one for the whole connection.
+
 ## v1.35.1
 
 - The version the relay reports lagged a deploy behind. It recomputes the build id the first time it is asked after index.html changes, reading package.json as it goes, and caches it until index.html changes again - but the deploy uploaded package.json afterwards, so the first request in between baked the old version in. package.json goes up first now.

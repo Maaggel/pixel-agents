@@ -1,6 +1,7 @@
 import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction, TileType, ZoneType as ZoneTypeValues } from '../types.js'
 import type { ZoneType } from '../types.js'
-import { resolveLook, setLookOverride } from '../lookFromName.js'
+import { resolveLook, setLookOverride, legacyLook, randomParts } from '../lookFromName.js'
+import type { CharacterLook } from '../lookFromName.js'
 import {
   MAX_PROPS,
   DESK_SPOT_SEARCH_TILES,
@@ -1302,7 +1303,7 @@ export class OfficeState {
    * First 6 agents each get a unique skin (random order). Beyond 6, skins
    * repeat in balanced rounds with a random hue shift (≥45°).
    */
-  private pickDiversePalette(): { palette: number; hueShift: number } {
+  private pickDiverseLook(): CharacterLook {
     // Count how many non-sub-agents use each base palette (0-5)
     const counts = new Array(PALETTE_COUNT).fill(0) as number[]
     for (const ch of this.characters.values()) {
@@ -1321,7 +1322,7 @@ export class OfficeState {
     if (minCount > 0) {
       hueShift = HUE_SHIFT_MIN_DEG + Math.floor(Math.random() * HUE_SHIFT_RANGE_DEG)
     }
-    return { palette, hueShift }
+    return { palette, hueShift, parts: randomParts() }
   }
 
   addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string, isRemote?: boolean, projectName?: string): void {
@@ -1341,20 +1342,15 @@ export class OfficeState {
       nametag = mainCount === 0 ? `${prefix} Main` : `${prefix} #${mainCount + 1}`
     }
 
-    let palette: number
-    let hueShift: number
-    if (preferredPalette !== undefined) {
-      palette = preferredPalette
-      hueShift = preferredHueShift ?? 0
-    } else {
-      const look = resolveLook(nametag)
-      palette = look.palette
-      hueShift = look.hueShift
-    }
+    // An explicit look from the backend names one of the six characters outright, so it stays a
+    // whole-character look; otherwise the name decides the parts as well as the skin.
+    const look = preferredPalette !== undefined
+      ? legacyLook(preferredPalette, preferredHueShift ?? 0)
+      : resolveLook(nametag)
 
     // Remote agents: position controlled by source window via sync
     if (isRemote) {
-      const ch = createCharacter(id, palette, null, null, hueShift)
+      const ch = createCharacter(id, look, null, null)
       ch.isRemote = true
       ch.nametag = nametag
       if (folderName) ch.folderName = folderName
@@ -1417,13 +1413,13 @@ export class OfficeState {
     if (seatId) {
       const seat = this.seats.get(seatId)!
       this.assignSeat(seat)
-      ch = createCharacter(id, palette, seatId, seat, hueShift)
+      ch = createCharacter(id, look, seatId, seat)
     } else {
       // No seats - spawn at random walkable tile
       const spawn = this.walkableTiles.length > 0
         ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
         : { col: 1, row: 1 }
-      ch = createCharacter(id, palette, null, null, hueShift)
+      ch = createCharacter(id, look, null, null)
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
@@ -1568,7 +1564,7 @@ export class OfficeState {
 
     const id = this.nextSubagentId--
     const parentCh = this.characters.get(parentAgentId)
-    const { palette, hueShift } = this.pickDiversePalette()
+    const look = this.pickDiverseLook()
 
     // Find the free seat closest to the parent agent, preferring meeting room zones
     const parentCol = parentCh ? parentCh.tileCol : 0
@@ -1603,7 +1599,7 @@ export class OfficeState {
     if (bestSeatId) {
       const seat = this.seats.get(bestSeatId)!
       this.assignSeat(seat)
-      ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
+      ch = createCharacter(id, look, bestSeatId, seat)
     } else {
       // No seats - spawn at closest walkable tile to parent
       let spawn = { col: 1, row: 1 }
@@ -1619,7 +1615,7 @@ export class OfficeState {
         }
         spawn = closest
       }
-      ch = createCharacter(id, palette, null, null, hueShift)
+      ch = createCharacter(id, look, null, null)
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
@@ -1714,15 +1710,16 @@ export class OfficeState {
     return this.subagentIdMap.get(`${parentAgentId}:${parentToolId}`) ?? null
   }
 
-  /** Randomize a character's palette and hue shift */
+  /** Deal a character a fresh set of parts, hair to shoes */
   shuffleAgentLook(id: number): void {
     const ch = this.characters.get(id)
     if (!ch) return
-    const { palette, hueShift } = this.pickDiversePalette()
-    ch.palette = palette
-    ch.hueShift = hueShift
+    const look = this.pickDiverseLook()
+    ch.look = look
+    ch.palette = look.palette
+    ch.hueShift = look.hueShift
     // Remember the chosen look for this name so it survives respawns and reloads
-    if (ch.nametag) setLookOverride(ch.nametag, { palette, hueShift })
+    if (ch.nametag) setLookOverride(ch.nametag, look)
   }
 
   setAgentActive(id: number, active: boolean): void {

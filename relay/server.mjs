@@ -73,37 +73,63 @@ function pngToSpriteData(buffer, width, height, preserveAlpha) {
 }
 
 // ── Asset loading ───────────────────────────────────────────
+/** Read one 112x96 character-shaped sheet: 3 direction rows x 7 frames of 16x32. */
+function readCharacterSheet(fp) {
+  const DIRECTIONS = ['down', 'up', 'right']
+  const FRAME_W = 16, FRAME_H = 32, FRAMES = 7
+  const png = PNG.sync.read(readFileSync(fp))
+  const charData = { down: [], up: [], right: [] }
+  for (let di = 0; di < 3; di++) {
+    const frames = []
+    for (let f = 0; f < FRAMES; f++) {
+      const sprite = []
+      for (let y = 0; y < FRAME_H; y++) {
+        const row = []
+        for (let x = 0; x < FRAME_W; x++) {
+          const idx = ((di * FRAME_H + y) * png.width + (f * FRAME_W + x)) * 4
+          const r = png.data[idx], g = png.data[idx + 1], b = png.data[idx + 2], a = png.data[idx + 3]
+          if (a < PNG_ALPHA_THRESHOLD) row.push('')
+          else row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase())
+        }
+        sprite.push(row)
+      }
+      frames.push(sprite)
+    }
+    charData[DIRECTIONS[di]] = frames
+  }
+  return charData
+}
+
 function loadCharacterSprites() {
   const charDir = join(ASSETS_ROOT, 'assets', 'characters')
   const characters = []
-  const DIRECTIONS = ['down', 'up', 'right']
-  const FRAME_W = 16, FRAME_H = 32, FRAMES = 7
   for (let ci = 0; ci < 6; ci++) {
     const fp = join(charDir, `char_${ci}.png`)
     if (!existsSync(fp)) return null
-    const png = PNG.sync.read(readFileSync(fp))
-    const charData = { down: [], up: [], right: [] }
-    for (let di = 0; di < 3; di++) {
-      const frames = []
-      for (let f = 0; f < FRAMES; f++) {
-        const sprite = []
-        for (let y = 0; y < FRAME_H; y++) {
-          const row = []
-          for (let x = 0; x < FRAME_W; x++) {
-            const idx = ((di * FRAME_H + y) * png.width + (f * FRAME_W + x)) * 4
-            const r = png.data[idx], g = png.data[idx + 1], b = png.data[idx + 2], a = png.data[idx + 3]
-            if (a < PNG_ALPHA_THRESHOLD) row.push('')
-            else row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase())
-          }
-          sprite.push(row)
-        }
-        frames.push(sprite)
-      }
-      charData[DIRECTIONS[di]] = frames
-    }
-    characters.push(charData)
+    characters.push(readCharacterSheet(fp))
   }
   return characters
+}
+
+/**
+ * Parts drawn on their own, in assets/characters/parts/ as <layer>_<n>.png. A layer with files uses
+ * them as its whole pool; a layer with none is cut out of the six characters instead. Kept in step
+ * with loadLooseParts in src/assetLoader.ts - the relay loads its own assets.
+ */
+function loadCharacterParts() {
+  const partsDir = join(ASSETS_ROOT, 'assets', 'characters', 'parts')
+  const out = {}
+  if (!existsSync(partsDir)) return out
+  for (const layer of ['hair', 'top', 'legs']) {
+    const sheets = []
+    for (let n = 0; ; n++) {
+      const fp = join(partsDir, `${layer}_${n}.png`)
+      if (!existsSync(fp)) break
+      sheets.push(readCharacterSheet(fp))
+    }
+    if (sheets.length > 0) out[layer] = sheets
+  }
+  return out
 }
 
 function loadFloorTiles() {
@@ -367,6 +393,7 @@ function currentBuildId() {
 // ── Pre-load assets at startup ──────────────────────────────
 console.log('Loading assets...')
 const cachedCharacters = loadCharacterSprites()
+const cachedCharacterParts = loadCharacterParts()
 const cachedFloors = loadFloorTiles()
 const cachedWalls = loadWallTiles()
 const cachedFurniture = loadFurnitureAssets()
@@ -817,7 +844,7 @@ function connectRelay() {
       const msg = JSON.parse(e.data);
       if (msg.type === 'init') {
         if (reloadForBuild(msg.buildId, 'relay has build ' + msg.buildId)) return;
-        if (msg.characters) dispatch({ type: 'characterSpritesLoaded', characters: msg.characters });
+        if (msg.characters) dispatch({ type: 'characterSpritesLoaded', characters: msg.characters, parts: msg.characterParts });
         if (msg.floors) dispatch({ type: 'floorTilesLoaded', sprites: msg.floors });
         if (msg.walls) dispatch({ type: 'wallTilesLoaded', sprites: msg.walls });
         if (msg.furniture) dispatch({ type: 'furnitureAssetsLoaded', catalog: msg.furniture.catalog, sprites: msg.furniture.sprites });
@@ -1493,6 +1520,7 @@ wss.on('connection', (ws, req) => {
       type: 'init',
       buildId: currentBuildId(),
       characters: cachedCharacters,
+      characterParts: cachedCharacterParts,
       floors: cachedFloors,
       walls: cachedWalls,
       furniture: cachedFurniture,

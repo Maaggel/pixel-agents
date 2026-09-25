@@ -1,6 +1,10 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
 import { adjustSprite } from '../colorize.js'
+import type { CharacterLook } from '../lookFromName.js'
+import { lookKey } from '../lookFromName.js'
+import type { CharacterFrames, CharacterLayer } from './characterParts.js'
+import { splitCharacters, composeParts } from './characterParts.js'
 
 // ── Color Palettes ──────────────────────────────────────────────
 const _ = '' // transparent
@@ -1768,19 +1772,60 @@ export const CHARACTER_TEMPLATES = {
 // Loaded character sprites (from PNG assets)
 // ════════════════════════════════════════════════════════════════
 
-interface LoadedCharacterData {
-  down: SpriteData[]
-  up: SpriteData[]
-  right: SpriteData[]
-}
+type LoadedCharacterData = CharacterFrames
+
+/** Everything a look can draw from, one pool per layer. */
+type PartPools = Record<CharacterLayer, CharacterFrames[]>
 
 let loadedCharacters: LoadedCharacterData[] | null = null
+let loadedPools: PartPools | null = null
 
-/** Set pre-colored character sprites loaded from PNG assets. Call this when characterSpritesLoaded message arrives. */
-export function setCharacterTemplates(data: LoadedCharacterData[]): void {
+/**
+ * Set pre-colored character sprites loaded from PNG assets. Call this when characterSpritesLoaded
+ * message arrives. `parts` holds parts drawn on their own - a shirt with no character around it -
+ * and a layer that has any takes them as its whole pool. A layer with none falls back to cutting
+ * the six characters up, so an older asset folder still gives everybody clothes. Skin is always cut
+ * from the characters: a skin tone comes with a face.
+ */
+export function setCharacterTemplates(
+  data: LoadedCharacterData[],
+  parts?: Partial<Record<CharacterLayer, CharacterFrames[]>>,
+): void {
   loadedCharacters = data
+  const cut = splitCharacters(data)
+  const pool = (layer: CharacterLayer) =>
+    parts?.[layer]?.length ? parts[layer]! : cut.map((c) => c[layer])
+  loadedPools = {
+    skin: cut.map((c) => c.skin),
+    hair: pool('hair'),
+    top: pool('top'),
+    legs: pool('legs'),
+  }
   // Clear cache so sprites are rebuilt from loaded data
   spriteCache.clear()
+}
+
+/** Build one character's frames out of the parts its look calls for, each layer in its own hue. */
+function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterData {
+  const p = look.parts!
+  const pick = (layer: CharacterLayer, style: number) => pools[layer][style % pools[layer].length]
+  const sources: Array<{ frames: CharacterFrames; hue: number }> = [
+    { frames: pick('skin', look.palette), hue: 0 },
+    { frames: pick('legs', p.legs), hue: p.legsHue },
+    { frames: pick('top', p.top), hue: p.topHue },
+    { frames: pick('hair', p.hair), hue: p.hairHue },
+  ]
+  const tint = (sprite: SpriteData, hue: number) =>
+    hue === 0 ? sprite : adjustSprite(sprite, { h: hue, s: 0, b: 0, c: 0 })
+
+  const out: LoadedCharacterData = { down: [], up: [], right: [] }
+  for (const dir of ['down', 'up', 'right'] as const) {
+    const count = sources[0].frames[dir].length
+    for (let f = 0; f < count; f++) {
+      out[dir].push(composeParts(sources.map((src) => tint(src.frames[dir][f], src.hue))))
+    }
+  }
+  return out
 }
 
 /** Flip a SpriteData horizontally (for generating left sprites from right) */
@@ -1856,16 +1901,19 @@ export const PHONE_FRAMES: SpriteData[] = [
   ],
 ]
 
-export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {
-  const cacheKey = `${paletteIndex}:${hueShift}`
+export function getCharacterSprites(look: CharacterLook): CharacterSprites {
+  const cacheKey = lookKey(look)
   const cached = spriteCache.get(cacheKey)
   if (cached) return cached
 
+  const paletteIndex = look.palette
   let sprites: CharacterSprites
 
   if (loadedCharacters) {
-    // Use pre-colored character sprites directly (no palette swapping)
-    const char = loadedCharacters[paletteIndex % loadedCharacters.length]
+    // A look with parts is assembled layer by layer; without them it is one character's own sprites
+    const char = look.parts && loadedPools
+      ? assembleParts(look, loadedPools)
+      : loadedCharacters[paletteIndex % loadedCharacters.length]
     const d = char.down
     const u = char.up
     const rt = char.right
@@ -1919,9 +1967,9 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
     }
   }
 
-  // Apply hue shift if non-zero
-  if (hueShift !== 0) {
-    sprites = hueShiftSprites(sprites, hueShift)
+  // A look without parts is shifted whole - with parts, each layer carried its own hue already
+  if (!look.parts && look.hueShift !== 0) {
+    sprites = hueShiftSprites(sprites, look.hueShift)
   }
 
   spriteCache.set(cacheKey, sprites)

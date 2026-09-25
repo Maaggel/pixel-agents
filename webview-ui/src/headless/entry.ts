@@ -420,7 +420,12 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
   function handleRelayMessage(msg: Record<string, unknown>): void {
     const type = msg.type as string
     if (type === 'init') {
-      if (msg.characters) setCharacterTemplates(msg.characters as Parameters<typeof setCharacterTemplates>[0])
+      if (msg.characters) {
+        setCharacterTemplates(
+          msg.characters as Parameters<typeof setCharacterTemplates>[0],
+          msg.characterParts as Parameters<typeof setCharacterTemplates>[1],
+        )
+      }
       if (msg.floors) setFloorSprites(msg.floors as Parameters<typeof setFloorSprites>[0])
       if (msg.walls) setWallSprites(msg.walls as Parameters<typeof setWallSprites>[0])
       const furniture = msg.furniture as { catalog: Parameters<typeof buildDynamicCatalog>[0]['catalog']; sprites: Parameters<typeof buildDynamicCatalog>[0]['sprites'] } | undefined

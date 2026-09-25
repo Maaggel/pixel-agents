@@ -1,5 +1,5 @@
 import { CharacterState, Direction, TILE_SIZE, IdleActionType } from '../types.js'
-import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
+import type { Character, CharacterLook, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
 import type { CharacterSprites } from '../sprites/spriteData.js'
 import { findPath } from '../layout/tileMap.js'
 import {
@@ -68,10 +68,9 @@ export function directionBetween(fromCol: number, fromRow: number, toCol: number
 
 export function createCharacter(
   id: number,
-  palette: number,
+  look: CharacterLook,
   seatId: string | null,
   seat: Seat | null,
-  hueShift = 0,
 ): Character {
   const col = seat ? seat.seatCol : 1
   const row = seat ? seat.seatRow : 1
@@ -87,8 +86,9 @@ export function createCharacter(
     path: [],
     moveProgress: 0,
     currentTool: null,
-    palette,
-    hueShift,
+    look,
+    palette: look.palette,
+    hueShift: look.hueShift,
     frame: 0,
     frameTimer: 0,
     wanderTimer: 0,

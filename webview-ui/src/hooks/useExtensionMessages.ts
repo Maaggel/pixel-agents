@@ -539,9 +539,11 @@ export function useExtensionMessages(
         os.removeSubagent(id, parentToolId)
         setSubagentCharacters((prev) => prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)))
       } else if (msg.type === 'characterSpritesLoaded') {
-        const characters = msg.characters as Array<{ down: string[][][]; up: string[][][]; right: string[][][] }>
-        console.log(`[Webview] Received ${characters.length} pre-colored character sprites`)
-        setCharacterTemplates(characters)
+        const characters = msg.characters as Parameters<typeof setCharacterTemplates>[0]
+        const parts = msg.parts as Parameters<typeof setCharacterTemplates>[1]
+        const extra = parts ? Object.entries(parts).map(([l, v]) => `${v?.length ?? 0} ${l}`).join(', ') : 'none'
+        console.log(`[Webview] Received ${characters.length} pre-colored character sprites, parts: ${extra}`)
+        setCharacterTemplates(characters, parts)
       } else if (msg.type === 'floorTilesLoaded') {
         const sprites = msg.sprites as string[][][]
         console.log(`[Webview] Received ${sprites.length} floor tile patterns`)

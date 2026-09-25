@@ -14,3 +14,7 @@ renderer/node_modules
 # Native renderer engine bundle (built by esbuild.js --headless-only)
 renderer/native/engine.mjs
 renderer/native/engine.mjs.map
+
+# Contact sheets from renderer/tools/parts-sheet.mjs
+renderer/parts-sheet.png
+renderer/parts-anim.png

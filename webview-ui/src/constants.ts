@@ -337,6 +337,35 @@ export const HUE_SHIFT_RANGE_DEG = 271
 /** Deterministic look from nametag: hue is quantised to LOOK_HUE_STEPS steps of LOOK_HUE_STEP_DEG (0 = original skin) */
 export const LOOK_HUE_STEPS = 8
 export const LOOK_HUE_STEP_DEG = 45
+
+// ── Character parts ─────────────────────────────────────────
+// Where the sheets cut into hair / skin / top / legs. All six characters were drawn from one
+// template, so these rows hold for every one of them. See office/sprites/characterParts.ts.
+/** First row of the head, below the sheet's top padding */
+export const PART_HEAD_TOP = 3
+/** The neck: the silhouette narrows here and the shoulders start on the next row */
+export const PART_SHOULDER_ROW = 18
+/** The waist */
+export const PART_HIP_ROW = 25
+/** The back of the head, minus the rows where the neck and collar creep in */
+export const PART_BACK_OF_HEAD_BOTTOM = 14
+/** Hair may hang this far down the shoulders; below it, a hair colour is clothing */
+export const PART_HAIR_MAX_ROW = 22
+/** The face of the standing front frame: skin, and nothing else */
+export const PART_FACE_TOP = 12
+/** Frame order is walk1, walk2, walk3, ... - walk2 is the standing pose */
+export const PART_STANDING_FRAME = 1
+/** Grey, white and black are the eyes: features, not skin, whatever the skin tone is */
+export const PART_EYE_GREY_SPREAD = 24
+/** How many hairstyles, tops and pairs of legs there are to draw from */
+export const PART_STYLE_COUNT = 6
+/**
+ * Hair hues a name may be given, in degrees. Clothes take the full circle - a green shirt is just
+ * a shirt - but hair does not: the art already carries six believable hair colours, and rotating
+ * those a whole circle fills the office with green and purple heads. These are small shifts either
+ * side of what was drawn: auburn, copper, ash. Shuffle still hands out the full range.
+ */
+export const PART_HAIR_HUES = [0, 0, 0, 15, 30, 345, 330, 300]
 export const LOOK_OVERRIDES_STORAGE_KEY = 'pixel-agents-look-overrides'
 export const AUTO_ON_FACING_DEPTH = 3
 export const AUTO_ON_SIDE_DEPTH = 2

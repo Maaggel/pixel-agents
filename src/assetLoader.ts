@@ -643,8 +643,73 @@ export interface CharacterDirectionSprites {
 export interface LoadedCharacterSprites {
   /** 6 pre-colored characters, each with 9 frames per direction */
   characters: CharacterDirectionSprites[]
+  /** Loose parts drawn on their own - a shirt with nobody in it - keyed by the layer they join */
+  parts?: Partial<Record<CharacterPartLayer, CharacterDirectionSprites[]>>
 }
 
+/** Layers a loose part can be drawn for. Skin is not one: a skin tone comes with a face. */
+export const CHARACTER_PART_LAYERS = ['hair', 'top', 'legs'] as const
+export type CharacterPartLayer = (typeof CHARACTER_PART_LAYERS)[number]
+
+
+/** Read one 112×96 sheet: 3 direction rows (down, up, right) × 7 frames of 16×32. */
+function readCharacterSheet(filePath: string): CharacterDirectionSprites {
+  const png = PNG.sync.read(fs.readFileSync(filePath))
+  const out: CharacterDirectionSprites = { down: [], up: [], right: [] }
+
+  for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
+    const rowOffsetY = dirIdx * CHAR_FRAME_H
+    const frames: string[][][] = []
+
+    for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
+      const sprite: string[][] = []
+      const frameOffsetX = f * CHAR_FRAME_W
+      for (let y = 0; y < CHAR_FRAME_H; y++) {
+        const row: string[] = []
+        for (let x = 0; x < CHAR_FRAME_W; x++) {
+          const idx = (((rowOffsetY + y) * png.width) + (frameOffsetX + x)) * 4
+          const a = png.data[idx + 3]
+          if (a < PNG_ALPHA_THRESHOLD) {
+            row.push('')
+          } else {
+            const r = png.data[idx]
+            const g = png.data[idx + 1]
+            const b = png.data[idx + 2]
+            row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase())
+          }
+        }
+        sprite.push(row)
+      }
+      frames.push(sprite)
+    }
+    out[CHARACTER_DIRECTIONS[dirIdx]] = frames
+  }
+  return out
+}
+
+/**
+ * Parts drawn on their own, in assets/characters/parts/ as <layer>_<n>.png - the same sheet shape as
+ * a character, with only the garment on it. These are the parts: a layer that has files uses them
+ * and nothing else, so editing top_2.png changes that shirt for good. When a layer has no files at
+ * all the six characters are cut up instead, which is what keeps the viewer working against an
+ * older asset folder. Numbering starts at 0 and stops at the first gap.
+ */
+function loadLooseParts(charDir: string): Partial<Record<CharacterPartLayer, CharacterDirectionSprites[]>> {
+  const partsDir = path.join(charDir, 'parts')
+  const out: Partial<Record<CharacterPartLayer, CharacterDirectionSprites[]>> = {}
+  if (!fs.existsSync(partsDir)) return out
+
+  for (const layer of CHARACTER_PART_LAYERS) {
+    const sheets: CharacterDirectionSprites[] = []
+    for (let n = 0; ; n++) {
+      const filePath = path.join(partsDir, `${layer}_${n}.png`)
+      if (!fs.existsSync(filePath)) break
+      sheets.push(readCharacterSheet(filePath))
+    }
+    if (sheets.length > 0) out[layer] = sheets
+  }
+  return out
+}
 
 /**
  * Load pre-colored character sprites from assets/characters/ (6 PNGs, each 112×96).
@@ -664,45 +729,17 @@ export async function loadCharacterSprites(
         return null
       }
 
-      const pngBuffer = fs.readFileSync(filePath)
-      const png = PNG.sync.read(pngBuffer)
-
-      const directions = CHARACTER_DIRECTIONS
-      const charData: CharacterDirectionSprites = { down: [], up: [], right: [] }
-
-      for (let dirIdx = 0; dirIdx < directions.length; dirIdx++) {
-        const dir = directions[dirIdx]
-        const rowOffsetY = dirIdx * CHAR_FRAME_H
-        const frames: string[][][] = []
-
-        for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
-          const sprite: string[][] = []
-          const frameOffsetX = f * CHAR_FRAME_W
-          for (let y = 0; y < CHAR_FRAME_H; y++) {
-            const row: string[] = []
-            for (let x = 0; x < CHAR_FRAME_W; x++) {
-              const idx = (((rowOffsetY + y) * png.width) + (frameOffsetX + x)) * 4
-              const r = png.data[idx]
-              const g = png.data[idx + 1]
-              const b = png.data[idx + 2]
-              const a = png.data[idx + 3]
-              if (a < PNG_ALPHA_THRESHOLD) {
-                row.push('')
-              } else {
-                row.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase())
-              }
-            }
-            sprite.push(row)
-          }
-          frames.push(sprite)
-        }
-        charData[dir] = frames
-      }
-      characters.push(charData)
+      characters.push(readCharacterSheet(filePath))
     }
 
+    const parts = loadLooseParts(charDir)
+
     console.log(`[AssetLoader] ✅ Loaded ${characters.length} character sprites (${CHAR_FRAMES_PER_ROW} frames × 3 directions each)`)
-    return { characters }
+    for (const layer of CHARACTER_PART_LAYERS) {
+      const n = parts[layer]?.length ?? 0
+      if (n > 0) console.log(`[AssetLoader] ✅ Loaded ${n} extra ${layer} part${n === 1 ? '' : 's'}`)
+    }
+    return { characters, parts }
   } catch (err) {
     console.error(`[AssetLoader] ❌ Error loading character sprites: ${err instanceof Error ? err.message : err}`)
     return null
@@ -719,6 +756,7 @@ export function sendCharacterSpritesToWebview(
   webview.postMessage({
     type: 'characterSpritesLoaded',
     characters: charSprites.characters,
+    parts: charSprites.parts,
   })
   console.log(`📤 Sent ${charSprites.characters.length} character sprites to webview`)
 }

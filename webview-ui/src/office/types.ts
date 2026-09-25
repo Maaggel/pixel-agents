@@ -1,3 +1,6 @@
+import type { CharacterLook } from './lookFromName.js'
+export type { CharacterLook }
+
 export {
   TILE_SIZE,
   DEFAULT_COLS,
@@ -424,6 +427,8 @@ export interface Character {
   palette: number
   /** Hue shift in degrees (0 = no shift, ≥45 for repeated palettes) */
   hueShift: number
+  /** The whole look, including which hair, top and legs this character wears */
+  look: CharacterLook
   /** Animation frame index */
   frame: number
   /** Time accumulator for animation */

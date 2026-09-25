@@ -431,7 +431,11 @@ function saveKioskOptions(opts) {
 // so this only holds the ones somebody chose. Set from the office by anyone looking at it, or over
 // POST /api/looks by the agents themselves, and pushed to every viewer and the tablet alike.
 const LOOK_FIELDS = ['skin', 'hair', 'hairColor', 'top', 'topHue', 'legs', 'legsHue']
-/** Long enough for somebody to say why, short enough that it is not somewhere to keep notes */
+/**
+ * Long enough for somebody to say why, short enough that it is not somewhere to keep notes. Going
+ * over is refused with a 400 that says by how much: this used to truncate, and Sounding's first
+ * reason came back five characters short of what it wrote, with ok: true and no warning.
+ */
 const LOOK_REASON_MAX = 600
 let looks = {}
 try { if (existsSync(LOOKS_FILE)) looks = JSON.parse(readFileSync(LOOKS_FILE, 'utf-8')).looks || {} } catch { /* start empty */ }
@@ -447,6 +451,17 @@ function isLook(value) {
  * may carry a `reason`, which is kept as written and handed back: it is the only record of why
  * somebody looks the way they do, and worth more than the numbers beside it.
  */
+function looksProblem(update) {
+  for (const [name, look] of Object.entries(update)) {
+    if (look === null) continue
+    const reason = look && typeof look.reason === 'string' ? look.reason.trim() : ''
+    if (reason.length > LOOK_REASON_MAX) {
+      return `reason for "${name}" is ${reason.length} characters, max ${LOOK_REASON_MAX}`
+    }
+  }
+  return null
+}
+
 function saveLooks(update) {
   for (const [name, look] of Object.entries(update)) {
     const key = String(name).trim().toLowerCase()
@@ -454,13 +469,7 @@ function saveLooks(update) {
     if (look === null) { delete looks[key]; continue }
     if (!isLook(look)) continue
     const entry = Object.fromEntries(LOOK_FIELDS.map((f) => [f, Math.round(look[f])]))
-    let reason = typeof look.reason === 'string' ? look.reason.trim() : ''
-    if (reason.length > LOOK_REASON_MAX) {
-      // Cut at a word, not through one: a reason ending mid-word reads as a fault, not a limit
-      const cut = reason.slice(0, LOOK_REASON_MAX)
-      const space = cut.lastIndexOf(' ')
-      reason = (space > LOOK_REASON_MAX * 0.6 ? cut.slice(0, space) : cut).trimEnd()
-    }
+    const reason = typeof look.reason === 'string' ? look.reason.trim() : ''
     if (reason) entry.reason = reason
     else if (looks[key]?.reason) entry.reason = looks[key].reason
     looks[key] = entry
@@ -1303,6 +1312,10 @@ const server = createServer((req, res) => {
       try {
         const update = JSON.parse(body)
         if (!update || typeof update !== 'object') throw new Error('expected a JSON object of name -> look')
+        // Say so rather than quietly keeping the first 600 characters: the rest of this endpoint
+        // refuses half a look instead of half-applying it, and a reason is no different
+        const problem = looksProblem(update)
+        if (problem) throw new Error(problem)
         const before = JSON.stringify(looks)
         saveLooks(update)
         if (JSON.stringify(looks) !== before) broadcastToViewers({ type: 'looksLoaded', looks })

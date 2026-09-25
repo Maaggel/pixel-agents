@@ -239,7 +239,7 @@ const HAIRSTYLES = [
           // off a reference rather than computed from a slope: a parting a third of the way across,
           // short above it, sweeping down and over to fall past the far ear, and never across the
           // eyes - which sit two rows below the brow, and read as hair in the face if covered.
-          const HAIRLINE = {
+          const HAIRLINE = style.hairline ?? {
             // Face-on, the hair falls the same on both sides of the head, and what is swept is the
             // fringe between them. It never steps more than a row at a time: on a head this size a
             // two-row step in the hairline is a notch, not a sweep.
@@ -291,7 +291,7 @@ const HAIRSTYLES = [
                   : tone.mid)
             }
           }
-          addPonytail(view, tone, !!style.high)
+          if (style.tail !== false) addPonytail(view, tone, !!style.high)
         }
       }
       return rows
@@ -300,7 +300,33 @@ const HAIRSTYLES = [
 ]
 
 // Worn high, off the same drawing: the tail is gathered at the ear rather than at the nape
-HAIRSTYLES.push({ ...HAIRSTYLES[HAIRSTYLES.length - 1], name: 'sleek high ponytail', high: true })
+const SLEEK = HAIRSTYLES[HAIRSTYLES.length - 1]
+HAIRSTYLES.push({ ...SLEEK, name: 'sleek high ponytail', high: true })
+
+// The office had grown long-haired: of the styles so far, two are long, three end in a tail and two
+// are bobs, and a name dealt at random came out looking much the same each time. These two are
+// short, and cut close above the ear rather than down past it.
+HAIRSTYLES.push({
+  ...SLEEK,
+  name: 'short crop',
+  tail: false,
+  hairline: {
+    [FACING_DOWN]: [7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 7],
+    [FACING_UP]: [10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 10],
+    [FACING_RIGHT]: [10, 10, 10, 9, 9, 8, 8, 8, 7, 7, 7, 7, 8],
+  },
+})
+
+HAIRSTYLES.push({
+  ...SLEEK,
+  name: 'short, side parting',
+  tail: false,
+  hairline: {
+    [FACING_DOWN]: [8, 9, 9, 7, 7, 7, 8, 8, 9, 9, 9, 9, 9, 8],
+    [FACING_UP]: [11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 11],
+    [FACING_RIGHT]: [11, 11, 11, 10, 10, 9, 8, 8, 7, 7, 7, 8, 9],
+  },
+})
 
 // The first six of every layer are the characters cut up; anything drawn here goes after them, at a
 // fixed number, so running this again redraws the same files instead of piling up new ones.

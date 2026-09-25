@@ -6,17 +6,22 @@
 //
 //   node tools/parts-sheet.mjs              # contact sheet -> parts-sheet.png
 //   node tools/parts-sheet.mjs --anim       # every frame and direction -> parts-anim.png
+//     --look hair,top,legs,skin[,hairColor[,topHue[,legsHue]]]   one look, all of it
 //   node tools/parts-sheet.mjs --write DIR  # cut the six characters into part files, to draw over
 //
 // The sheet shows every hairstyle on every body, then hair, clothes and skin varied one at a time.
 // The anim sheet is the one that catches a bad cut: a seam only the walk or the side view shows.
-import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const ROOT = new URL('../../', import.meta.url).pathname
+// Skia resolves no font by name on this box, so every label came out as a row of empty boxes and
+// nobody could read the numbers the sheet exists to show. Register one and ask for it by name.
+GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'Sheet')
+GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'Sheet Bold')
 const SRC = `${ROOT}webview-ui/public/assets/characters`
 const OUT = 'parts-sheet.png'
 const writeIndex = process.argv.indexOf('--write')
@@ -140,8 +145,11 @@ function animSheet() {
   const pick = process.argv.indexOf('--look')
   const looks = pick >= 0
     ? [[process.argv[pick + 1], (() => {
-        const [hair, top, legs, palette, hairColor] = process.argv[pick + 1].split(',').map(Number)
-        return { palette, hueShift: 0, parts: { hair, hairColor: hairColor || 0, top, topHue: 0, legs, legsHue: 0 } }
+        // hair,top,legs,skin[,hairColor[,topHue[,legsHue]]] - the hues matter: a look cannot be
+        // judged without them, and leaving them at 0 made this flag unable to preview a dyed shirt
+        const [hair, top, legs, palette, hairColor = 0, topHue = 0, legsHue = 0] =
+          process.argv[pick + 1].split(',').map(Number)
+        return { palette, hueShift: 0, parts: { hair, hairColor, top, topHue, legs, legsHue } }
       })()]]
     : [
       ['hair 2 / top 5 / legs 0', { palette: 3, hueShift: 0, parts: { hair: 2, hairColor: 0, top: 5, topHue: 0, legs: 0, legsHue: 0 } }],
@@ -155,7 +163,7 @@ function animSheet() {
   x.imageSmoothingEnabled = false
   x.fillStyle = '#20202e'
   x.fillRect(0, 0, c.width, c.height)
-  x.font = 'bold 12px sans-serif'
+  x.font = '12px "Sheet Bold"'
 
   x.fillStyle = '#cfcfe4'
   const heads = ['walk 1', 'walk 2', 'walk 3', 'walk 4', 'type 1', 'type 2', 'read 1', 'read 2']
@@ -201,7 +209,7 @@ const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
 x.fillRect(0, 0, c.width, c.height)
-x.font = 'bold 12px sans-serif'
+x.font = '12px "Sheet Bold"'
 const label = (t, px, py) => { x.fillStyle = '#cfcfe4'; x.fillText(t, px, py) }
 const num = (t, px, py) => { x.fillStyle = '#7f7f99'; x.fillText(t, px, py) }
 
@@ -222,11 +230,14 @@ for (const { layer, n } of catalogue) {
 label(`hair colours 0-${engine.PART_HAIR_COLORS.length - 1}`, 14, y - 4)
 engine.PART_HAIR_COLORS.forEach((colour, i) => {
   const px = 96 + (i % PER_ROW) * CELL_W
-  const py = y + Math.floor(i / PER_ROW) * CELL_H
+  const py = y + Math.floor(i / PER_ROW) * (CELL_H + 8)
   drawLook(x, px, py, parts({ hair: 7, hairColor: i }))
-  num(`${i} ${colour.name}`, px + 2, py + CELL_H - 4)
+  num(String(i), px + 6, py + CELL_H - 14)
+  x.font = '9px Sheet'
+  num(colour.name, px + 2, py + CELL_H - 3)
+  x.font = '12px "Sheet Bold"'
 })
-y += Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW) * CELL_H + 26
+y += Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW) * (CELL_H + 8) + 26
 
 label('top hue, in degrees - hair and skin untouched', 14, y - 4)
 HUES.forEach((h, i) => {

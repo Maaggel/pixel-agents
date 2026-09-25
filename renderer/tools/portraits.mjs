@@ -8,13 +8,16 @@
 //   cd renderer && node tools/portraits.mjs [out.png]
 //
 // Regenerate it whenever somebody chooses a look. The relay is asked over HTTP and needs no token.
-import { createCanvas, loadImage } from '@napi-rs/canvas'
+import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 const ROOT = new URL('../../', import.meta.url).pathname
+// Skia resolves no font by name here, so a caption asked for in 'sans-serif' draws empty boxes
+GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'Sheet')
+GlobalFonts.registerFromPath('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'Sheet Bold')
 const SRC = `${ROOT}webview-ui/public/assets/characters`
 const OUT = process.argv[2] || 'portraits.png'
 const RELAY = process.env.PIXEL_AGENTS_RELAY_HTTP || 'https://apps.blommemix.dk/pixelagents'
@@ -80,11 +83,17 @@ const res = await fetch(`${RELAY}/api/looks`)
 if (!res.ok) throw new Error(`relay said ${res.status}`)
 const { looks, names } = await res.json()
 
-/** A nametag reads "<emoji> <Project> (<Name> / <short>)" - split it for the caption. */
+/**
+ * A nametag reads "<emoji> <Project> (<Name> / <short>)". Split it for the caption, and drop the
+ * emoji: the font here has no glyph for one and draws an empty box in its place.
+ */
 function caption(tag) {
-  const m = tag.match(/^\s*(\S*?)\s*([^(]+?)\s*\(([^/)]+?)(?:\s*\/.*)?\)\s*$/u)
-  if (!m) return { project: tag.trim(), name: '' }
-  return { project: m[2], name: m[3] }
+  // Pictographs and the joiners around them only: Emoji_Component would take the digits with it,
+  // and A2B came out as AB
+  const plain = tag.replace(/[\p{Extended_Pictographic}\uFE0F\uFE0E\u200D]/gu, '').trim()
+  const m = plain.match(/^(.+?)\s*\(([^/)]+?)(?:\s*\/.*)?\)\s*$/u)
+  if (!m) return { project: plain, name: '' }
+  return { project: m[1].trim(), name: m[2].trim() }
 }
 
 // Sub-agents come and go with a Task call and are nobody's portrait
@@ -100,7 +109,7 @@ x.fillStyle = '#20202e'
 x.fillRect(0, 0, c.width, c.height)
 
 x.fillStyle = '#cfcfe4'
-x.font = 'bold 14px sans-serif'
+x.font = '14px "Sheet Bold"'
 x.fillText('The household, as the office draws it', 14, 24)
 
 household.forEach((tag, i) => {
@@ -119,11 +128,17 @@ household.forEach((tag, i) => {
 
   x.textAlign = 'center'
   x.fillStyle = stored ? '#cfcfe4' : '#8f8fa8'
-  x.font = 'bold 12px sans-serif'
+  x.font = '12px "Sheet Bold"'
   x.fillText(name, px + CELL_W / 2 - 6, py + FH * S + 12)
   x.fillStyle = '#7f7f99'
-  x.font = '10px sans-serif'
-  x.fillText(project.trim(), px + CELL_W / 2 - 6, py + FH * S + 25)
+  // Shrink a long project name rather than let it run into its neighbour
+  let size = 10
+  x.font = `${size}px Sheet`
+  while (size > 7 && x.measureText(project).width > CELL_W - 6) {
+    size -= 1
+    x.font = `${size}px Sheet`
+  }
+  x.fillText(project, px + CELL_W / 2 - 6, py + FH * S + 25)
   x.textAlign = 'left'
 })
 

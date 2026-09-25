@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.37.0
+
+- Two short hairstyles, a crop and a short side parting, both cut close above the ear. The pool had grown long-haired - two long styles, three ending in a tail, two bobs - so a name dealt at random came out looking much the same each time.
+- A `reason` over 600 characters is refused with a 400 saying by how much, instead of being silently truncated. Sounding's first one came back five characters short with `ok: true` and no warning; the rest of the endpoint refuses half a look rather than half-applying it, and a reason is no different.
+- `parts-sheet.mjs --look` takes the hues as well: `hair,top,legs,skin[,hairColor[,topHue[,legsHue]]]`. It hardcoded them to 0, so the one flag that renders a look could not render a dyed one - which is how Tess ended up guessing at a purple she could not preview.
+- Every label on every generated sheet was a row of empty boxes: Skia resolves no font by name on this box, so the numbers the catalogue exists to show were unreadable. The tools register a font now.
+- `docs/LOOKS.md` marks which garments have no hue to rotate. Plumb read that as a limitation and then chose a grey sweatshirt for exactly that reason, so it is worth naming as a choice.
+
 ## v1.36.1
 
 - A look's reason is cut at a word rather than through one, and has room for 600 characters instead of 400. A reason that stops mid-word reads as a fault rather than a limit.

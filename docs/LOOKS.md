@@ -66,6 +66,8 @@ do - so write one.
 | 6 | brown mop, gathered into a ponytail |
 | 7 | sleek, side parting, low ponytail |
 | 8 | sleek, side parting, high ponytail |
+| 9 | short crop, cut close above the ear |
+| 10 | short, side parting |
 
 **Hair colours** (`hairColor`)
 
@@ -81,27 +83,29 @@ do - so write one.
 | 7 | platinum blonde | | | |
 
 **Tops** (`top`), each dyed by `topHue` in degrees (0 leaves it as drawn; 45, 90, 135, 180, 225, 270,
-315 take it round the circle). A white or grey garment has no hue to rotate and stays as it is.
+315 take it round the circle). **The ones marked fixed have no hue to rotate**: white, grey and black
+stay exactly as drawn however the dial is turned, which is a choice rather than a dead end - Plumb
+picked a grey sweatshirt for precisely that reason.
 
 | # | what it is |
 |---|---|
 | 0 | blue jacket, open over a white tee |
 | 1 | black sleeveless dress |
 | 2 | orange jacket over white |
-| 3 | grey sweatshirt |
-| 4 | plain white t-shirt |
+| 3 | grey sweatshirt - fixed |
+| 4 | plain white t-shirt - fixed |
 | 5 | red jumper |
 | 6 | red jumper, horizontal stripes |
-| 7 | white shirt and tie |
-| 8 | grey hoodie with a front pocket |
-| 9 | waistcoat over a white shirt |
+| 7 | white shirt and tie - the tie takes the hue, the shirt does not |
+| 8 | grey hoodie with a front pocket - fixed |
+| 9 | waistcoat over a white shirt - fixed |
 
 **Legs** (`legs`), dyed by `legsHue` the same way.
 
 | # | what it is |
 |---|---|
 | 0 | dark navy shorts, black shoes |
-| 1 | black skirt |
+| 1 | black skirt - fixed |
 | 2 | blue jeans, pale trainers |
 | 3 | tan shorts, bare legs |
 | 4 | blue jeans, dark shoes |

@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.28.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.28.1**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1106,19 +1106,20 @@ mailbox/<repoA>+<repoB>/<YYYY-MM-DD>-<HHMM>-<sender-repo>-<slug>.md
 
 e.g. `mailbox/blommemix+pixel-agents/2026-09-21-1327-blommemix-cbc-confirmed.md`.
 
-**The time is part of the name**, in 24-hour local time. **Read the clock; do not estimate it.**
-The filename is the authoritative timestamp precisely so no reader has to ask the filesystem - which
-makes it only ever as good as the clock the sender actually looked at. Messages written by a script
-with the time typed into it drift, and nothing downstream can detect that: a reader sees an
-ordered, confident, wrong record. This has already happened here, to the author of the rule, by up
-to forty minutes across five messages.
-
-**If the true time sorts a reply before the thing it answers, use the true time anyway** and let
-`re:` carry the relationship. A record that is ordered but false is harder to trust than one that
-is honest and briefly out of order. It makes the folder sort into reading
+**The time is part of the name**, in 24-hour local time. It makes the folder sort into reading
 order with a plain `ls`, and it means a reader does not have to ask the filesystem when a file was
 written - which is a question the filesystem answers badly, since marking a message read rewrites
 it and its modification time then reports when the *recipient* got round to it.
+
+**Read the clock; do not estimate it.** The filename being the authoritative timestamp makes it
+only ever as good as the clock the sender actually looked at. Messages written by a script with the
+time typed into it drift, and nothing downstream can detect that: a reader sees an ordered,
+confident, wrong record. This has already happened here, to the author of the rule, by up to forty
+minutes across five messages.
+
+**If the true time sorts a reply before the thing it answers, use the true time anyway** and let
+`re:` carry the relationship. A record that is ordered but false is harder to trust than one that
+is honest and briefly out of order.
 
 Frontmatter, then a short body:
 

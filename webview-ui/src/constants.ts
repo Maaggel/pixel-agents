@@ -353,6 +353,13 @@ export const PART_BACK_OF_HEAD_BOTTOM = 14
 export const PART_HAIR_MAX_ROW = 22
 /** The face of the standing front frame: skin, and nothing else */
 export const PART_FACE_TOP = 12
+/**
+ * How far below the top of the head the bald head base starts. The base only exists to fill gaps a
+ * hairstyle leaves, and every hairstyle cut from the six characters covers the crown, so leaving
+ * the top rows out of it costs those nothing - and lets a hairstyle sit lower on the skull and make
+ * the head visibly shorter, rather than showing scalp, or bare corners, above itself.
+ */
+export const PART_HEAD_BASE_INSET = 4
 /** Frame order is walk1, walk2, walk3, ... - walk2 is the standing pose */
 export const PART_STANDING_FRAME = 1
 /** Grey, white and black are the eyes: features, not skin, whatever the skin tone is */

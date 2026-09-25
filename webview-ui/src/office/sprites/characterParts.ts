@@ -17,7 +17,8 @@
  * its own hair left bare, so putting a smaller hairstyle on it would show holes where the old hair
  * used to be. The head every hairstyle has to cover is the silhouette all six share, so that shape
  * is filled with the character's own skin and laid under the face - a bald head, never seen unless
- * a hairstyle leaves a gap, and exactly what fills the gap when one does.
+ * a hairstyle leaves a gap, and exactly what fills the gap when one does. Its top two rows are left
+ * out, so a hairstyle that sits lower on the skull makes the head shorter instead of showing scalp.
  *
  * This runs on the sprites the viewer already loads, so nothing about the assets, the relay
  * protocol or the daemon changes: the same six PNGs arrive and are cut up on arrival.
@@ -34,6 +35,7 @@ import {
   PART_FACE_TOP,
   PART_STANDING_FRAME,
   PART_EYE_GREY_SPREAD,
+  PART_HEAD_BASE_INSET,
 } from '../../constants.js'
 
 /** The layers a character is built from, in draw order: back to front. */
@@ -154,7 +156,7 @@ export function splitCharacters(all: CharacterFrames[]): CharacterPartSet[] {
         const tone = tones[i]
         if (!tone) continue
         const skin = sets[i].skin[dir][f]
-        for (let y = PART_HEAD_TOP; y < PART_SHOULDER_ROW; y++) {
+        for (let y = PART_HEAD_TOP + PART_HEAD_BASE_INSET; y < PART_SHOULDER_ROW; y++) {
           for (let x = 0; x < (mask[y]?.length ?? 0); x++) {
             if (mask[y][x] && !skin[y][x]) skin[y][x] = tone
           }

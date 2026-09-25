@@ -253,7 +253,24 @@ const HAIRSTYLES = [
             return top + table[Math.max(0, Math.min(table.length - 1, at))]
           }
 
-          const isHair = (x, y) => on(x, y) && y <= hairline(x)
+          // Sitting two rows down the skull rather than right on top of it: the head reads shorter
+          // that way, and the bald base underneath stops two rows down to match. Cutting straight
+          // across would leave a flat lid, so the two rows at the new crown are pulled in to a
+          // curve - measured on each row's own width, since the head narrows as it goes up.
+          const CROWN_DROP = 2
+          const CROWN_TAPER = [2, 1]
+          const rowExtent = (y) => {
+            let l = FW, r = -1
+            for (let x = 0; x < FW; x++) if (on(x, y)) { if (x < l) l = x; if (x > r) r = x }
+            return { l, r }
+          }
+          const isHair = (x, y) => {
+            if (!on(x, y) || y < top + CROWN_DROP || y > hairline(x)) return false
+            const taper = CROWN_TAPER[y - (top + CROWN_DROP)]
+            if (taper === undefined) return true
+            const { l, r } = rowExtent(y)
+            return x >= l + taper && x <= r - taper
+          }
           for (let y = 0; y < FH; y++) {
             for (let x = 0; x < FW; x++) {
               if (!isHair(x, y)) continue

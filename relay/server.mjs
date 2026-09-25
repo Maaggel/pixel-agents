@@ -31,6 +31,8 @@ const readVersion = () => {
  * they take over a minute to come back.
  */
 let VERSION = readVersion()
+/** The build the currently connected tablets were told about when their stream opened */
+let streamVersion = VERSION
 const WEBVIEW_DIST = join(PROJECT_ROOT, 'dist', 'webview')
 const ASSETS_DIR = join(PROJECT_ROOT, 'dist', 'assets')
 // Fallback to webview-ui/public/assets if dist/assets doesn't exist (dev mode)
@@ -346,6 +348,16 @@ function currentBuildId() {
     let html = ''
     try { html = readFileSync(indexPath, 'utf-8') } catch { /* ignore */ }
     VERSION = readVersion() // a new webview means a new package.json alongside it
+    // A tablet is told the build once, in the headers that open its stream, so a long-lived
+    // connection keeps showing whatever was live when it connected. End those streams on a version
+    // change and they reconnect at once and read the new one - the relay itself stays up, so this
+    // is a blink rather than the minute a restart costs.
+    if (VERSION !== streamVersion) {
+      streamVersion = VERSION
+      const stale = [...streamClients]
+      for (const c of stale) { streamClients.delete(c); try { c.res.end() } catch { /* already gone */ } }
+      if (stale.length > 0) console.log(`[Relay] Now serving v${VERSION}, ended ${stale.length} stream(s) so they re-read it`)
+    }
     const id = createHash('sha256').update(html).update(SERVER_HASH).update(VERSION).digest('hex').slice(0, 12)
     buildIdCache = { key, id }
   }

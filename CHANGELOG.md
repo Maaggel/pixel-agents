@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.34.3
+
+- Proof of the above: a version-only deploy ends the tablet streams so they re-read the build, without the relay restarting.
+
+## v1.34.2
+
+- The tablet's version line was stuck at whatever was live when it connected: the build is sent in the headers that open the stream, and since deploys stopped restarting the relay that connection is never dropped. The relay now ends the streams when the version changes, so they reconnect and re-read it. The relay itself stays up, so it is a blink rather than the minute a restart costs.
+
 ## v1.34.1
 
 - **A door sign flashed "free" while the toilet was in use.** Rebuilding the furniture instances - which happens whenever a door opens, a lamp turns on or somebody sits down at a desk - gave every item a fresh instance with no state sprite, and until the next tick set it again the renderer fell back to the item's *base* sprite. For a sign that base is the vacant green one, so it showed free at exactly the moment it mattered. State sprites are now carried across the rebuild. Measured against the live office: 12 wrong ticks out of 1575 with somebody on the toilet before, 0 out of 3001 after.

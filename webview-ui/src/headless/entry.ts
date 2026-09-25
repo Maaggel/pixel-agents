@@ -26,6 +26,7 @@ import { buildDynamicCatalog, getCatalogEntry } from '../office/layout/furniture
 import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
+import { setLookTable } from '../office/lookFromName.js'
 import { TileType, TILE_SIZE, CharacterState } from '../office/types.js'
 import type { OfficeLayout, Character, SpriteData, FurnitureInstance } from '../office/types.js'
 import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS, BUBBLE_FADE_DURATION_SEC } from '../constants.js'
@@ -420,6 +421,10 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
   function handleRelayMessage(msg: Record<string, unknown>): void {
     const type = msg.type as string
     if (type === 'init') {
+      if (msg.looks) {
+        setLookTable(msg.looks as Parameters<typeof setLookTable>[0])
+        os.applyLooks()
+      }
       if (msg.characters) {
         setCharacterTemplates(
           msg.characters as Parameters<typeof setCharacterTemplates>[0],

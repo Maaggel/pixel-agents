@@ -1,13 +1,13 @@
 import { PALETTE_COUNT, LOOK_HUE_STEPS, LOOK_HUE_STEP_DEG, LOOK_OVERRIDES_STORAGE_KEY, PART_STYLE_COUNT, PART_HAIR_HUES } from '../constants.js'
 
 /**
- * Deterministic character look from the name shown on the nametag.
+ * What a character looks like, by the name on its nametag.
  *
- * The same name always yields the same palette + hue shift, on every device,
- * with nothing stored - so an agent keeps its look across reloads, relay
- * restarts and browsers. "Shuffle" writes a per-name override to localStorage,
- * which wins over the hash; a look explicitly saved on the backend wins over both
- * (handled by the caller passing a preferred palette).
+ * A name alone is enough: hashing it gives a hairstyle, a shirt, a pair of legs and a skin, the
+ * same on every device and every spawn, with nothing stored. Anything chosen on purpose beats the
+ * hash - the relay keeps those in data/looks.json and hands them to every viewer, so a look picked
+ * in one browser shows up in the others and on the tablet. localStorage remains underneath it for
+ * looks shuffled before there was anywhere better to put them.
  */
 export interface CharacterLook {
   /** Which of the six characters lends its skin - and, without parts, its whole body */
@@ -84,6 +84,58 @@ export function randomParts(): CharacterParts {
   return { hair: style(), hairHue: hue(), top: style(), topHue: hue(), legs: style(), legsHue: hue() }
 }
 
+/** A look as it is stored and shared: flat, and skin rather than palette. */
+export interface StoredLook {
+  skin: number
+  hair: number
+  hairHue: number
+  top: number
+  topHue: number
+  legs: number
+  legsHue: number
+}
+
+export type LooksTable = Record<string, StoredLook>
+
+let chosenLooks: LooksTable = {}
+
+/** The looks somebody chose, as the relay hands them over. */
+export function setLookTable(table: LooksTable | null | undefined): void {
+  chosenLooks = table ?? {}
+}
+
+export function getLookTable(): LooksTable {
+  return chosenLooks
+}
+
+export function storedToLook(stored: StoredLook): CharacterLook {
+  return {
+    palette: stored.skin,
+    hueShift: 0,
+    parts: {
+      hair: stored.hair,
+      hairHue: stored.hairHue,
+      top: stored.top,
+      topHue: stored.topHue,
+      legs: stored.legs,
+      legsHue: stored.legsHue,
+    },
+  }
+}
+
+export function lookToStored(look: CharacterLook): StoredLook {
+  const p = look.parts ?? partsFromHash(0)
+  return {
+    skin: look.palette,
+    hair: p.hair,
+    hairHue: p.hairHue,
+    top: p.top,
+    topHue: p.topHue,
+    legs: p.legs,
+    legsHue: p.legsHue,
+  }
+}
+
 type Overrides = Record<string, CharacterLook>
 
 function loadOverrides(): Overrides {
@@ -104,7 +156,9 @@ export function setLookOverride(name: string, look: CharacterLook): void {
   try { localStorage.setItem(LOOK_OVERRIDES_STORAGE_KEY, JSON.stringify(all)) } catch { /* ignore */ }
 }
 
-/** Override (from Shuffle) if any, else the hashed look. */
+/** What was chosen for this name, else what was shuffled for it here, else what it hashes to. */
 export function resolveLook(name: string): CharacterLook {
+  const chosen = chosenLooks[name.trim().toLowerCase()]
+  if (chosen) return storedToLook(chosen)
   return getLookOverride(name) ?? lookFromName(name)
 }

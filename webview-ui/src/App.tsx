@@ -18,6 +18,9 @@ import { BottomToolbar } from './components/BottomToolbar.js'
 import { DebugView } from './components/DebugView.js'
 import { DevConsole } from './components/DevConsole.js'
 import { ViewOptionsPanel } from './components/ViewOptionsPanel.js'
+import { LookPanel } from './components/LookPanel.js'
+import { lookToStored } from './office/lookFromName.js'
+import type { CharacterLook } from './office/lookFromName.js'
 import type { ViewOptions } from './components/ViewOptionsPanel.js'
 import { BehaviourLog } from './components/BehaviourLog.js'
 import { setWeather, getWeatherMode } from './office/engine/windowEffects.js'
@@ -175,6 +178,7 @@ function App() {
   })
   const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false)
   const [personalityPanelKey, setPersonalityPanelKey] = useState<string | null>(null)
+  const [dressing, setDressing] = useState<{ id: number; name: string } | null>(null)
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => {
     const next = !prev
@@ -396,6 +400,27 @@ function App() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  // Somebody picked a look. The relay keeps it, so every other window and the tablet get it too.
+  useEffect(() => {
+    const os = getOfficeState()
+    os.onLookChosen = (name, look) => {
+      vscode.postMessage({ type: 'saveLooks', looks: { [name]: lookToStored(look) } })
+    }
+    return () => { os.onLookChosen = null }
+  }, [])
+
+  const handleDressAgent = useCallback((id: number) => {
+    const ch = getOfficeState().characters.get(id)
+    if (ch?.nametag) setDressing({ id, name: ch.nametag })
+  }, [])
+
+  const handleLookChange = useCallback((look: CharacterLook) => {
+    setDressing((cur) => {
+      if (cur) getOfficeState().setAgentLook(cur.id, look)
+      return cur
+    })
   }, [])
 
   const handleShuffleAgent = useCallback((id: number) => {
@@ -631,10 +656,24 @@ function App() {
         zoom={editor.zoom}
         panRef={editor.panRef}
         onShuffleAgent={handleShuffleAgent}
+        onDressAgent={hideUi ? undefined : handleDressAgent}
         alwaysShowActivities={viewOptions.alwaysShowActivities}
         personalities={personalities}
         onPersonalityClick={(agentKey) => setPersonalityPanelKey(agentKey)}
       />
+
+      {!hideUi && dressing && (() => {
+        const ch = getOfficeState().characters.get(dressing.id)
+        if (!ch) return null
+        return (
+          <LookPanel
+            name={dressing.name}
+            look={ch.look}
+            onChange={handleLookChange}
+            onClose={() => setDressing(null)}
+          />
+        )
+      })()}
 
       {!hideUi && (
         <BehaviourLog

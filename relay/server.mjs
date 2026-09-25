@@ -41,6 +41,7 @@ const DEFAULT_LAYOUT = join(ASSETS_ROOT, 'assets', 'default-layout.json')
 const LAYOUT_DIR = join(PROJECT_ROOT, 'data')
 const SAVED_LAYOUT = join(LAYOUT_DIR, 'layout.json')
 const KIOSK_OPTIONS_FILE = join(LAYOUT_DIR, 'kiosk-options.json')
+const LOOKS_FILE = join(LAYOUT_DIR, 'looks.json')
 const BACKUP_DIR = join(LAYOUT_DIR, 'backups')
 const MAX_BACKUPS = 168 // 7 days of hourly backups
 const BACKUP_CHECK_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -413,6 +414,39 @@ function saveKioskOptions(opts) {
   try { mkdirSync(LAYOUT_DIR, { recursive: true }); writeFileSync(KIOSK_OPTIONS_FILE, JSON.stringify(opts, null, 2)) } catch (err) { console.log(`[Relay] Could not save kiosk options: ${err.message}`) }
 }
 
+// ── Who looks like what ───────────────────────────────────────
+// A character is four parts - a hairstyle, a shirt, a pair of legs and one of the six skins - each
+// with a hue of its own. A name with no entry here still gets a look, hashed from the name itself,
+// so this only holds the ones somebody chose. Set from the office by anyone looking at it, or over
+// POST /api/looks by the agents themselves, and pushed to every viewer and the tablet alike.
+const LOOK_FIELDS = ['skin', 'hair', 'hairHue', 'top', 'topHue', 'legs', 'legsHue']
+let looks = {}
+try { if (existsSync(LOOKS_FILE)) looks = JSON.parse(readFileSync(LOOKS_FILE, 'utf-8')).looks || {} } catch { /* start empty */ }
+
+/** Half a look is no look: every part has to be a number, or the viewer would draw a hole. */
+function isLook(value) {
+  return !!value && typeof value === 'object' &&
+    LOOK_FIELDS.every((f) => typeof value[f] === 'number' && Number.isFinite(value[f]))
+}
+
+/** Merge chosen looks in. A name mapped to null is set back to whatever its name hashes to. */
+function saveLooks(update) {
+  for (const [name, look] of Object.entries(update)) {
+    const key = String(name).trim().toLowerCase()
+    if (!key) continue
+    if (look === null) delete looks[key]
+    else if (isLook(look)) looks[key] = Object.fromEntries(LOOK_FIELDS.map((f) => [f, Math.round(look[f])]))
+  }
+  try {
+    mkdirSync(LAYOUT_DIR, { recursive: true })
+    const tmp = LOOKS_FILE + '.tmp'
+    writeFileSync(tmp, JSON.stringify({ version: 1, looks }, null, 2))
+    renameSync(tmp, LOOKS_FILE)
+  } catch (err) {
+    console.log(`[Relay] Could not save looks: ${err.message}`)
+  }
+}
+
 // ── Legacy frame stream (2012 tablet; docs/HANDOFF-from-TabScreen.md) ───────
 // A renderer connects as a publisher and sends binary FRAME_FULL payloads; tablets GET /stream
 // and receive CONFIG followed by every frame. Only the latest frame is kept.
@@ -598,6 +632,9 @@ window.acquireVsCodeApi = function() {
         sendToRelay(msg);
       }
       if (msg.type === 'kioskOptions') {
+        sendToRelay(msg);
+      }
+      if (msg.type === 'saveLooks') {
         sendToRelay(msg);
       }
       if (msg.type === 'exportLayout') {
@@ -854,8 +891,11 @@ function connectRelay() {
           reconcileAgents(msg.windows);
         }
         if (msg.kioskOptions) dispatch({ type: 'kioskOptions', options: msg.kioskOptions });
+        if (msg.looks) dispatch({ type: 'looksLoaded', looks: msg.looks });
       } else if (msg.type === 'kioskOptions') {
         dispatch({ type: 'kioskOptions', options: msg.options });
+      } else if (msg.type === 'looksLoaded') {
+        dispatch({ type: 'looksLoaded', looks: msg.looks });
       } else if (msg.type === 'sync') {
         reconcileAgents(msg.windows || []);
       } else if (msg.type === 'layoutUpdate') {
@@ -1213,6 +1253,31 @@ const server = createServer((req, res) => {
     res.on('error', drop)
     return
   }
+  if (pathname === '/api/looks' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+    res.end(JSON.stringify({ looks }))
+    return
+  }
+  if (pathname === '/api/looks' && req.method === 'POST') {
+    if (!checkApiAuth(req, res)) return
+    let body = ''
+    req.on('data', (d) => { body += d; if (body.length > 262144) req.destroy() })
+    req.on('end', () => {
+      try {
+        const update = JSON.parse(body)
+        if (!update || typeof update !== 'object') throw new Error('expected a JSON object of name -> look')
+        const before = JSON.stringify(looks)
+        saveLooks(update)
+        if (JSON.stringify(looks) !== before) broadcastToViewers({ type: 'looksLoaded', looks })
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ ok: true, looks }))
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: err.message }))
+      }
+    })
+    return
+  }
   if (pathname === '/api/kiosk' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
     res.end(JSON.stringify({ options: kioskOptions }))
@@ -1528,6 +1593,7 @@ wss.on('connection', (ws, req) => {
       // An empty list means "no state yet": the bridge keeps the agents it already has
       windows: settling() ? [] : getAllWindowStates(),
       kioskOptions,
+      looks,
     }
 
     // Split init into chunks if needed (assets can be large)
@@ -1558,6 +1624,13 @@ wss.on('connection', (ws, req) => {
         // Forward idle interaction events to publishers (personality engine)
         if (msg.type === 'idleInteraction') {
           broadcastToPublishers(msg)
+        }
+
+        // Somebody picks a look in the office; everyone watching sees it, and it outlives the tab
+        if (msg.type === 'saveLooks' && msg.looks && typeof msg.looks === 'object') {
+          saveLooks(msg.looks)
+          broadcastToViewers({ type: 'looksLoaded', looks })
+          console.log(`[Relay] Looks updated: ${Object.keys(msg.looks).join(', ')}`)
         }
 
         // A viewer sets what kiosk displays show

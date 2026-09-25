@@ -28,7 +28,7 @@ RELAY_HTTP="${PIXEL_AGENTS_RELAY_HTTP:-}"
 TOKEN="${PIXEL_AGENTS_RELAY_TOKEN:-}"
 GATE="${PIXEL_AGENTS_RELAY_SSH:-}"
 UI_ONLY=0; DRY=0; ALLOW_SAME=0
-for a in "$@"; do case "$a" in --ui-only) UI_ONLY=1;; --dry-run) DRY=1;; --allow-same-version) ALLOW_SAME=1;; *) echo "unknown arg $a"; exit 2;; esac; done
+for a in "$@"; do case "$a" in --ui-only) UI_ONLY=1;; --dry-run) DRY=1;; --allow-same-version) ALLOW_SAME=1;; --restart) FORCE_RESTART=1;; *) echo "unknown arg $a"; exit 2;; esac; done
 
 [ -f "$NETRC" ] || { echo "netrc not found: $NETRC"; exit 1; }
 FTP_HOST="$(awk '/^machine/{print $2; exit}' "$NETRC")"
@@ -105,7 +105,10 @@ echo "==> index.html live"
 # Only a change to the relay's own code needs a restart, and a restart drops every tablet's
 # stream for the minute or so their app takes to reconnect. A version bump alone does not: the
 # relay re-reads package.json whenever it recomputes the build id.
-RELAY_CHANGED=0
+RELAY_CHANGED=${FORCE_RESTART:-0}
+if [ "$RELAY_CHANGED" = 1 ]; then
+  echo "==> --restart given: the relay will be restarted whether or not its code changed"
+fi
 if [ "$UI_ONLY" = 0 ]; then
   for f in relay/*.mjs; do put "$f" "$f"; done   # server.mjs and every module it imports
   put package.json package.json
@@ -117,12 +120,14 @@ if [ "$UI_ONLY" = 0 ]; then
     printf '%s' "$RELAY_HASH" > "$TMP_HASH"
     put "$TMP_HASH" relay/.deployed-code
     echo "==> relay code changed - it will be restarted"
-  else
+  elif [ "$RELAY_CHANGED" = 0 ]; then
     echo "==> relay code unchanged - leaving it running (tablets keep their stream)"
   fi
 fi
 
-# 5. Restart the relay through the SSH gate if its code changed
+# 5. Restart the relay through the SSH gate if its code changed, or --restart was given.
+# The relay reads the furniture catalog, the sprites and the character parts once at startup, so a
+# deploy that only adds assets needs --restart before they appear.
 if [ "$DRY" = 1 ]; then exit 0; fi
 
 if [ "$RELAY_CHANGED" = 1 ]; then

@@ -12,6 +12,7 @@ import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { writeFileSync } from 'fs'
 
 const OUT = process.argv[2] || '../webview-ui/public/assets/characters/parts'
+const CHARS = process.argv[3] || '../webview-ui/public/assets/characters'
 const FW = 16, FH = 32, FRAMES = 7
 const FACING_DOWN = 0, FACING_UP = 1, FACING_RIGHT = 2
 /** How many parts per layer come from cutting the six characters up */
@@ -74,23 +75,123 @@ function shadeOf(mid, dark) {
 function frameView(rows, frame, facing) {
   const x0 = frame * FW, y0 = facing * FH
   return {
+    facing,
     get: (x, y) => (x < 0 || x >= FW || y < 0 || y >= FH ? '' : rows[y0 + y][x0 + x]),
     set: (x, y, px) => { if (x >= 0 && x < FW && y >= 0 && y < FH) rows[y0 + y][x0 + x] = px },
   }
 }
 
-/** Where the hair ends in this frame, so something hung off it stays attached. */
-function anchor(view, facing) {
-  let bottom = -1, back = facing === FACING_RIGHT ? FW : -1, bottomX = 0
+/**
+ * The box the hair fills in this frame. Everything hung off the head is placed against this rather
+ * than against fixed pixels, so it follows the head as it bobs and leans.
+ */
+function headBox(view) {
+  let top = FH, bottom = -1, left = FW, right = -1
   for (let y = 0; y < FH; y++) {
     for (let x = 0; x < FW; x++) {
       if (!view.get(x, y)) continue
-      if (y > bottom) { bottom = y; bottomX = x }
-      if (facing === FACING_RIGHT && x < back) back = x
-      if (facing === FACING_DOWN && x > back) back = x
+      if (y < top) top = y
+      if (y > bottom) bottom = y
+      if (x < left) left = x
+      if (x > right) right = x
     }
   }
-  return { bottom, back, bottomX }
+  return { top, bottom, left, right, height: bottom - top + 1 }
+}
+
+/** The widest row of the head, which is where an ear would be and where a tail is gathered. */
+function widestRow(view, box) {
+  let best = box.top, most = -1
+  for (let y = box.top; y <= box.bottom; y++) {
+    let n = 0
+    for (let x = 0; x < FW; x++) if (view.get(x, y)) n++
+    if (n > most) { most = n; best = y }
+  }
+  return best
+}
+
+/**
+ * The head under the hair: where all six characters agree there is something. Each was drawn with
+ * its own hair on, so the shape they share is the skull itself - and it is the shape to draw a
+ * hairstyle onto when the hairstyle is not a variation of one that exists.
+ */
+async function skullMasks() {
+  const sheets = []
+  for (let i = 0; i < 6; i++) sheets.push(await readSheet(`${CHARS}/char_${i}.png`))
+  const masks = []
+  for (let facing = 0; facing < 3; facing++) {
+    masks[facing] = []
+    for (let frame = 0; frame < FRAMES; frame++) {
+      const mask = []
+      for (let y = 0; y < FH; y++) {
+        const row = []
+        for (let x = 0; x < FW; x++) {
+          row.push(sheets.every((sheet) => !!sheet[facing * FH + y][frame * FW + x]))
+        }
+        mask.push(row)
+      }
+      masks[facing][frame] = mask
+    }
+  }
+  return masks
+}
+
+/** An empty sheet the shape of a character sheet, for a style drawn from nothing. */
+function blankSheet() {
+  return Array.from({ length: FH * 3 }, () => Array.from({ length: FW * FRAMES }, () => ''))
+}
+
+/**
+ * A tail: a band where it is gathered, then a fall that narrows to a point. The widths are the
+ * shape of it, row by row; `lean` swings it sideways as it falls.
+ */
+function drawTail(view, x0, y0, widths, tone, lean = 0) {
+  for (let i = 0; i < widths.length; i++) {
+    const w = widths[i]
+    const x = x0 + Math.round(i * lean)
+    for (let k = 0; k < w; k++) {
+      const edge = w > 1 && (k === 0 || k === w - 1)
+      const last = i >= widths.length - 2
+      view.set(x + k, y0 + i, i === 0 || last ? tone.dark : edge ? tone.shade : tone.mid)
+    }
+  }
+}
+
+/** Where a tail is gathered and how far the head reaches, measured from the hair in this frame. */
+function gatherPoint(view, high) {
+  const box = headBox(view)
+  if (box.bottom < 0) return null
+  let widest = box.top, most = -1
+  for (let y = box.top; y <= box.bottom; y++) {
+    let n = 0
+    for (let x = 0; x < FW; x++) if (view.get(x, y)) n++
+    if (n > most) { most = n; widest = y }
+  }
+  // Worn high, it is gathered at the ear, where the head is widest. Worn low, where the head has
+  // started to narrow again - which on a head fifteen pixels across is also where a tail first has
+  // room to show against something other than more hair.
+  return { box, gather: high ? widest : Math.round((widest + box.bottom) / 2) }
+}
+
+/** Hang a ponytail off whatever hair is already in the frame. */
+function addPonytail(view, tone, high = false) {
+  const at = gatherPoint(view, high)
+  if (!at) return
+  const { box, gather } = at
+  // Worn high it has further to fall, and from the front it clears the ear before the cheek
+  const fall = high ? 3 : 0
+  if (view.facing === FACING_UP) {
+    const widths = [5, 5, 5, 4, 4, 4, 4, 3, 3, 2, 2, 1]
+    drawTail(view, Math.round(FW / 2) - 2, gather, high ? [5, 5, 5, ...widths] : widths, tone)
+  } else if (view.facing === FACING_RIGHT) {
+    const widths = [4, 4, 4, 4, 4, 3, 3, 2, 2, 1]
+    drawTail(view, box.left - 2, gather, high ? [4, 4, 4, ...widths] : widths, tone, -0.2)
+  } else {
+    // Face-on the tail is behind the head: a sliver past the ear, not a slab beside the face
+    const widths = [2, 2, 2, 2, 1]
+    drawTail(view, box.right - 1, gather + 2, high ? [2, 2, ...widths] : widths, tone)
+  }
+  void fall
 }
 
 const HAIRSTYLES = [
@@ -99,39 +200,81 @@ const HAIRSTYLES = [
     base: 'hair_4',
     draw: (rows) => {
       const { mid, dark } = tones(rows)
+      const tone = { mid, dark, shade: shadeOf(mid, dark) }
+      for (let facing = 0; facing < 3; facing++) {
+        for (let frame = 0; frame < FRAMES; frame++) addPonytail(frameView(rows, frame, facing), tone)
+      }
+      return rows
+    },
+  },
+  {
+    // Not a variation of anything: a smooth head of hair drawn straight onto the skull, swept off a
+    // parting and held back in a tail. Four tones off the brown mop, so it belongs in the same set.
+    name: 'sleek low ponytail',
+    skull: true,
+    draw: (rows, masks, style) => {
+      const tone = { mid: '#57351A', dark: '#2F160F', shade: '#432415', light: '#7A5322' }
+
       for (let facing = 0; facing < 3; facing++) {
         for (let frame = 0; frame < FRAMES; frame++) {
+          const mask = masks[facing][frame]
           const view = frameView(rows, frame, facing)
-          const a = anchor(view, facing)
-          if (a.bottom < 0) continue
+          const on = (x, y) => x >= 0 && x < FW && y >= 0 && y < FH && mask[y][x]
 
-          if (facing === FACING_UP) {
-            // From behind, the whole tail: a band at the nape, then three strands falling and
-            // narrowing to a point. It hangs over the shirt, which is what hair does.
-            const cx = Math.round(FW / 2) - 2
-            for (let i = 0; i < 9; i++) {
-              const y = a.bottom + i
-              const width = i === 0 ? 3 : i < 5 ? 3 : i < 7 ? 2 : 1
-              for (let w = 0; w < width; w++) {
-                view.set(cx + w, y, i === 0 || i >= 7 ? dark : (w === 1 ? mid : shadeOf(mid, dark)))
-              }
-            }
-          } else if (facing === FACING_RIGHT) {
-            // From the side it swings out behind the head, clear of the face
-            for (let i = 0; i < 8; i++) {
-              const y = a.bottom - 3 + i
-              const x = a.back - 1 - Math.floor(i / 3)
-              view.set(x, y, i >= 6 ? dark : mid)
-              if (i < 6) view.set(x + 1, y, mid)
-            }
-          } else {
-            // From the front, what shows past the head: the tail hanging behind one shoulder
-            for (let i = 0; i < 5; i++) {
-              const y = a.bottom - 2 + i
-              view.set(a.back - 1, y, i === 4 ? dark : mid)
-              view.set(a.back, y, i === 4 ? dark : shadeOf(mid, dark))
+          let top = FH, left = FW, right = -1
+          for (let y = 0; y < FH; y++) {
+            for (let x = 0; x < FW; x++) {
+              if (!mask[y][x]) continue
+              if (y < top) top = y
+              if (x < left) left = x
+              if (x > right) right = x
             }
           }
+          if (right < 0) continue
+
+          // How far down the hair comes, column by column: full to the nape at the back, clear of
+          // the eyes at the front, and down past the ear at the sides of a face-on head.
+          const width = Math.max(1, right - left)
+          // How far down the hair comes, column by column, counted from the top of the head. Traced
+          // off a reference rather than computed from a slope: a parting a third of the way across,
+          // short above it, sweeping down and over to fall past the far ear, and never across the
+          // eyes - which sit two rows below the brow, and read as hair in the face if covered.
+          const HAIRLINE = {
+            // Face-on, the hair falls the same on both sides of the head, and what is swept is the
+            // fringe between them. It never steps more than a row at a time: on a head this size a
+            // two-row step in the hairline is a notch, not a sweep.
+            [FACING_DOWN]: [11, 11, 10, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11],
+            [FACING_UP]: [13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13],
+            [FACING_RIGHT]: [12, 12, 11, 10, 9, 9, 8, 8, 7, 7, 7, 8, 9],
+          }
+          const hairline = (x) => {
+            const table = HAIRLINE[facing]
+            const at = Math.round(((x - left) / width) * (table.length - 1))
+            return top + table[Math.max(0, Math.min(table.length - 1, at))]
+          }
+
+          const isHair = (x, y) => on(x, y) && y <= hairline(x)
+          for (let y = 0; y < FH; y++) {
+            for (let x = 0; x < FW; x++) {
+              if (!isHair(x, y)) continue
+              const across = (x - left) / width
+              const edge = !isHair(x - 1, y) || !isHair(x + 1, y) || !isHair(x, y - 1) || !isHair(x, y + 1)
+              // The parting shows as the step in the fringe, not as a drawn line: at this size a
+              // dark stripe over the crown reads as a scar
+              const parted = false
+              // Strands down the length of it, where there is length to read - face-on there is
+              // only the crown, and stripes across it look like a barcode
+              const strand = !edge && facing !== FACING_DOWN && (x - left) % 3 === 1
+              // The light falls from the upper left, as it does on every other sprite here
+              const lit = !edge && y - top + (x - left) * 0.7 < width * 0.5
+              view.set(x, y,
+                edge || parted ? tone.dark
+                  : lit ? tone.light
+                  : strand || y >= hairline(x) - 1 ? tone.shade
+                  : tone.mid)
+            }
+          }
+          addPonytail(view, tone, !!style.high)
         }
       }
       return rows
@@ -139,13 +282,17 @@ const HAIRSTYLES = [
   },
 ]
 
+// Worn high, off the same drawing: the tail is gathered at the ear rather than at the nape
+HAIRSTYLES.push({ ...HAIRSTYLES[HAIRSTYLES.length - 1], name: 'sleek high ponytail', high: true })
+
 // The first six of every layer are the characters cut up; anything drawn here goes after them, at a
 // fixed number, so running this again redraws the same files instead of piling up new ones.
 let next = FROM_CHARACTERS
+const masks = HAIRSTYLES.some((h) => h.skull) ? await skullMasks() : null
 for (const style of HAIRSTYLES) {
-  const rows = await readSheet(`${OUT}/${style.base}.png`)
-  writeSheet(`${OUT}/hair_${next}.png`, style.draw(rows))
-  console.log(`  hair_${next}.png  ${style.name} (from ${style.base})`)
+  const rows = style.skull ? blankSheet() : await readSheet(`${OUT}/${style.base}.png`)
+  writeSheet(`${OUT}/hair_${next}.png`, style.draw(rows, masks, style))
+  console.log(`  hair_${next}.png  ${style.name} (${style.skull ? 'drawn on the bare skull' : `from ${style.base}`})`)
   next++
 }
 console.log(`${HAIRSTYLES.length} new hairstyle(s); the pool now runs to hair_${next - 1}`)

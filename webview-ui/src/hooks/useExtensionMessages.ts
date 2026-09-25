@@ -7,6 +7,8 @@ import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js'
 import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
+import { setLookTable } from '../office/lookFromName.js'
+import type { LooksTable } from '../office/lookFromName.js'
 import { vscode } from '../vscodeApi.js'
 import { setSoundEnabled } from '../notificationSound.js'
 import { NAMETAG_PROJECT_COLORS, TOOL_BUBBLE_MIN_DISPLAY_MS, AGENT_CLOSE_GRACE_MS } from '../constants.js'
@@ -538,6 +540,10 @@ export function useExtensionMessages(
         addBehaviourEntry({ agentId: id, agentName: agentName(id), message: `subtask completed: ${subLabel}`, type: 'info' })
         os.removeSubagent(id, parentToolId)
         setSubagentCharacters((prev) => prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)))
+      } else if (msg.type === 'looksLoaded') {
+        // Someone picked a look - here, in another browser, or by editing the relay's looks.json
+        setLookTable(msg.looks as LooksTable)
+        os.applyLooks()
       } else if (msg.type === 'characterSpritesLoaded') {
         const characters = msg.characters as Parameters<typeof setCharacterTemplates>[0]
         const parts = msg.parts as Parameters<typeof setCharacterTemplates>[1]

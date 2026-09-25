@@ -15,6 +15,7 @@ interface ToolOverlayProps {
   zoom: number
   panRef: React.RefObject<{ x: number; y: number }>
   onShuffleAgent: (id: number) => void
+  onDressAgent?: (id: number) => void
   alwaysShowActivities?: boolean
   personalities?: Record<string, PersonalitySnapshot>
   onPersonalityClick?: (agentKey: string) => void
@@ -93,6 +94,7 @@ export function ToolOverlay({
   zoom,
   panRef,
   onShuffleAgent,
+  onDressAgent,
   alwaysShowActivities,
   personalities,
   onPersonalityClick,
@@ -364,6 +366,34 @@ export function ToolOverlay({
                       </button>
                     )
                   })()}
+                  {onDressAgent && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDressAgent(id)
+                      }}
+                      title="Choose hair and clothes"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--pixel-close-text)',
+                        cursor: 'pointer',
+                        padding: '0 2px',
+                        fontSize: '18px',
+                        lineHeight: 1,
+                        marginLeft: 2,
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--pixel-close-hover)'
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = 'var(--pixel-close-text)'
+                      }}
+                    >
+                      &#x1F9F5;
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation()

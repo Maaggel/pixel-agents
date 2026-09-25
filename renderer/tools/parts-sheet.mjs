@@ -133,7 +133,8 @@ function drawLook(ctx, px, py, look) {
  * once an arm swings or the character turns, so this is the sheet worth staring at.
  */
 function animSheet() {
-  const A = 6
+  const scaleArg = process.argv.indexOf('--scale')
+  const A = scaleArg >= 0 ? Number(process.argv[scaleArg + 1]) : 6
   const CW = FW * A + 6, CH = FH * A + 6
   const pick = process.argv.indexOf('--look')
   const looks = pick >= 0

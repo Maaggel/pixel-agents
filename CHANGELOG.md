@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.35.0
+
+- Characters come apart into hair, skin, top and legs, and mix. A name used to pick one of six drawn sprites and shift the hue of the whole of it; now it picks a hairstyle, a shirt and a pair of trousers separately and dyes each one on its own, so dyeing a shirt no longer tints the hands or the hair.
+- The parts are assets in their own right, in `assets/characters/parts/`, so a new shirt is a new file. `renderer/test/character-parts.mjs` proves the cut is lossless: all 126 frames rebuild from their own parts pixel for pixel, in every direction.
+- New parts to go with it: a ponytail, a sleek hairstyle worn high or low, a striped jumper, a shirt and tie, a hoodie and a waistcoat.
+- Looks can be chosen and they stay chosen. Click a character and the 🧵 button to pick its hair, clothes, skin and colours; the relay keeps the choice in `data/looks.json`, so it reaches every other browser and the tablet and outlives the tab. Agents set their own with `POST /api/looks` - see `docs/LOOKS.md`.
+- `relay/deploy.sh --restart` restarts the relay even when its code is unchanged, for deploys that only add assets - the relay reads the catalog, the sprites and the parts once at startup.
+
 ## v1.34.3
 
 - Proof of the above: a version-only deploy ends the tablet streams so they re-read the build, without the relay restarting.

@@ -1710,6 +1710,21 @@ export class OfficeState {
     return this.subagentIdMap.get(`${parentAgentId}:${parentToolId}`) ?? null
   }
 
+  /**
+   * Somebody changed what a character wears - here, in another browser, or by hand in looks.json.
+   * Everyone in the office is dressed again from their nametag, which is where a look comes from.
+   * Sub-agents keep theirs: they are nameless and were dealt a look of their own.
+   */
+  applyLooks(): void {
+    for (const ch of this.characters.values()) {
+      if (ch.isSubagent || !ch.nametag) continue
+      const look = resolveLook(ch.nametag)
+      ch.look = look
+      ch.palette = look.palette
+      ch.hueShift = look.hueShift
+    }
+  }
+
   /** Deal a character a fresh set of parts, hair to shoes */
   shuffleAgentLook(id: number): void {
     const ch = this.characters.get(id)
@@ -1718,8 +1733,24 @@ export class OfficeState {
     ch.look = look
     ch.palette = look.palette
     ch.hueShift = look.hueShift
-    // Remember the chosen look for this name so it survives respawns and reloads
-    if (ch.nametag) setLookOverride(ch.nametag, look)
+    // Remember the chosen look for this name, everywhere and not just here
+    if (ch.nametag) {
+      setLookOverride(ch.nametag, look)
+      this.onLookChosen?.(ch.nametag, look)
+    }
+  }
+
+  /** Told when somebody settles on a look, so it can be sent off to be kept. */
+  onLookChosen: ((name: string, look: CharacterLook) => void) | null = null
+
+  /** Dress one character, and say so, so the choice reaches the other viewers. */
+  setAgentLook(id: number, look: CharacterLook): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+    ch.look = look
+    ch.palette = look.palette
+    ch.hueShift = look.hueShift
+    if (ch.nametag) this.onLookChosen?.(ch.nametag, look)
   }
 
   setAgentActive(id: number, active: boolean): void {

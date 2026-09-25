@@ -1805,6 +1805,16 @@ export function setCharacterTemplates(
   spriteCache.clear()
 }
 
+/** How many of each part there are to choose from. Zero until the assets have arrived. */
+export function getPartCounts(): Record<CharacterLayer, number> {
+  return {
+    skin: loadedPools?.skin.length ?? 0,
+    hair: loadedPools?.hair.length ?? 0,
+    top: loadedPools?.top.length ?? 0,
+    legs: loadedPools?.legs.length ?? 0,
+  }
+}
+
 /** Build one character's frames out of the parts its look calls for, each layer in its own hue. */
 function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterData {
   const p = look.parts!

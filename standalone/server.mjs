@@ -34,6 +34,9 @@ const ASSETS_DIR = join(PROJECT_ROOT, 'dist', 'assets')
 // Fallback to webview-ui/public/assets if dist/assets doesn't exist (dev mode)
 const ASSETS_ROOT = existsSync(ASSETS_DIR) ? join(PROJECT_ROOT, 'dist') : join(PROJECT_ROOT, 'webview-ui', 'public')
 const LAYOUT_FILE = join(homedir(), '.pixel-agents', 'layout.json')
+/** Who looks like what. The relay keeps its own copy for the office everyone shares; this is the
+ *  standalone viewer's, so a look can be tried out here without touching the live one. */
+const LOOKS_FILE = join(homedir(), '.pixel-agents', 'looks.json')
 const SYNC_DIR = join(homedir(), '.pixel-agents', 'sync')
 const DEFAULT_LAYOUT = join(ASSETS_ROOT, 'assets', 'default-layout.json')
 
@@ -61,14 +64,11 @@ function pngToSpriteData(buffer, width, height, preserveAlpha) {
 }
 
 // ── Asset loading ───────────────────────────────────────────
-function loadCharacterSprites() {
-  const charDir = join(ASSETS_ROOT, 'assets', 'characters')
-  const characters = []
-  const DIRECTIONS = ['down', 'up', 'right']
-  const FRAME_W = 16, FRAME_H = 32, FRAMES = 7
-  for (let ci = 0; ci < 6; ci++) {
-    const fp = join(charDir, `char_${ci}.png`)
-    if (!existsSync(fp)) return null
+/** Read one 112x96 character-shaped sheet: 3 direction rows x 7 frames of 16x32. */
+function readCharacterSheet(fp) {
+  {
+    const DIRECTIONS = ['down', 'up', 'right']
+    const FRAME_W = 16, FRAME_H = 32, FRAMES = 7
     const png = PNG.sync.read(readFileSync(fp))
     const charData = { down: [], up: [], right: [] }
     for (let di = 0; di < 3; di++) {
@@ -89,9 +89,36 @@ function loadCharacterSprites() {
       }
       charData[DIRECTIONS[di]] = frames
     }
-    characters.push(charData)
+    return charData
+  }
+}
+
+function loadCharacterSprites() {
+  const charDir = join(ASSETS_ROOT, 'assets', 'characters')
+  const characters = []
+  for (let ci = 0; ci < 6; ci++) {
+    const fp = join(charDir, `char_${ci}.png`)
+    if (!existsSync(fp)) return null
+    characters.push(readCharacterSheet(fp))
   }
   return characters
+}
+
+/** Parts drawn on their own; kept in step with the relay's loadCharacterParts. */
+function loadCharacterParts() {
+  const partsDir = join(ASSETS_ROOT, 'assets', 'characters', 'parts')
+  const out = {}
+  if (!existsSync(partsDir)) return out
+  for (const layer of ['hair', 'top', 'legs']) {
+    const sheets = []
+    for (let n = 0; ; n++) {
+      const fp = join(partsDir, `${layer}_${n}.png`)
+      if (!existsSync(fp)) break
+      sheets.push(readCharacterSheet(fp))
+    }
+    if (sheets.length > 0) out[layer] = sheets
+  }
+  return out
 }
 
 function loadFloorTiles() {
@@ -207,6 +234,13 @@ function loadFurnitureAssets() {
   return { catalog, sprites }
 }
 
+function loadLooks() {
+  try {
+    if (!existsSync(LOOKS_FILE)) return {}
+    return JSON.parse(readFileSync(LOOKS_FILE, 'utf-8')).looks || {}
+  } catch { return {} }
+}
+
 function loadLayout() {
   if (existsSync(LAYOUT_FILE)) {
     try { return JSON.parse(readFileSync(LAYOUT_FILE, 'utf-8')) } catch { /* fall through */ }
@@ -238,6 +272,7 @@ function loadSyncWindows() {
 // ── Pre-load assets at startup ──────────────────────────────
 console.log('Loading assets...')
 const cachedCharacters = loadCharacterSprites()
+const cachedCharacterParts = loadCharacterParts()
 const cachedFloors = loadFloorTiles()
 const cachedWalls = loadWallTiles()
 const cachedFurniture = loadFurnitureAssets()
@@ -279,7 +314,8 @@ window.acquireVsCodeApi = function() {
       if (msg.type === 'webviewReady') {
         // Fetch init data from server and dispatch as messages
         fetch('/api/init').then(r => r.json()).then(data => {
-          if (data.characters) dispatch({ type: 'characterSpritesLoaded', characters: data.characters });
+          if (data.characters) dispatch({ type: 'characterSpritesLoaded', characters: data.characters, parts: data.characterParts });
+          if (data.looks) dispatch({ type: 'looksLoaded', looks: data.looks });
           if (data.floors) dispatch({ type: 'floorTilesLoaded', sprites: data.floors });
           if (data.walls) dispatch({ type: 'wallTilesLoaded', sprites: data.walls });
           if (data.furniture) dispatch({ type: 'furnitureAssetsLoaded', catalog: data.furniture.catalog, sprites: data.furniture.sprites });
@@ -301,6 +337,15 @@ window.acquireVsCodeApi = function() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(msg.layout),
+        }).catch(() => {});
+      }
+      if (msg.type === 'saveLooks' && msg.looks) {
+        fetch('/api/looks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msg.looks),
+        }).then(r => r.json()).then(data => {
+          if (data.looks) dispatch({ type: 'looksLoaded', looks: data.looks });
         }).catch(() => {});
       }
     },
@@ -506,6 +551,8 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
     res.end(JSON.stringify({
       characters: cachedCharacters,
+      characterParts: cachedCharacterParts,
+      looks: loadLooks(),
       floors: cachedFloors,
       walls: cachedWalls,
       furniture: cachedFurniture,
@@ -517,6 +564,34 @@ const server = createServer((req, res) => {
   if (pathname === '/api/sync') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
     res.end(JSON.stringify(loadSyncWindows()))
+    return
+  }
+
+  if (pathname === '/api/looks' && req.method === 'POST') {
+    let body = ''
+    req.on('data', chunk => { body += chunk; if (body.length > 262144) req.destroy() })
+    req.on('end', () => {
+      try {
+        const update = JSON.parse(body)
+        const looks = loadLooks()
+        for (const [name, look] of Object.entries(update)) {
+          const key = String(name).trim().toLowerCase()
+          if (!key) continue
+          if (look === null) delete looks[key]
+          else looks[key] = look
+        }
+        const dir = join(homedir(), '.pixel-agents')
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+        const tmp = LOOKS_FILE + '.tmp'
+        writeFileSync(tmp, JSON.stringify({ version: 1, looks }, null, 2), 'utf-8')
+        renameSync(tmp, LOOKS_FILE)
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: true, looks }))
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end('{"error":"Invalid JSON"}')
+      }
+    })
     return
   }
 

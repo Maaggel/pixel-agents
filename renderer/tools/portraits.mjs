@@ -6,6 +6,7 @@
 // where the names are.
 //
 //   cd renderer && node tools/portraits.mjs [out.png]
+//   cd renderer && node tools/portraits.mjs --reasons [out.png]   # with why each one chose it
 //
 // Regenerate it whenever somebody chooses a look. The relay is asked over HTTP and needs no token.
 import { createCanvas, loadImage } from '@napi-rs/canvas'
@@ -18,7 +19,9 @@ import { join } from 'path'
 const ROOT = new URL('../../', import.meta.url).pathname
 const FONT = registerSheetFont()
 const SRC = `${ROOT}webview-ui/public/assets/characters`
-const OUT = process.argv[2] || 'portraits.png'
+const REASONS = process.argv.includes('--reasons')
+const OUT = process.argv.filter((a) => !a.startsWith('--')).slice(2)[0] ||
+  (REASONS ? 'portraits-reasons.png' : 'portraits.png')
 const RELAY = process.env.PIXEL_AGENTS_RELAY_HTTP || 'https://apps.blommemix.dk/pixelagents'
 const FW = 16, FH = 32, STANDING = 1
 // Big enough that the names under them are read rather than squinted at - this hangs in the
@@ -100,6 +103,81 @@ function caption(tag) {
 
 // Sub-agents come and go with a Task call and are nobody's portrait
 const household = names.filter((n) => /\(/.test(n)).sort((a, b) => caption(a).name.localeCompare(caption(b).name))
+
+/** Break text into lines that fit, and stop once there are enough of them. */
+function wrap(ctx, text, width, maxLines) {
+  const words = text.split(/\s+/)
+  const lines = []
+  let line = ''
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+    if (ctx.measureText(next).width > width && line) {
+      lines.push(line)
+      line = word
+      if (lines.length === maxLines) break
+    } else {
+      line = next
+    }
+  }
+  if (lines.length < maxLines && line) lines.push(line)
+  // An excerpt that stops mid-thought should say so rather than look finished
+  const shown = lines.join(' ')
+  if (shown.length < text.length - 1) lines[lines.length - 1] += ' ...'
+  return lines
+}
+
+if (REASONS) {
+  const S2 = 4
+  const CARD_W = 470, CARD_H = 158, PAD = 18
+  const cols = 2
+  const rows = Math.ceil(household.length / cols)
+  const c = createCanvas(cols * CARD_W + PAD * 2, rows * CARD_H + 80)
+  const x = c.getContext('2d')
+  x.imageSmoothingEnabled = false
+  x.fillStyle = '#20202e'
+  x.fillRect(0, 0, c.width, c.height)
+  x.fillStyle = '#cfcfe4'
+  x.font = `22px "${FONT.bold}"`
+  x.fillText('The household', PAD + 4, 38)
+  x.fillStyle = '#7f7f99'
+  x.font = `13px "${FONT.regular}"`
+  x.fillText('twelve agents, and why each one is dressed the way it is', PAD + 4, 58)
+
+  household.forEach((tag, i) => {
+    const { project, name } = caption(tag)
+    const stored = looks[tag.trim().toLowerCase()]
+    const look = stored ? engine.storedToLook(stored) : engine.lookFromName(tag)
+    const px = PAD + (i % cols) * CARD_W
+    const py = 80 + Math.floor(i / cols) * CARD_H
+
+    const sprite = engine.getCharacterSprites(look).walk[engine.Direction.DOWN][STANDING]
+    sprite.forEach((row, sy) => row.forEach((hex, sx) => {
+      if (!hex) return
+      x.fillStyle = hex
+      x.fillRect(px + 10 + sx * S2, py + 8 + sy * S2, S2, S2)
+    }))
+
+    const tx = px + 10 + FW * S2 + 16
+    const tw = CARD_W - (tx - px) - 20
+    x.fillStyle = '#e4e4f2'
+    x.font = `16px "${FONT.bold}"`
+    x.fillText(name, tx, py + 24)
+    // Measure the name in the font it was drawn in, not in the one about to replace it
+    const nameWidth = x.measureText(name).width
+    x.fillStyle = '#8f8fa8'
+    x.font = `11px "${FONT.regular}"`
+    x.fillText(project, tx + nameWidth + 10, py + 24)
+
+    x.fillStyle = '#b6b6cc'
+    x.font = `11px "${FONT.regular}"`
+    const reason = (stored?.reason || 'Dressed by a hash of the nametag - nobody chose this one.').replace(/\s+/g, ' ')
+    wrap(x, reason, tw, 7).forEach((line, li) => x.fillText(line, tx, py + 44 + li * 15))
+  })
+
+  writeFileSync(OUT, c.toBuffer('image/png'))
+  console.log(`wrote ${OUT}: ${household.length} with their reasons`)
+  process.exit(0)
+}
 
 const COLS = Number(process.env.PORTRAIT_COLS || 6)
 const CELL_W = Math.max(FW * S + 30, 150), CELL_H = FH * S + 56

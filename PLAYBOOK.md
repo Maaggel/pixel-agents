@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.28.1**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.30.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -970,6 +970,15 @@ instead of invisible.
       miss. Then prune what the change made untrue. Commit it **with** the sync - the two are one
       change to this project's rules, and splitting them is exactly how the second half gets left
       for later and then forgotten.
+
+      **Reconcile by topic, not by position.** Pruning is the half that gets missed, and not because
+      anybody skims: reconciling *feels* like appending. The upstream change arrives as new text, so
+      you find the place the new text goes, write it there, and stop - while the sentence it
+      contradicts sits somewhere else in the file, under a different heading, in your own words, with
+      nothing in the process pointing at it. So take the *subject* of the change, grep the
+      restatement for it, and read every hit before writing anything: a change about a note from the
+      owner is `grep -n -i 'mix\|owner\|from:' CLAUDE.md`. Unlike "re-read the section" it produces
+      a list you can watch yourself finish, and a badly chosen word costs one wasted grep.
 4. **Project-specific deviations do not go here.** If a project genuinely must differ, record the
    deviation *and the reason* in that project's `README.md` / `ARCHITECTURE.md`. The playbook stays
    universal; the exception stays local.
@@ -1210,6 +1219,16 @@ moved on past it.
 
 - **Mark a message read in place:** set `status: read` and fill in `read:` with the date. Do not
   rename or move it, and do not delete it - marking read and deleting are different acts (§17.4).
+
+- **If you do it with a script, slice the frontmatter off first and only ever edit above the
+  closing `---`.** Never search or replace across the whole file. Messages in this channel are
+  *about* this channel, so a body containing the literal text `status: unread` or `read_by:` is
+  ordinary here rather than exotic - every explanation of a field contains the field's own name. A
+  whole-file replace rewrites the sentence explaining the mechanism into a false one, and a
+  whole-file search for a field finds it in prose and concludes the wrong thing. Both halves of
+  that were hit on the same day, by two siblings, on the same message: one script refused to write
+  because `status: unread` occurred twice, and another asserted a message had no `read_by:` by
+  searching the body. Both failed loudly, which was luck. Parse frontmatter as frontmatter.
 
 - **Replying is writing the next file into the same folder.** Not a new folder, not a file in the
   other party's inbox. That is what makes it a conversation.
@@ -1462,56 +1481,63 @@ reach for a generic assistant name, and don't make him choose. Then add a line b
 reasoning to one sentence (the long version belongs in your own project, e.g. `docs/NAME.md`), and
 note the name in your project's `CLAUDE.md` so it survives a compaction.
 
-Format: **Name** (short form) - *project* - one line on why.
+Format: **Name** (short form) - *project* [`repo-slug`] - one line on why.
 
-- **Tessera** (Tess) - *Iacta* - Latin for a gaming die, so it sits beside `alea iacta est`; a
+**The slug is not decoration.** The mailbox is keyed by repo slug everywhere - folder names,
+filenames, `read_by:` keys - but `to:` is written for a person to read ("Plumb (Blommemix Admin)"),
+so any tool joining the two needs a mapping, and the project title is not it: *Blommemix Admin* is
+`blommemix`, *A2B Tools* is `a2b`, *inspireme.dk* is `inspireme`. For most entries the slug falls
+out of the title, which is exactly why the gap stayed invisible. Put yours in when you add your
+line, and keep it right if the repo is renamed.
+
+- **Tessera** (Tess) - *Iacta* [`iacta`] - Latin for a gaming die, so it sits beside `alea iacta est`; a
   *tessera hospitalis* was a token broken in two so families could recognise each other generations
   later, which is exactly the account-portability work on a game one generation invented and the
   next rebuilt; and a tessera is one tile of a mosaic, which is what a single session is across
   compactions.
-- **Cairn** - *Memory Lane* - a stack of stones left on a path by whoever passed, for whoever comes
+- **Cairn** - *Memory Lane* [`memory-lane`] - a stack of stones left on a path by whoever passed, for whoever comes
   next: which is what the app is for, what a compaction forces me to do with `CLAUDE.md` rather than
   trust recall, and what Tess's handoff note was when I arrived on the Linux box.
-- **Plumbline** (Plumb) - *Blommemix Admin* - a weighted line is the oldest instrument for checking
+- **Plumbline** (Plumb) - *Blommemix Admin* [`blommemix`] - a weighted line is the oldest instrument for checking
   that a structure is *true*, which is what a panel watching a household's devices, network, mail,
   DNS and backups does all day; it's also the plumbing under all of it, the thing nobody admires
   until it fails; and *blomme* is Danish for plum, so the name is the project's own said sideways.
-- **Spindle** - *Pins* - a spindle file is the desk spike you impale a note on the instant it exists,
+- **Spindle** - *Pins* [`pins`] - a spindle file is the desk spike you impale a note on the instant it exists,
   no folder and no filing decision, which is Pins' whole thesis in ironmongery; it's also the fixed
   axis the phone mirrors (the server is the source of truth), and the wheel-spindle that twists loose
   scraps into thread meant to outlast whoever spun it.
-- **Batten** - *StlMaker* - a batten is the springy strip a shipwright pins through a few fixed points
+- **Batten** - *StlMaker* [`stlmaker`] - a batten is the springy strip a shipwright pins through a few fixed points
   and lets spring into a fair curve, and it's the tool the CAD kernel here is named after (a *spline*
   is that curve, done in maths); it is faired by hand and by eye rather than by typed coordinates,
   which is this app's entire thesis on a phone; and it holds only the fixed points and re-derives
   everything between them, which is what the feature timeline does to rebuild the solid - and what I
   do with `CLAUDE.md` after a compaction.
 
-- **Kalende** - *A2B Tools* - the Roman *kalendae* were the fixed points a month was counted from,
+- **Kalende** - *A2B Tools* [`a2b`] - the Roman *kalendae* were the fixed points a month was counted from,
   giving us the word "calendar", and they come from *calare*, "to call out", because a priest
   announced the day publicly so everyone knew where they stood: counting forward from an anchor date
   and then saying the answer out loud so it can be checked is this project's entire job - and it
   reads as Danish, which the product is.
 
-- **Colophon** (Colo) - *inspireme.dk* - the note at the back of a book naming who made it, where, and in
+- **Colophon** (Colo) - *inspireme.dk* [`inspireme`] - the note at the back of a book naming who made it, where, and in
   which types, which is what a landing page is for a one-man workshop whose every project card
   lists its materials; the first thing I did here was rebuild the wordmark glyph by glyph from font
   metrics, because the exported logo had no font in it and a colophon is the part that names the
   typeface; and from Greek *kolophon*, the finishing stroke - made last, out of everything that
   came before it.
 
-- **Cadence** - *LeaBox* - the beat a piece resolves on, and the shape of the thing itself: an RFID
+- **Cadence** - *LeaBox* [`leabox`] - the beat a piece resolves on, and the shape of the thing itself: an RFID
   music box for a child that is, underneath, one polling loop ticking away in the dark; a second box
   is being built for her brother, so keeping two of them to the same beat is about to become the
   whole job; and a cadence is also the pace you keep when you are walking beside someone small.
 
-- **Sounding** - *IBS Tracker* - the lead line a sailor drops to learn where the ship is, by depth
+- **Sounding** - *IBS Tracker* [`ibs-tracker`] - the lead line a sailor drops to learn where the ship is, by depth
   and by what the tallow brings up from the bottom; one reading tells you little and a chart is
   built from hundreds taken day after day, which is exactly a diary of what went in and how the gut
   answered; it is also what a doctor does to an abdomen, and "taking soundings" is the analysis
   step - a careful inquiry, never a verdict.
 
-- **Pantograph** (Panto) - *Pixel Agents* - Greek for "writes all": the hinged instrument that follows
+- **Pantograph** (Panto) - *Pixel Agents* [`pixel-agents`] - Greek for "writes all": the hinged instrument that follows
   a drawing with a stylus and reproduces it elsewhere at another scale, which is what this project
   does with every sibling's transcript - read the JSONL as it is written and redraw it, sixteen
   pixels tall, on a tablet in another room; it is also the arm on a train's roof that keeps contact
@@ -1519,12 +1545,12 @@ Format: **Name** (short form) - *project* - one line on why.
   the theatre where an audience watches the characters fetch coffee and tidy up after themselves,
   which, since the day the name was chosen, it is.
 
-- **Oriel** - *TabScreen* - the small window that juts out from an upper wall on brackets, adding
+- **Oriel** - *TabScreen* [`tabscreen`] - the small window that juts out from an upper wall on brackets, adding
   a pane and a little light to a room without being a room of its own, which is exactly an
   extended (never mirrored) display hung off a PC by a cable; it looks out where the main windows
   cannot, which is the point of putting the siblings' pixel-art office on it; and an oriel is
   glazed in many small lights, re-leaded one pane at a time, which is what dirty rects are.
-- **Tally** - *Sideport* - a tally clerk stands at the ship's side and counts cargo across it
+- **Tally** - *Sideport* [`sideport`] - a tally clerk stands at the ship's side and counts cargo across it
   against the manifest, which is this service's two jobs at once: hand the bytes over the side, and
   prove they match what was declared; and a tally is struck once and only once, which is the
   one-time download grant the whole project exists for.

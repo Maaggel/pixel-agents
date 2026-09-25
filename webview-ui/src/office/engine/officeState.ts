@@ -244,6 +244,12 @@ export class OfficeState {
     }
   }
 
+  /** The tiles a sign is watching, for tests and diagnosis */
+  signRoomTiles(uid: string): string[] | null {
+    const tiles = this.signRooms.get(uid)
+    return tiles ? [...tiles] : null
+  }
+
   /** What the room a sign watches is doing: 0 free, 1 in a meeting, 2 in use. */
   private roomStateIndex(tiles: Set<string>): number {
     let meeting = false

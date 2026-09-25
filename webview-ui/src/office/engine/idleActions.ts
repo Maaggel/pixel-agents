@@ -45,6 +45,7 @@ import {
   TOILET_HOURS,
   PLANT_NOTICE_DISTANCE_TILES,
   WATER_NEAR_PARCHED_WEIGHT,
+  MAX_CONCURRENT_WATERERS,
   WATER_NEAR_FADING_WEIGHT,
   WATER_PARCHED_ELSEWHERE_WEIGHT,
   WATER_FADING_ELSEWHERE_WEIGHT,
@@ -675,6 +676,12 @@ export function pickIdleAction(ch: Character, ctx: IdleActionContext): IdleActio
       if (entry.type === IdleActionType.FETCH_ITEM && (ctx.props.length >= MAX_PROPS || findFetchableUtensils(ctx, 'break').length === 0)) continue
       if (entry.type === IdleActionType.WATER_PLANTS) {
         if (!findWateringCan(ctx)) continue
+        // somebody is already seeing to the plants: leave them to it
+        let watering = 0
+        for (const other of ctx.characters.values()) {
+          if (other.id !== ch.id && other.idleAction === IdleActionType.WATER_PLANTS) watering++
+        }
+        if (watering >= MAX_CONCURRENT_WATERERS) continue
         const urge = wateringUrge(ch, ctx)
         if (urge === 0) continue
         eligible.push({ type: entry.type, weight: urge })

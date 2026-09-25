@@ -407,6 +407,11 @@ export const PLANT_NOTICE_DISTANCE_TILES = 7
 // numbers tried, watering was half of everything anyone did and nobody ever fetched a drink.
 /** Weight when a parched plant is close by */
 export const WATER_NEAR_PARCHED_WEIGHT = 120
+/**
+ * How many people may be doing the watering rounds at once. Three agents crossing the office with
+ * watering cans reads as an obsession rather than an office; one person deals with the plants.
+ */
+export const MAX_CONCURRENT_WATERERS = 1
 /** Weight when a merely fading plant is close by */
 export const WATER_NEAR_FADING_WEIGHT = 10
 /** Weight when something is parched, but nowhere near */

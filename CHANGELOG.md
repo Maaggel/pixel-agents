@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.33.0
+
+- **One person sees to the plants at a time** (`MAX_CONCURRENT_WATERERS`). Three agents crossing the office with watering cans reads as an obsession rather than an office. Nobody sets off while somebody else is already on the rounds.
+- It costs the plants almost nothing: 68 watering rounds over 30 office days instead of 114, and they still average 71% freshly watered against 16% parched (was 73/17). Conversation is comfortably ahead of watering again in the mix, which is the right order.
+
 ## v1.32.0
 
 - **Being in the same room as a withered plant counts as noticing it.** "Close" was a straight line of `PLANT_NOTICE_DISTANCE_TILES` tiles and nothing else - so a plant through a wall counted and one eight tiles away across the same open floor did not. Every tile is now labelled with the room it is in (`rebuildRooms`, separated by walls, the void and doorways - a room being what you can close a door on), and for a plant that has withered completely, sharing that room is enough. Walking past still counts for the merely fading ones.

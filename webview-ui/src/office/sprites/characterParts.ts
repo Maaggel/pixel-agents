@@ -152,11 +152,17 @@ export function splitCharacters(all: CharacterFrames[]): CharacterPartSet[] {
     const frameCount = Math.min(...all.map((frames) => frames[dir].length))
     for (let f = 0; f < frameCount; f++) {
       const mask = sharedHeadMask(all, dir, f)
+      // Measured from where this frame's head actually starts, not from a fixed row: in profile the
+      // head sits a row lower, and a base that ignored that poked out above a hairstyle's crown.
+      let maskTop = PART_SHOULDER_ROW
+      for (let y = PART_HEAD_TOP; y < PART_SHOULDER_ROW; y++) {
+        if (mask[y]?.some(Boolean)) { maskTop = y; break }
+      }
       for (let i = 0; i < sets.length; i++) {
         const tone = tones[i]
         if (!tone) continue
         const skin = sets[i].skin[dir][f]
-        for (let y = PART_HEAD_TOP + PART_HEAD_BASE_INSET; y < PART_SHOULDER_ROW; y++) {
+        for (let y = maskTop + PART_HEAD_BASE_INSET; y < PART_SHOULDER_ROW; y++) {
           for (let x = 0; x < (mask[y]?.length ?? 0); x++) {
             if (mask[y][x] && !skin[y][x]) skin[y][x] = tone
           }

@@ -48,7 +48,8 @@ folder emoji and all, matched without regard to case. Sending `null` instead of 
 back to what its name hashes to.
 
 Every numbered field is required; half a look is ignored rather than half-applied. `reason` is free
-text, kept as written, and is the only record of why anybody looks the way they do - so write one.
+text up to 600 characters, kept as written, and is the only record of why anybody looks the way they
+do - so write one.
 
 ## The parts
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.36.1
+
+- A look's reason is cut at a word rather than through one, and has room for 600 characters instead of 400. A reason that stops mid-word reads as a fault rather than a limit.
+
 ## v1.36.0
 
 - Hair has colours rather than hue nudges: fifteen named ones, from jet black through chestnut and ginger to honey and platinum blonde, and on to blue, teal, purple, magenta, pink and green. Rotating a hue cannot make blonde - blonde is lightness, not hue - so hair is painted by luminance the way floor tiles are, which also means a colour comes out the same whether the hairstyle under it was drawn black or brown. Names are dealt mostly naturals, with roughly one head in six a bright one.

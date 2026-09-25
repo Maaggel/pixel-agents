@@ -431,6 +431,8 @@ function saveKioskOptions(opts) {
 // so this only holds the ones somebody chose. Set from the office by anyone looking at it, or over
 // POST /api/looks by the agents themselves, and pushed to every viewer and the tablet alike.
 const LOOK_FIELDS = ['skin', 'hair', 'hairColor', 'top', 'topHue', 'legs', 'legsHue']
+/** Long enough for somebody to say why, short enough that it is not somewhere to keep notes */
+const LOOK_REASON_MAX = 600
 let looks = {}
 try { if (existsSync(LOOKS_FILE)) looks = JSON.parse(readFileSync(LOOKS_FILE, 'utf-8')).looks || {} } catch { /* start empty */ }
 
@@ -452,7 +454,13 @@ function saveLooks(update) {
     if (look === null) { delete looks[key]; continue }
     if (!isLook(look)) continue
     const entry = Object.fromEntries(LOOK_FIELDS.map((f) => [f, Math.round(look[f])]))
-    const reason = typeof look.reason === 'string' ? look.reason.trim().slice(0, 400) : ''
+    let reason = typeof look.reason === 'string' ? look.reason.trim() : ''
+    if (reason.length > LOOK_REASON_MAX) {
+      // Cut at a word, not through one: a reason ending mid-word reads as a fault, not a limit
+      const cut = reason.slice(0, LOOK_REASON_MAX)
+      const space = cut.lastIndexOf(' ')
+      reason = (space > LOOK_REASON_MAX * 0.6 ? cut.slice(0, space) : cut).trimEnd()
+    }
     if (reason) entry.reason = reason
     else if (looks[key]?.reason) entry.reason = looks[key].reason
     looks[key] = entry

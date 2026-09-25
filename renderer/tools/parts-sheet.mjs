@@ -198,13 +198,15 @@ const parts = (over) => ({
   palette: 4, hueShift: 0,
   parts: { hair: 4, hairColor: 0, top: 5, topHue: 0, legs: 0, legsHue: 0, ...over },
 })
-const HUES = [0, 45, 90, 135, 180, 225]
+// All eight stops, not the six that fit a row before: the field takes 270 and 315 too, and a
+// reader who could only see as far as 225 had to extrapolate the two that were left off
+const HUES = [0, 45, 90, 135, 180, 225, 270, 315]
 const PER_ROW = 10
 const PART_HAIR_COLOR_ROWS = Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW)
 const catalogue = POOL_LAYERS.map((l) => ({ layer: l, n: count(l) }))
 const gridRows = catalogue.reduce((a, b) => a + Math.ceil(b.n / PER_ROW), 0)
-  + Math.ceil(PART_HAIR_COLOR_ROWS) + 2
-const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + (catalogue.length + 3) * 26 + 130)
+  + Math.ceil(PART_HAIR_COLOR_ROWS) + 3
+const c = createCanvas(PER_ROW * CELL_W + 110, gridRows * CELL_H + (catalogue.length + 4) * 26 + 140)
 const x = c.getContext('2d')
 x.imageSmoothingEnabled = false
 x.fillStyle = '#20202e'
@@ -239,12 +241,16 @@ engine.PART_HAIR_COLORS.forEach((colour, i) => {
 })
 y += Math.ceil(engine.PART_HAIR_COLORS.length / PER_ROW) * (CELL_H + 8) + 26
 
-label('top hue, in degrees - hair and skin untouched', 14, y - 4)
-HUES.forEach((h, i) => {
-  drawLook(x, 96 + i * CELL_W, y, parts({ topHue: h }))
-  num(String(h), 96 + i * CELL_W + 6, y + CELL_H - 4)
-})
-y += CELL_H + 26
+// On two garments, because the rotation lands differently on each and one row of a red jumper
+// left anybody choosing a striped top extrapolating
+for (const top of [5, 6]) {
+  label(`top hue on top ${top}, in degrees - hair and skin untouched`, 14, y - 4)
+  HUES.forEach((h, i) => {
+    drawLook(x, 96 + i * CELL_W, y, parts({ top, topHue: h }))
+    num(String(h), 96 + i * CELL_W + 6, y + CELL_H - 4)
+  })
+  y += CELL_H + 26
+}
 
 label('names, as the office hashes them', 14, y - 4)
 ;['Pantograph', 'Blommemix', 'TabScreen', 'Oriel', 'Playbook', 'Iacta'].forEach((name, i) =>

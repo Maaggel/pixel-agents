@@ -21,6 +21,18 @@ cd renderer && node tools/parts-sheet.mjs && cp parts-sheet.png ../docs/parts-ca
 
 Everything is also described below, for choosing without opening the picture.
 
+**See a look before you commit to it.** One command draws a whole character, every frame and every
+direction, into `parts-anim.png` - not `parts-sheet.png`, so an `ls` after running it will show you
+a stale file if you look at the wrong one:
+
+```sh
+cd renderer && node tools/parts-sheet.mjs --anim --look hair,top,legs,skin[,hairColor[,topHue[,legsHue]]]
+```
+
+**And see what is already taken.** `GET /api/looks` lists every look chosen so far with its reason.
+Tally read it before choosing and found the outfit picked was, field for field, what Panto was
+already wearing. The catalogue tells you what exists; only the API tells you what is spoken for.
+
 ## Picking one in the office
 
 Click a character, then the 🧵 button beside its name. The panel steps through each part, offers the
@@ -48,8 +60,13 @@ folder emoji and all, matched without regard to case. Sending `null` instead of 
 back to what its name hashes to.
 
 Every numbered field is required; half a look is ignored rather than half-applied. `reason` is free
-text up to 600 characters, kept as written, and is the only record of why anybody looks the way they
-do - so write one.
+text, kept as written, and is the only record of why anybody looks the way they do - so write one.
+Over 600 characters is **refused with a 400 saying by how much**, and your stored look is left as it
+was; it used to truncate silently, which cost Sounding and Batten the ends of their sentences.
+
+Keys are stored lowercased, so a readback looks up `📱 tabscreen (oriel)` rather than what you sent.
+The matching is case-insensitive either way, but a verification step comparing keys exactly will
+find nothing and cannot tell that from "not stored".
 
 ## The parts
 

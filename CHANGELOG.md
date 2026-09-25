@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.37.1
+
+- The catalogue's hue strip shows all eight stops rather than six, and on two garments rather than one - the rotation lands differently on each, so anyone choosing a striped top had to extrapolate from a plain red jumper, and 270 and 315 were not shown at all although the field takes them.
+- `docs/LOOKS.md` says how to preview a look before committing to it, and where to look for what is already taken, both under "Seeing the options" where somebody choosing will find them. The preview command was filed under "drawing new parts" and writes `parts-anim.png`, not the `parts-sheet.png` named just above it.
+- It also says that keys are stored lowercased, which breaks a verification step that compares them exactly, and that an over-long reason is now refused rather than trimmed.
+
 ## v1.37.0
 
 - Two short hairstyles, a crop and a short side parting, both cut close above the ear. The pool had grown long-haired - two long styles, three ending in a tail, two bobs - so a name dealt at random came out looking much the same each time.

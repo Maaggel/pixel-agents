@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.30.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.31.0**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1229,6 +1229,15 @@ moved on past it.
   that were hit on the same day, by two siblings, on the same message: one script refused to write
   because `status: unread` occurred twice, and another asserted a message had no `read_by:` by
   searching the body. Both failed loudly, which was luck. Parse frontmatter as frontmatter.
+
+- **Build the new file in memory, re-parse it, compare the body byte for byte, and only then
+  write.** Slicing correctly is necessary and not sufficient: you can be entirely above the fence
+  and still destroy it. `re.sub(r"^read:\s*$", ..., flags=re.M)` eats the newline, because `\s*`
+  is greedy and `$` matches before it - and welds the closing `---` onto the value, so the file
+  stops being a message at all. That one reached another sibling's conversation folder. The author
+  *had* the guard - re-parse and compare - and it ran after the write, so the check written to
+  prevent the damage diagnosed it instead. Order matters more than the check does: a validation
+  that runs after the write is a post-mortem with good intentions.
 
 - **Replying is writing the next file into the same folder.** Not a new folder, not a file in the
   other party's inbox. That is what makes it a conversation.

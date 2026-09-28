@@ -1,5 +1,5 @@
 import { TileType, MAX_COLS, MAX_ROWS } from '../types.js'
-import { DEFAULT_NEUTRAL_COLOR } from '../../constants.js'
+import { DEFAULT_NEUTRAL_COLOR, DUPLICATE_SEARCH_RADIUS_TILES } from '../../constants.js'
 import type { TileType as TileTypeVal, ZoneType, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../layout/furnitureCatalog.js'
 import { getPlacementBlockedTiles } from '../layout/layoutSerializer.js'
@@ -82,6 +82,61 @@ export function rotateFurniture(layout: OfficeLayout, uid: string, direction: 'c
     ...layout,
     furniture: layout.furniture.map((f) => (f.uid === uid ? { ...f, type: newType } : f)),
   }
+}
+
+/**
+ * Where a duplicate of `item` could stand: right beside it if there is room, else the nearest open
+ * tile within `DUPLICATE_SEARCH_RADIUS_TILES`. The original is left untouched and still occupies its
+ * own tiles, so this never needs to exclude it - every candidate is somewhere else.
+ */
+function findDuplicateSpot(layout: OfficeLayout, item: PlacedFurniture): { col: number; row: number } | null {
+  const entry = getCatalogEntry(item.type)
+  if (!entry) return null
+
+  const tried = new Set<string>()
+  const tryAt = (col: number, row: number): { col: number; row: number } | null => {
+    const key = `${col},${row}`
+    if (tried.has(key)) return null
+    tried.add(key)
+    return canPlaceFurniture(layout, item.type, col, row) ? { col, row } : null
+  }
+
+  // Immediately adjacent first - this is what "duplicate" should feel like most of the time
+  const adjacent: Array<[number, number]> = [
+    [entry.footprintW, 0], [-entry.footprintW, 0], [0, entry.footprintH], [0, -entry.footprintH],
+  ]
+  for (const [dc, dr] of adjacent) {
+    const hit = tryAt(item.col + dc, item.row + dr)
+    if (hit) return hit
+  }
+
+  // Then a widening ring, one tile at a time, for a crowded room
+  for (let radius = 1; radius <= DUPLICATE_SEARCH_RADIUS_TILES; radius++) {
+    for (let dr = -radius; dr <= radius; dr++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        if (Math.max(Math.abs(dc), Math.abs(dr)) !== radius) continue
+        const hit = tryAt(item.col + dc, item.row + dr)
+        if (hit) return hit
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Duplicate a placed item, colour and state included, onto the nearest free tile. Returns the new
+ * layout and the copy's uid so the caller can select it right away, or null if nothing within reach
+ * will hold a second one.
+ */
+export function duplicateFurniture(layout: OfficeLayout, uid: string): { layout: OfficeLayout; uid: string } | null {
+  const item = layout.furniture.find((f) => f.uid === uid)
+  if (!item) return null
+  const spot = findDuplicateSpot(layout, item)
+  if (!spot) return null
+
+  const newUid = `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  const copy: PlacedFurniture = { ...item, uid: newUid, col: spot.col, row: spot.row }
+  return { layout: { ...layout, furniture: [...layout.furniture, copy] }, uid: newUid }
 }
 
 /** Toggle furniture state (on/off). Returns new layout (immutable). */

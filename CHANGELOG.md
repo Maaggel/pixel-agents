@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.38.0
+
+- A duplicate button on selected furniture in the layout editor (green, bottom-right corner of the selection, next to delete and rotate), plus Ctrl/Cmd+D. Copies the item - type, colour, on/off state - onto the nearest free tile: right beside it if there's room, otherwise the closest open spot found by searching outward. The new copy is selected immediately so a chain of Ctrl+D fans a row of desks or chairs out across the room without re-clicking each time.
+
 ## v1.37.1
 
 - The catalogue's hue strip shows all eight stops rather than six, and on two garments rather than one - the rotation lands differently on each, so anyone choosing a striped top had to extrapolate from a plain red jumper, and 270 and 315 were not shown at all although the field takes them.

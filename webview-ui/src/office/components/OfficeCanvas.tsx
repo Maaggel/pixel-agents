@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react'
 import type { OfficeState } from '../engine/officeState.js'
 import type { EditorState } from '../editor/editorState.js'
-import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, RotateButtonBounds } from '../engine/renderer.js'
+import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, RotateButtonBounds, DuplicateButtonBounds } from '../engine/renderer.js'
 import { startGameLoop } from '../engine/gameLoop.js'
 import { renderFrame } from '../engine/renderer.js'
 import { TILE_SIZE, EditTool, TileType } from '../types.js'
@@ -22,6 +22,7 @@ interface OfficeCanvasProps {
   onEditorSelectionChange: () => void
   onDeleteSelected: () => void
   onRotateSelected: () => void
+  onDuplicateSelected: () => void
   onDragMove: (uid: string, newCol: number, newRow: number) => void
   editorTick: number
   zoom: number
@@ -35,7 +36,7 @@ interface OfficeCanvasProps {
   fitCamera?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true, fitCamera = false }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDuplicateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true, fitCamera = false }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -45,6 +46,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
   // Delete/rotate button bounds (updated each frame by renderer)
   const deleteButtonBoundsRef = useRef<DeleteButtonBounds | null>(null)
   const rotateButtonBoundsRef = useRef<RotateButtonBounds | null>(null)
+  const duplicateButtonBoundsRef = useRef<DuplicateButtonBounds | null>(null)
   // Right-click erase dragging
   const isEraseDraggingRef = useRef(false)
   // Zoom scroll accumulator for trackpad pinch sensitivity
@@ -126,6 +128,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
             isRotatable: false,
             deleteButtonBounds: null,
             rotateButtonBounds: null,
+            duplicateButtonBounds: null,
             showGhostBorder,
             ghostBorderHoverCol: showGhostBorder ? editorState.ghostCol : -999,
             ghostBorderHoverRow: showGhostBorder ? editorState.ghostRow : -999,
@@ -325,9 +328,10 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
-        // Store delete/rotate button bounds for hit-testing
+        // Store delete/rotate/duplicate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null
         rotateButtonBoundsRef.current = editorRender?.rotateButtonBounds ?? null
+        duplicateButtonBoundsRef.current = editorRender?.duplicateButtonBounds ?? null
       },
     })
 
@@ -395,6 +399,15 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
   // Check if device-pixel coords hit the rotate button
   const hitTestRotateButton = useCallback((deviceX: number, deviceY: number): boolean => {
     const bounds = rotateButtonBoundsRef.current
+    if (!bounds) return false
+    const dx = deviceX - bounds.cx
+    const dy = deviceY - bounds.cy
+    return (dx * dx + dy * dy) <= (bounds.radius + 2) * (bounds.radius + 2)
+  }, [])
+
+  // Check if device-pixel coords hit the duplicate button
+  const hitTestDuplicateButton = useCallback((deviceX: number, deviceY: number): boolean => {
+    const bounds = duplicateButtonBoundsRef.current
     if (!bounds) return false
     const dx = deviceX - bounds.cx
     const dy = deviceY - bounds.cy
@@ -543,7 +556,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
 
       if (!isEditMode) return
 
-      // Check rotate/delete button hit first
+      // Check rotate/delete/duplicate button hit first
       const pos = screenToWorld(e.clientX, e.clientY)
       if (pos && hitTestRotateButton(pos.deviceX, pos.deviceY)) {
         onRotateSelected()
@@ -551,6 +564,10 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       }
       if (pos && hitTestDeleteButton(pos.deviceX, pos.deviceY)) {
         onDeleteSelected()
+        return
+      }
+      if (pos && hitTestDuplicateButton(pos.deviceX, pos.deviceY)) {
+        onDuplicateSelected()
         return
       }
 
@@ -604,7 +621,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         onEditorTileAction(tile.col, tile.row)
       }
     },
-    [officeState, isEditMode, editorState, screenToTile, screenToWorld, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, hitTestDeleteButton, hitTestRotateButton, panRef],
+    [officeState, isEditMode, editorState, screenToTile, screenToWorld, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDuplicateSelected, hitTestDeleteButton, hitTestRotateButton, hitTestDuplicateButton, panRef],
   )
 
   const handleMouseUp = useCallback(

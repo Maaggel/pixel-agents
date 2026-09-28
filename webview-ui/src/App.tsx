@@ -350,6 +350,7 @@ function App() {
     editorState,
     editor.handleDeleteSelected,
     editor.handleRotateSelected,
+    editor.handleDuplicateSelected,
     editor.handleToggleState,
     editor.handleUndo,
     editor.handleRedo,
@@ -496,6 +497,7 @@ function App() {
         onEditorSelectionChange={editor.handleEditorSelectionChange}
         onDeleteSelected={editor.handleDeleteSelected}
         onRotateSelected={editor.handleRotateSelected}
+        onDuplicateSelected={editor.handleDuplicateSelected}
         onDragMove={editor.handleDragMove}
         editorTick={editor.editorTick}
         zoom={editor.zoom}

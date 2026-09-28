@@ -92,6 +92,7 @@ export const GHOST_INVALID_TINT = '#ff0000'
 export const SELECTION_HIGHLIGHT_COLOR = '#007fd4'
 export const DELETE_BUTTON_BG = 'rgba(200, 50, 50, 0.85)'
 export const ROTATE_BUTTON_BG = 'rgba(50, 120, 200, 0.85)'
+export const DUPLICATE_BUTTON_BG = 'rgba(60, 170, 90, 0.85)'
 
 // ── Camera ───────────────────────────────────────────────────
 export const CAMERA_FOLLOW_LERP = 0.1
@@ -114,6 +115,9 @@ export const TOUCH_DOUBLE_TAP_MAX_DIST_PX = 40
 // ── Editor ───────────────────────────────────────────────────
 export const UNDO_STACK_MAX_SIZE = 50
 export const LAYOUT_SAVE_DEBOUNCE_MS = 500
+/** How far (in tiles) to search for a free spot when duplicating a placed item, once the four
+ *  tiles immediately beside it are all taken. */
+export const DUPLICATE_SEARCH_RADIUS_TILES = 6
 export const DEFAULT_FLOOR_COLOR: FloorColor = { h: 35, s: 30, b: 15, c: 0 }
 export const DEFAULT_WALL_COLOR: FloorColor = { h: 240, s: 25, b: 0, c: 0 }
 export const DEFAULT_NEUTRAL_COLOR: FloorColor = { h: 0, s: 0, b: 0, c: 0 }

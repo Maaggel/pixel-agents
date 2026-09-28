@@ -7,6 +7,7 @@ export function useEditorKeyboard(
   editorState: EditorState,
   onDeleteSelected: () => void,
   onRotateSelected: () => void,
+  onDuplicateSelected: () => void,
   onToggleState: () => void,
   onUndo: () => void,
   onRedo: () => void,
@@ -39,6 +40,13 @@ export function useEditorKeyboard(
         if (editorState.selectedFurnitureUid) {
           onDeleteSelected()
         }
+      } else if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+        // Ctrl/Cmd+D: the usual "duplicate" chord, and worth stealing from the browser's own
+        // bookmark shortcut only while something is actually selected to duplicate
+        if (editorState.selectedFurnitureUid) {
+          e.preventDefault()
+          onDuplicateSelected()
+        }
       } else if (e.key === 'r' || e.key === 'R') {
         onRotateSelected()
       } else if (e.key === 't' || e.key === 'T') {
@@ -56,5 +64,5 @@ export function useEditorKeyboard(
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isEditMode, editorState, onDeleteSelected, onRotateSelected, onToggleState, onUndo, onRedo, onEditorTick, onCloseEditMode])
+  }, [isEditMode, editorState, onDeleteSelected, onRotateSelected, onDuplicateSelected, onToggleState, onUndo, onRedo, onEditorTick, onCloseEditMode])
 }

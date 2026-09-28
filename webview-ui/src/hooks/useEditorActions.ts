@@ -4,7 +4,7 @@ import type { EditorState } from '../office/editor/editorState.js'
 import { EditTool } from '../office/types.js'
 import { TileType } from '../office/types.js'
 import type { OfficeLayout, EditTool as EditToolType, TileType as TileTypeVal, ZoneType as ZoneTypeVal, FloorColor, PlacedFurniture } from '../office/types.js'
-import { paintTile, paintZone, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout } from '../office/editor/editorActions.js'
+import { paintTile, paintZone, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, duplicateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout } from '../office/editor/editorActions.js'
 import type { ExpandDirection } from '../office/editor/editorActions.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js'
 import { defaultZoom } from '../office/toolUtils.js'
@@ -29,6 +29,7 @@ export interface EditorActions {
   handleZoneTypeChange: (type: ZoneTypeVal) => void
   handleDeleteSelected: () => void
   handleRotateSelected: () => void
+  handleDuplicateSelected: () => void
   handleToggleState: () => void
   handleUndo: () => void
   handleRedo: () => void
@@ -275,6 +276,19 @@ export function useEditorActions(
     }
   }, [getOfficeState, editorState, applyEdit])
 
+  const handleDuplicateSelected = useCallback(() => {
+    const uid = editorState.selectedFurnitureUid
+    if (!uid) return
+    const os = getOfficeState()
+    const result = duplicateFurniture(os.getLayout(), uid)
+    if (!result) return
+    applyEdit(result.layout)
+    // Select the copy, not the original, so the next action (another duplicate, a nudge, a
+    // recolour) acts on the thing that was just made rather than the thing it was made from
+    editorState.selectedFurnitureUid = result.uid
+    setEditorTick((n) => n + 1)
+  }, [getOfficeState, editorState, applyEdit])
+
   const handleToggleState = useCallback(() => {
     // If in furniture placement mode, toggle the selected type's state
     if (editorState.activeTool === EditTool.FURNITURE_PLACE) {
@@ -455,7 +469,7 @@ export function useEditorActions(
     } else if (editorState.activeTool === EditTool.FURNITURE_PLACE) {
       const type = editorState.selectedFurnitureType
       if (type === '') {
-        // No item selected — act like SELECT (find furniture hit)
+        // No item selected - act like SELECT (find furniture hit)
         const hit = layout.furniture.find((f) => {
           const entry = getCatalogEntry(f.type)
           if (!entry) return false
@@ -566,6 +580,7 @@ export function useEditorActions(
     handleZoneTypeChange,
     handleDeleteSelected,
     handleRotateSelected,
+    handleDuplicateSelected,
     handleToggleState,
     handleUndo,
     handleRedo,

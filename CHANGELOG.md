@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.39.2
+
+- Outdoor weather fainter again: half the strength it first shipped with (it was three quarters). The weather in the windows is unchanged.
+
 ## v1.39.1
 
 - Outdoor weather stays outside. It fell on the dark tops of walls - along the top of the building and around the light wells - where the wall sprite stands over the ground, and a raindrop starting low in a tile streaked on into the office below it. It is now clipped to what you can actually see of outside: open ground, and the brick of an outer wall's face, only as far up it as the brick goes.

@@ -295,7 +295,7 @@ export const WEATHER_BLIZZARD_PARTICLE_COUNT = 50
 // walled-in light wells, and on any floor painted with the Outdoors zone. Deliberately quieter than
 // the windows: it is scenery at the edge of the picture, not something to watch.
 /** Overall opacity multiplier against the window weather */
-export const OUTDOOR_WEATHER_OPACITY = 0.34
+export const OUTDOOR_WEATHER_OPACITY = 0.225
 /** Fraction of each particle set drawn outdoors - thinner than behind the glass */
 export const OUTDOOR_WEATHER_DENSITY = 0.5
 /** Void tiles this close to the building (Chebyshev, in tiles) get the full effect */

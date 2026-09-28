@@ -35,6 +35,13 @@ public final class FrameReceiver {
      * and got decoded anyway - which is a fast-forward on screen and an fps count above the cap.
      */
     private static final int MIN_BEHIND_BYTES = 6 * 1024;
+    /**
+     * Skipping never goes on longer than this. On a link slower than the stream there is always a
+     * newer frame waiting, so "skip while behind" skipped every frame for ever: the screen froze
+     * on 0 fps with the data still flowing. This way it shows what the link can carry.
+     */
+    private static final long MAX_SKIP_NS = 250_000_000L;
+    private long lastPresentNs;
     private int skipped;
     /** Shown before the counters: the build the relay says it is serving. */
     private String prefix = "";
@@ -110,9 +117,9 @@ public final class FrameReceiver {
         // Behind the stream (a link that stalled and recovered): present only the newest frame rather
         // than replaying the backlog in fast-forward. A skipped frame costs nothing - the next one
         // carries the whole picture.
-        if (in.available() >= Math.max(MIN_BEHIND_BYTES, msg.length)) { skipped++; return; }
-
         long t0 = System.nanoTime();
+        if (t0 - lastPresentNs < MAX_SKIP_NS && in.available() >= Math.max(MIN_BEHIND_BYTES, msg.length)) { skipped++; return; }
+
         int blockOff = Protocol.FRAME_FULL_HEADER_SIZE;
         int blockLen = msg.length - blockOff;
         int n;
@@ -143,6 +150,7 @@ public final class FrameReceiver {
         long t1 = System.nanoTime();
         sink.presentFull(raw, rawSize);
         long t2 = System.nanoTime();
+        lastPresentNs = t2;
 
         frames++;
         decodeNs += t1 - t0;
@@ -156,7 +164,7 @@ public final class FrameReceiver {
         double secs = elapsed / 1e9;
         String line;
         if (frames == 0) {
-            line = "fps=0  recv=" + (long) (bytes / secs / 1024) + "KB/s";
+            line = "fps=0  recv=" + (long) (bytes / secs / 1024) + "KB/s" + (skipped > 0 ? "  skip=" + skipped : "");
         } else {
             line = "fps=" + Math.round(frames / secs)
                     + "  recv=" + (long) (bytes / secs / 1024) + "KB/s"

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.39.4
+
+- The real cause of the tablet freezing on "fps=0": the app skips a frame when a whole newer one is already waiting, and on a link slower than the stream there always is one - so it skipped every frame for ever, with the data still flowing. Skipping now never runs longer than 250 ms, so the screen shows what the link can carry. Weather made it much more common: rain changes the picture every frame, so the renderer sends a steady 30 fps instead of only when something moves. The status line shows `skip=` on a 0 fps line too.
+
 ## v1.39.3
 
 - The tablet app no longer freezes until it is closed and reopened. The relay's log showed the pattern: each time it was reopened, the old connection was still open and had not been read from for minutes, so the app's stream thread had stopped reading without ever giving up. Three fixes, for the two ways that can happen and for whatever else might:

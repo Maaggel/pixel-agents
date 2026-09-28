@@ -123,7 +123,9 @@ public final class FrameReceiver {
                 n = 0;
                 while (n < rawSize && !inflater.finished()) {
                     int got = inflater.inflate(raw, n, rawSize - n);
-                    if (got == 0 && (inflater.needsInput() || inflater.needsDictionary())) break;
+                    // No progress is the end of this frame whatever the reason: waiting on a
+                    // flag that never comes spins the stream thread for ever
+                    if (got == 0) break;
                     n += got;
                 }
             } else if (compression == Protocol.COMPRESSION_NONE) {

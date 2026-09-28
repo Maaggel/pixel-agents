@@ -36,6 +36,12 @@ public final class DisplaySurfaceView extends SurfaceView implements SurfaceHold
     private final Rect src = new Rect();
     private final Rect dst = new Rect();
     private StatusListener statusListener;
+    /** When a frame was last put on screen (uptime ms), for the stall watchdog; 0 = none yet */
+    private volatile long lastFrameAt;
+
+    public long lastFrameAt() {
+        return lastFrameAt;
+    }
 
     public interface StatusListener {
         void onStatus(String line);
@@ -124,6 +130,7 @@ public final class DisplaySurfaceView extends SurfaceView implements SurfaceHold
             backBuffer.copyPixelsFromBuffer(pixels);
         }
         redraw();
+        lastFrameAt = android.os.SystemClock.uptimeMillis();
     }
 
     @Override

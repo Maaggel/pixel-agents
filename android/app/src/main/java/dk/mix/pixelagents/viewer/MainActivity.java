@@ -6,6 +6,8 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.SystemClock;
 import android.text.InputType;
 import android.util.Log;
 import android.util.TypedValue;
@@ -36,11 +38,29 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_TOKEN = "Z*4jf79Ue#@Z7*dM&2Yf";
     private static final int DEFAULT_FPS = 15;
     private static final int MAX_FPS = 30;
+    /**
+     * No frame on screen for this long means the stream is stuck: the relay sends at least one
+     * every 15 s. The watchdog then does what closing and reopening the app did by hand.
+     */
+    private static final long STALL_MS = 30000;
+    private static final long WATCHDOG_EVERY_MS = 5000;
 
     private DisplaySurfaceView display;
     private TextView statusView;
     private HttpsFrameClient client;
     private SharedPreferences prefs;
+    private final Handler handler = new Handler();
+    /** When the current client started (uptime ms), so a fresh one gets STALL_MS to show a frame */
+    private long clientStartedAt;
+    /** Stalls recovered since the app started, and where the stuck thread was: shown on the status line */
+    private int stalls;
+    private String lastStallAt = "";
+    private final Runnable watchdog = new Runnable() {
+        @Override public void run() {
+            checkStall();
+            handler.postDelayed(this, WATCHDOG_EVERY_MS);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,12 +106,41 @@ public class MainActivity extends Activity {
         super.onStart();
         if (prefs.getString("token", DEFAULT_TOKEN).length() == 0) showSettings();
         else startClient();
+        handler.postDelayed(watchdog, WATCHDOG_EVERY_MS);
     }
 
     @Override
     protected void onStop() {
+        handler.removeCallbacks(watchdog);
         stopClient();
         super.onStop();
+    }
+
+    /**
+     * Restart the stream if nothing has reached the screen for STALL_MS. Before it goes, note the
+     * innermost frame of our own code the stream thread was in - a stall that heals itself leaves
+     * no other trace of why it happened.
+     */
+    private void checkStall() {
+        HttpsFrameClient c = client;
+        if (c == null) return;
+        long now = SystemClock.uptimeMillis();
+        long since = Math.max(clientStartedAt, display.lastFrameAt());
+        if (now - since < STALL_MS) return;
+        String where = "?";
+        for (StackTraceElement e : c.getStackTrace()) {
+            if (e.getClassName().startsWith("dk.mix.")) {
+                String cls = e.getClassName();
+                where = cls.substring(cls.lastIndexOf('.') + 1) + "." + e.getMethodName() + ":" + e.getLineNumber();
+                break;
+            }
+        }
+        StringBuilder trace = new StringBuilder();
+        for (StackTraceElement e : c.getStackTrace()) trace.append("\n    at ").append(e);
+        Log.w(TAG, "stream stalled " + ((now - since) / 1000) + "s (thread " + c.getState() + ") - restarting" + trace);
+        stalls++;
+        lastStallAt = where;
+        startClient();
     }
 
     private void startClient() {
@@ -103,6 +152,7 @@ public class MainActivity extends Activity {
         client = new HttpsFrameClient(this, url, prefs.getString("token", DEFAULT_TOKEN), display, new HttpsFrameClient.Listener() {
             @Override public void onStatus(String line) { setStatus(line); }
         });
+        clientStartedAt = SystemClock.uptimeMillis();
         client.start();
     }
 
@@ -112,7 +162,9 @@ public class MainActivity extends Activity {
 
     private void setStatus(final String line) {
         runOnUiThread(new Runnable() {
-            @Override public void run() { statusView.setText(line); }
+            @Override public void run() {
+                statusView.setText(stalls == 0 ? line : line + "  stalls=" + stalls + " (" + lastStallAt + ")");
+            }
         });
     }
 

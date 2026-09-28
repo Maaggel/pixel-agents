@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.39.3
+
+- The tablet app no longer freezes until it is closed and reopened. The relay's log showed the pattern: each time it was reopened, the old connection was still open and had not been read from for minutes, so the app's stream thread had stopped reading without ever giving up. Three fixes, for the two ways that can happen and for whatever else might:
+  - The 45 s read timeout now reaches the encrypted connection. It was set on the plain socket underneath, and on Android 4.x the TLS layer reads with its own timeout, which was none - so a connection that died silently (a Wi-Fi hiccup) was waited on for ever.
+  - A deflate frame that stops making progress now ends there instead of spinning the thread.
+  - A watchdog: no frame on screen for 30 s restarts the stream, which is what closing and reopening did. The status line then shows `stalls=N` and where the stuck thread was, so a freeze that heals itself still says why it happened.
+- Closing the stream moves off the UI thread, where Android does not allow network writes.
+
 ## v1.39.2
 
 - Outdoor weather fainter again: half the strength it first shipped with (it was three quarters). The weather in the windows is unchanged.

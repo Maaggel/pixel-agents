@@ -41,6 +41,8 @@ public final class HttpsFrameClient extends Thread {
     private Tls12SocketFactory factory; // built once; the pinned root does not change between reconnects
     /** A session that streamed at least this long counts as healthy: the next drop retries at once. */
     private static final long HEALTHY_SESSION_MS = 5000;
+    /** The relay resends a keyframe every 15 s, so silence this long means the connection is dead */
+    private static final int READ_TIMEOUT_MS = 45000;
 
     public HttpsFrameClient(Context context, String streamUrl, String token, FrameSink sink, Listener listener) {
         super("pixelagents-stream");
@@ -54,8 +56,12 @@ public final class HttpsFrameClient extends Thread {
 
     public void shutdown() {
         running = false;
-        HttpURLConnection c = current;
-        if (c != null) c.disconnect();
+        final HttpURLConnection c = current;
+        // Closing a TLS connection writes to the network, which the UI thread may not do; and this
+        // is what unblocks a reader stuck on a dead connection, so it has to actually happen
+        if (c != null) new Thread("pixelagents-disconnect") {
+            @Override public void run() { try { c.disconnect(); } catch (Exception ignored) { } }
+        }.start();
         interrupt();
     }
 
@@ -101,7 +107,7 @@ public final class HttpsFrameClient extends Thread {
         conn.setRequestProperty("Accept", "application/octet-stream");
         conn.setUseCaches(false);
         conn.setConnectTimeout(15000);
-        conn.setReadTimeout(45000); // the relay resends a keyframe every 15 s, so silence this long means dead
+        conn.setReadTimeout(READ_TIMEOUT_MS);
         current = conn;
         FrameReceiver receiver = null;
         InputStream in = null;
@@ -146,7 +152,7 @@ public final class HttpsFrameClient extends Thread {
         tmf.init(ks);
         SSLContext ctx = SSLContext.getInstance("TLSv1.2");
         ctx.init(null, tmf.getTrustManagers(), null);
-        factory = new Tls12SocketFactory(ctx.getSocketFactory());
+        factory = new Tls12SocketFactory(ctx.getSocketFactory(), READ_TIMEOUT_MS);
         return factory;
     }
 

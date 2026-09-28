@@ -23,14 +23,23 @@ public final class Tls12SocketFactory extends SSLSocketFactory {
     public volatile String lastCipher = "(no handshake)";
 
     private final SSLSocketFactory delegate;
+    private final int readTimeoutMs;
 
-    public Tls12SocketFactory(SSLSocketFactory delegate) {
+    /**
+     * @param readTimeoutMs set on every TLS socket made here. HttpURLConnection sets its read
+     *     timeout on the plain socket underneath, and on Android 4.x the TLS layer reads with its
+     *     own timeout, which is left at none - so a connection that died without a word blocked
+     *     the reader for ever instead of for 45 s.
+     */
+    public Tls12SocketFactory(SSLSocketFactory delegate, int readTimeoutMs) {
         this.delegate = delegate;
+        this.readTimeoutMs = readTimeoutMs;
     }
 
-    private Socket patch(Socket socket) {
+    private Socket patch(Socket socket) throws IOException {
         if (socket instanceof SSLSocket) {
             final SSLSocket s = (SSLSocket) socket;
+            s.setSoTimeout(readTimeoutMs);
             // Enable TLS 1.2 (and 1.1) where the device supports them; keep whatever else it offers.
             java.util.List<String> want = new java.util.ArrayList<String>();
             for (String p : s.getSupportedProtocols()) {

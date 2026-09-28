@@ -61,6 +61,7 @@ interface EditorToolbarProps {
   onFloorColorChange: (color: FloorColor) => void
   onWallColorChange: (color: FloorColor) => void
   onSelectedFurnitureColorChange: (color: FloorColor | null) => void
+  onDuplicateSelected: () => void
   onFurnitureTypeChange: (type: string) => void
   onZoneTypeChange: (type: ZoneTypeVal) => void
   loadedAssets?: LoadedAssetData
@@ -164,6 +165,7 @@ export function EditorToolbar({
   onFloorColorChange,
   onWallColorChange,
   onSelectedFurnitureColorChange,
+  onDuplicateSelected,
   onFurnitureTypeChange,
   onZoneTypeChange,
   loadedAssets,
@@ -267,7 +269,7 @@ export function EditorToolbar({
         maxWidth: 'calc(100vw - 20px)',
       }}
     >
-      {/* Tool row — at the bottom */}
+      {/* Tool row - at the bottom */}
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         <button
           style={isFloorActive ? activeBtnStyle : btnStyle}
@@ -306,10 +308,10 @@ export function EditorToolbar({
         </button>
       </div>
 
-      {/* Sub-panel: Floor tiles — stacked bottom-to-top via column-reverse */}
+      {/* Sub-panel: Floor tiles - stacked bottom-to-top via column-reverse */}
       {isFloorActive && (
         <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 6 }}>
-          {/* Color toggle + Pick — just above tool row */}
+          {/* Color toggle + Pick - just above tool row */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <button
               style={showColor ? activeBtnStyle : btnStyle}
@@ -327,7 +329,7 @@ export function EditorToolbar({
             </button>
           </div>
 
-          {/* Color controls (collapsible) — above Wall/Color/Pick */}
+          {/* Color controls (collapsible) - above Wall/Color/Pick */}
           {showColor && (
             <div style={{
               display: 'flex',
@@ -345,7 +347,7 @@ export function EditorToolbar({
             </div>
           )}
 
-          {/* Floor pattern horizontal carousel — at the top */}
+          {/* Floor pattern horizontal carousel - at the top */}
           <div style={{ display: 'flex', gap: 4, overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2 }}>
             {floorPatterns.map((patIdx) => (
               <FloorPatternPreview
@@ -360,10 +362,10 @@ export function EditorToolbar({
         </div>
       )}
 
-      {/* Sub-panel: Wall — stacked bottom-to-top via column-reverse */}
+      {/* Sub-panel: Wall - stacked bottom-to-top via column-reverse */}
       {isWallActive && (
         <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 6 }}>
-          {/* Interior + Exterior toggle buttons — side by side above tool row */}
+          {/* Interior + Exterior toggle buttons - side by side above tool row */}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <button
               style={showWallColor ? activeBtnStyle : btnStyle}
@@ -461,10 +463,10 @@ export function EditorToolbar({
         </div>
       )}
 
-      {/* Sub-panel: Furniture — stacked bottom-to-top via column-reverse */}
+      {/* Sub-panel: Furniture - stacked bottom-to-top via column-reverse */}
       {isFurnitureActive && (
         <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 4 }}>
-          {/* Category tabs + Pick — just above tool row */}
+          {/* Category tabs + Pick - just above tool row */}
           <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             {getActiveCategories().map((cat) => (
               <button
@@ -484,7 +486,7 @@ export function EditorToolbar({
               Pick
             </button>
           </div>
-          {/* Furniture items — single-row horizontal carousel at 2x */}
+          {/* Furniture items - single-row horizontal carousel at 2x */}
           <div style={{ display: 'flex', gap: 4, overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 2 }}>
             {categoryItems.map((entry) => {
               const cached = getCachedSprite(entry.sprite, 2)
@@ -532,7 +534,7 @@ export function EditorToolbar({
         </div>
       )}
 
-      {/* Sub-panel: Zone types — horizontal buttons */}
+      {/* Sub-panel: Zone types - horizontal buttons */}
       {isZoneActive && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {allZoneTypes.map((zt) => (
@@ -546,7 +548,7 @@ export function EditorToolbar({
                 gap: 4,
               }}
               onClick={() => onZoneTypeChange(zt)}
-              title={`${ZONE_LABELS[zt]} — right-click to erase zones`}
+              title={`${ZONE_LABELS[zt]} - right-click to erase zones`}
             >
               <span
                 style={{
@@ -564,7 +566,7 @@ export function EditorToolbar({
         </div>
       )}
 
-      {/* Selected furniture color panel — shows when any placed furniture item is selected */}
+      {/* Selected furniture panel - shows when any placed furniture item is selected */}
       {selectedFurnitureUid && (
         <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3 }}>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -584,6 +586,16 @@ export function EditorToolbar({
                 Clear
               </button>
             )}
+            {/* A toolbar button rather than a small icon on the canvas: a tiny item (a mug, a
+                pushpin) leaves almost nothing to click on the canvas, but this row is always the
+                same size regardless of what is selected. */}
+            <button
+              style={btnStyle}
+              onClick={onDuplicateSelected}
+              title="Duplicate selected item (Ctrl/Cmd+D)"
+            >
+              Duplicate
+            </button>
           </div>
           {showFurnitureColor && (
             <div style={{

@@ -53,7 +53,6 @@ import {
   SELECTION_HIGHLIGHT_COLOR,
   DELETE_BUTTON_BG,
   ROTATE_BUTTON_BG,
-  DUPLICATE_BUTTON_BG,
   ZONE_COLORS,
   ZONE_BORDER_COLORS,
   ZONE_LABEL_COLORS,
@@ -699,45 +698,6 @@ export function renderRotateButton(
   return { cx, cy, radius }
 }
 
-export function renderDuplicateButton(
-  ctx: CanvasRenderingContext2D,
-  col: number,
-  row: number,
-  w: number,
-  h: number,
-  offsetX: number,
-  offsetY: number,
-  zoom: number,
-): DuplicateButtonBounds {
-  const s = TILE_SIZE * zoom
-  // Bottom-right corner - delete owns the top-right, rotate the top-left, so this is the one
-  // corner of the selection box that is never already spoken for
-  const cx = offsetX + (col + w) * s + 1
-  const cy = offsetY + (row + h) * s + 1
-  const radius = Math.max(BUTTON_MIN_RADIUS, zoom * BUTTON_RADIUS_ZOOM_FACTOR)
-
-  // Circle background
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-  ctx.fillStyle = DUPLICATE_BUTTON_BG
-  ctx.fill()
-
-  // Two overlapping squares - the copy icon everything else uses too
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = Math.max(BUTTON_LINE_WIDTH_MIN, zoom * BUTTON_LINE_WIDTH_ZOOM_FACTOR)
-  ctx.lineJoin = 'round'
-  const sq = radius * BUTTON_ICON_SIZE_FACTOR
-  const back = sq * 0.85
-  ctx.strokeRect(cx - sq * 0.35, cy - sq * 0.75, back, back)
-  ctx.fillStyle = DUPLICATE_BUTTON_BG
-  ctx.fillRect(cx - sq * 0.75 + 1, cy - sq * 0.15 + 1, back - 2, back - 2)
-  ctx.strokeRect(cx - sq * 0.75, cy - sq * 0.15, back, back)
-  ctx.restore()
-
-  return { cx, cy, radius }
-}
-
 // ── Speech bubbles ──────────────────────────────────────────────
 
 export function renderBubbles(
@@ -1068,7 +1028,6 @@ export interface ButtonBounds {
 
 export type DeleteButtonBounds = ButtonBounds
 export type RotateButtonBounds = ButtonBounds
-export type DuplicateButtonBounds = ButtonBounds
 
 export interface EditorRenderState {
   showGrid: boolean
@@ -1090,8 +1049,6 @@ export interface EditorRenderState {
   deleteButtonBounds: DeleteButtonBounds | null
   /** Updated each frame by renderRotateButton */
   rotateButtonBounds: RotateButtonBounds | null
-  /** Updated each frame by renderDuplicateButton */
-  duplicateButtonBounds: DuplicateButtonBounds | null
   /** Whether to show ghost border (expansion tiles outside grid) */
   showGhostBorder: boolean
   /** Hovered ghost border tile col (-1 to cols) */
@@ -1569,7 +1526,6 @@ export function renderFrame(
     if (editor.hasSelection) {
       renderSelectionHighlight(ctx, editor.selectedCol, editor.selectedRow, editor.selectedW, editor.selectedH, offsetX, offsetY, zoom)
       editor.deleteButtonBounds = renderDeleteButton(ctx, editor.selectedCol, editor.selectedRow, editor.selectedW, editor.selectedH, offsetX, offsetY, zoom)
-      editor.duplicateButtonBounds = renderDuplicateButton(ctx, editor.selectedCol, editor.selectedRow, editor.selectedW, editor.selectedH, offsetX, offsetY, zoom)
       if (editor.isRotatable) {
         editor.rotateButtonBounds = renderRotateButton(ctx, editor.selectedCol, editor.selectedRow, editor.selectedW, editor.selectedH, offsetX, offsetY, zoom)
       } else {
@@ -1578,7 +1534,6 @@ export function renderFrame(
     } else {
       editor.deleteButtonBounds = null
       editor.rotateButtonBounds = null
-      editor.duplicateButtonBounds = null
     }
   }
 

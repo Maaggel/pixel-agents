@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.38.1
+
+- Duplicate moved off the canvas and into the toolbar: a "Duplicate" button next to Color and Clear, always the same size regardless of what's selected. The bottom-right corner icon from v1.38.0 wasn't showing up reliably and was a small target for small furniture anyway - a fixed-position toolbar button next to controls that were already working solves both. Ctrl/Cmd+D still works the same way.
+
 ## v1.38.0
 
 - A duplicate button on selected furniture in the layout editor (green, bottom-right corner of the selection, next to delete and rotate), plus Ctrl/Cmd+D. Copies the item - type, colour, on/off state - onto the nearest free tile: right beside it if there's room, otherwise the closest open spot found by searching outward. The new copy is selected immediately so a chain of Ctrl+D fans a row of desks or chairs out across the room without re-clicking each time.

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.39.1
+
+- Outdoor weather stays outside. It fell on the dark tops of walls - along the top of the building and around the light wells - where the wall sprite stands over the ground, and a raindrop starting low in a tile streaked on into the office below it. It is now clipped to what you can actually see of outside: open ground, and the brick of an outer wall's face, only as far up it as the brick goes.
+- A quarter fainter than before.
+
 ## v1.39.0
 
 - Weather outside the building, not only in the windows: rain, snow and blizzard now fall over the ground around the office and in the courtyards and light wells enclosed by its walls, toned down (fainter and sparser than in the glass) and fading out over a few tiles away from the building so it frames the office rather than filling the screen. Off with "Weather outside" in the View dropdown (on by default in a browser). Only the tiles on screen are drawn, and a clear sky costs nothing.

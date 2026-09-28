@@ -509,6 +509,8 @@ export interface OutdoorWeatherMap {
   rows: number
   /** Strength per tile, 0 = dry, quantised to OUTDOOR_WEATHER_ALPHA_STEPS levels, row-major */
   level: Uint8Array
+  /** 1 where only the bottom half of the tile is outdoors - the brick reaching up the face of a wall */
+  half: Uint8Array
 }
 
 let outdoorCache: { tileMap: TileTypeVal[][]; zones: Array<string | null> | undefined; map: OutdoorWeatherMap } | null = null
@@ -517,10 +519,12 @@ let outdoorCache: { tileMap: TileTypeVal[][]; zones: Array<string | null> | unde
  * Work out, once per layout, which tiles are outdoors. Void gets the weather at full strength close
  * to the building and fading to nothing a few tiles out, measured as the distance to the nearest
  * part of the building - so a light well enclosed by walls, being right beside them, gets all of
- * it, and the open ground trails off instead of stopping at the edge of the grid. The outside face
- * of an outer wall - a wall with void below it, and the tile above it that its face is drawn over,
- * exactly where the brick facade goes - gets it at full strength. Other floor tiles get it only
- * when painted with the Outdoors zone.
+ * it, and the open ground trails off instead of stopping at the edge of the grid. Void that a wall
+ * sprite is drawn over - the tile above any wall, where its dark top and face stand - is not ground
+ * you can see, and stays dry. The outside face of an outer wall (a wall with void below it) gets it
+ * at full strength over exactly the part the brick facade covers: the wall tile, and the tile above
+ * too when that is void, else only the bottom half of it. Other floor tiles get it only when
+ * painted with the Outdoors zone.
  */
 export function getOutdoorWeatherMap(
   tileMap: TileTypeVal[][],
@@ -568,16 +572,27 @@ export function getOutdoorWeatherMap(
   const steps = OUTDOOR_WEATHER_ALPHA_STEPS
   const full = OUTDOOR_WEATHER_FULL_TILES
   const level = new Uint8Array(cols * rows)
+  const half = new Uint8Array(cols * rows)
+  const isWall = (c: number, r: number) =>
+    r >= 0 && c >= 0 && r < gridRows && c < gridCols && tileMap[r][c] === TileType.WALL
   for (let r = row0; r < row0 + rows; r++) {
     for (let c = col0; c < col0 + cols; c++) {
       const i = at(c, r)
       if (!isVoid(c, r)) {
         if (zones?.[r * zoneCols + c] === 'outdoor') level[i] = steps
         // The outside face of an outer wall
-        if (tileMap[r][c] === TileType.WALL && isVoid(c, r + 1)) {
+        if (isWall(c, r) && isVoid(c, r + 1)) {
           level[i] = steps
-          if (r > 0) level[at(c, r - 1)] = steps
+          half[i] = 0
+          const above = at(c, r - 1)
+          if (isVoid(c, r - 1)) { level[above] = steps; half[above] = 0 }
+          else if (level[above] === 0) { level[above] = steps; half[above] = 1 }
         }
+        continue
+      }
+      // Hidden behind the wall below it, unless that wall is an outer one whose brick covers it
+      if (isWall(c, r + 1)) {
+        if (isVoid(c, r + 2)) level[i] = steps
         continue
       }
       const d = dist[i]
@@ -587,7 +602,7 @@ export function getOutdoorWeatherMap(
     }
   }
 
-  const map = { col0, row0, cols, rows, level }
+  const map = { col0, row0, cols, rows, level, half }
   outdoorCache = { tileMap, zones, map }
   return map
 }
@@ -629,8 +644,8 @@ export function outdoorWeatherRects(
       const wet = c <= v.c1 && map.level[(r - map.row0) * map.cols + (c - map.col0)] > 0
       if (wet && runStart < 0) runStart = c
       if (!wet && runStart >= 0) {
-        // One tile of margin below: a raindrop starting at the bottom of a tile streaks past it
-        out.push({ x: offsetX + runStart * s, y: offsetY + r * s, w: (c - runStart) * s, h: 2 * s })
+        // Drawing is clipped to the wet tiles, so a streak never reaches past them
+        out.push({ x: offsetX + runStart * s, y: offsetY + r * s, w: (c - runStart) * s, h: s })
         runStart = -1
       }
     }
@@ -701,7 +716,21 @@ export function renderOutdoorWeather(
     }
   }
 
+  // Clip to the wet area itself: a streak starting low in a tile would otherwise run on into the
+  // office below it, and a wind-blown one into the wall beside it
   ctx.save()
+  ctx.beginPath()
+  const hs = Math.round(s / 2)
+  for (let r = v.r0; r <= v.r1; r++) {
+    for (let c = v.c0; c <= v.c1; c++) {
+      const i = (r - map.row0) * map.cols + (c - map.col0)
+      if (map.level[i] === 0) continue
+      const x = offsetX + c * s, y = offsetY + r * s
+      if (map.half[i]) ctx.rect(x, y + hs, s, s - hs)
+      else ctx.rect(x, y, s, s)
+    }
+  }
+  ctx.clip()
   for (let lv = 1; lv <= steps; lv++) {
     const tiles = byLevel[lv]
     if (tiles.length === 0) continue

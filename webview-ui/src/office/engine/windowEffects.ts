@@ -1,5 +1,5 @@
-import { TILE_SIZE } from '../types.js'
-import type { FurnitureInstance } from '../types.js'
+import { TILE_SIZE, TileType } from '../types.js'
+import type { FurnitureInstance, TileType as TileTypeVal } from '../types.js'
 import {
   GLASS_DAY_TINT_OPACITY,
   GLASS_DAY_WEATHER_TINT_OPACITY,
@@ -25,6 +25,11 @@ import {
   WEATHER_BLIZZARD_WIND_SPEED_PX_SEC,
   WEATHER_BLIZZARD_FALL_SPEED_PX_SEC,
   WEATHER_STATE_WEIGHTS,
+  OUTDOOR_WEATHER_OPACITY,
+  OUTDOOR_WEATHER_DENSITY,
+  OUTDOOR_WEATHER_FULL_TILES,
+  OUTDOOR_WEATHER_FADE_TILES,
+  OUTDOOR_WEATHER_ALPHA_STEPS,
 } from '../../constants.js'
 
 // ── Weather types ──────────────────────────────────────────
@@ -319,7 +324,7 @@ function getGlassTint(
   weatherAmount: number,
 ): [number, number, number, number] {
   if (sunIntensity <= 0) {
-    // Full night — dark overlay
+    // Full night - dark overlay
     return [...GLASS_NIGHT_COLOR, GLASS_NIGHT_OVERLAY_OPACITY]
   }
 
@@ -393,7 +398,7 @@ export function renderSingleWindowEffect(
   const winW = win.footprintW * TILE_SIZE * zoom
   const winH = win.footprintH * TILE_SIZE * zoom
   // Fixed reference size for particle space (2×2 tiles) so density is
-  // consistent across all window sizes — smaller windows clip into the center
+  // consistent across all window sizes - smaller windows clip into the center
   const refW = 2 * TILE_SIZE * zoom
   const refH = 2 * TILE_SIZE * zoom
   const particleBaseX = winScreenX + (winW - refW) / 2
@@ -409,7 +414,7 @@ export function renderSingleWindowEffect(
     ctx.fillStyle = `rgba(${fd.tintR}, ${fd.tintG}, ${fd.tintB}, ${fd.tintAlpha})`
     ctx.fillRect(sx, sy, sw, sh)
 
-    // Weather particles — clip to this glass section, render in window-space coords
+    // Weather particles - clip to this glass section, render in window-space coords
     const hasWeather = (fd.rainLevel && fd.rainAlpha > 0) || fd.snow > 0 || fd.blizzard > 0
     if (hasWeather) {
       ctx.save()
@@ -422,7 +427,7 @@ export function renderSingleWindowEffect(
       ctx.fillStyle = `rgba(0, 0, 0, ${GLASS_WEATHER_DARKEN_OPACITY * wi})`
       ctx.fillRect(sx, sy, sw, sh)
 
-      // Rain — particles in fixed ref space, clipped to glass section
+      // Rain - particles in fixed ref space, clipped to glass section
       if (fd.rainLevel && fd.rainAlpha > 0) {
         ctx.globalAlpha = fd.rainAlpha
         ctx.strokeStyle = WEATHER_RAIN_COLOR
@@ -440,7 +445,7 @@ export function renderSingleWindowEffect(
         }
       }
 
-      // Snow — particles in fixed ref space, clipped to glass section
+      // Snow - particles in fixed ref space, clipped to glass section
       if (fd.snow > 0) {
         ctx.globalAlpha = fd.snow
         ctx.fillStyle = WEATHER_SNOW_COLOR
@@ -455,7 +460,7 @@ export function renderSingleWindowEffect(
         }
       }
 
-      // Blizzard — dense snow with strong horizontal wind
+      // Blizzard - dense snow with strong horizontal wind
       if (fd.blizzard > 0) {
         ctx.globalAlpha = fd.blizzard
         ctx.fillStyle = WEATHER_SNOW_COLOR
@@ -480,4 +485,282 @@ export function renderSingleWindowEffect(
       ctx.restore()
     }
   }
+}
+
+// ── Outdoor weather ────────────────────────────────────────
+//
+// The windows show the weather through the glass. This lets it fall outside as well: on the empty
+// ground around the building, over the outside face of every outer wall, and on floor painted with
+// the Outdoors zone. Void is what the layout already means by "not the building", so nothing needs
+// marking for the common case; the zone is for outdoor spaces that have a floor, like a patio.
+//
+// It is drawn in front of the scene, not under it. A walled-in light well is usually a single void
+// tile, and the wall below it draws its face straight over that tile - the only outdoors you can
+// see there is the brick of the outer wall, so that is what the rain has to fall in front of. And
+// it only ever touches the tiles on screen: a void halo around a large office is hundreds of tiles,
+// and zoomed in, most of them are nowhere near the view.
+
+/** Where it rains outdoors and how hard: a strength per tile over the grid plus a fading halo */
+export interface OutdoorWeatherMap {
+  /** Tile coordinates of the map's top-left corner - it starts outside the grid, for the halo */
+  col0: number
+  row0: number
+  cols: number
+  rows: number
+  /** Strength per tile, 0 = dry, quantised to OUTDOOR_WEATHER_ALPHA_STEPS levels, row-major */
+  level: Uint8Array
+}
+
+let outdoorCache: { tileMap: TileTypeVal[][]; zones: Array<string | null> | undefined; map: OutdoorWeatherMap } | null = null
+
+/**
+ * Work out, once per layout, which tiles are outdoors. Void gets the weather at full strength close
+ * to the building and fading to nothing a few tiles out, measured as the distance to the nearest
+ * part of the building - so a light well enclosed by walls, being right beside them, gets all of
+ * it, and the open ground trails off instead of stopping at the edge of the grid. The outside face
+ * of an outer wall - a wall with void below it, and the tile above it that its face is drawn over,
+ * exactly where the brick facade goes - gets it at full strength. Other floor tiles get it only
+ * when painted with the Outdoors zone.
+ */
+export function getOutdoorWeatherMap(
+  tileMap: TileTypeVal[][],
+  zones: Array<string | null> | undefined,
+  zoneCols: number,
+): OutdoorWeatherMap {
+  if (outdoorCache && outdoorCache.tileMap === tileMap && outdoorCache.zones === zones) return outdoorCache.map
+
+  const gridRows = tileMap.length
+  const gridCols = gridRows > 0 ? tileMap[0].length : 0
+  const F = OUTDOOR_WEATHER_FADE_TILES
+  const cols = gridCols + 2 * F
+  const rows = gridRows + 2 * F
+  const col0 = -F
+  const row0 = -F
+  const at = (c: number, r: number) => (r - row0) * cols + (c - col0)
+  const isVoid = (c: number, r: number) =>
+    r < 0 || c < 0 || r >= gridRows || c >= gridCols || tileMap[r][c] === TileType.VOID
+
+  // Distance from the building, in tiles, allowing diagonals - a breadth-first flood outward from
+  // every tile that is not void
+  const dist = new Int16Array(cols * rows).fill(-1)
+  const queue: number[] = []
+  for (let r = row0; r < row0 + rows; r++) {
+    for (let c = col0; c < col0 + cols; c++) {
+      if (!isVoid(c, r)) { dist[at(c, r)] = 0; queue.push(c, r) }
+    }
+  }
+  for (let q = 0; q < queue.length; q += 2) {
+    const c = queue[q], r = queue[q + 1]
+    const d = dist[at(c, r)]
+    if (d >= F) continue
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nc = c + dc, nr = r + dr
+        if (nc < col0 || nr < row0 || nc >= col0 + cols || nr >= row0 + rows) continue
+        const i = at(nc, nr)
+        if (dist[i] !== -1) continue
+        dist[i] = d + 1
+        queue.push(nc, nr)
+      }
+    }
+  }
+
+  const steps = OUTDOOR_WEATHER_ALPHA_STEPS
+  const full = OUTDOOR_WEATHER_FULL_TILES
+  const level = new Uint8Array(cols * rows)
+  for (let r = row0; r < row0 + rows; r++) {
+    for (let c = col0; c < col0 + cols; c++) {
+      const i = at(c, r)
+      if (!isVoid(c, r)) {
+        if (zones?.[r * zoneCols + c] === 'outdoor') level[i] = steps
+        // The outside face of an outer wall
+        if (tileMap[r][c] === TileType.WALL && isVoid(c, r + 1)) {
+          level[i] = steps
+          if (r > 0) level[at(c, r - 1)] = steps
+        }
+        continue
+      }
+      const d = dist[i]
+      if (d < 0 || d >= F) continue
+      const strength = d <= full ? 1 : 1 - (d - full) / (F - full)
+      level[i] = Math.round(strength * steps)
+    }
+  }
+
+  const map = { col0, row0, cols, rows, level }
+  outdoorCache = { tileMap, zones, map }
+  return map
+}
+
+/** Is there any weather to draw at all? Clear skies cost nothing. */
+export function isWeatherActive(): boolean {
+  const { rainLevel, rainAlpha, snow, blizzard } = getWeatherIntensities()
+  return (!!rainLevel && rainAlpha > 0) || snow > 0 || blizzard > 0
+}
+
+/** The tile range of the map that is actually on the canvas, or null if none of it is */
+function visibleRange(
+  map: OutdoorWeatherMap, offsetX: number, offsetY: number, zoom: number, canvasW: number, canvasH: number,
+): { c0: number; c1: number; r0: number; r1: number } | null {
+  const s = TILE_SIZE * zoom
+  const c0 = Math.max(map.col0, Math.floor(-offsetX / s))
+  const c1 = Math.min(map.col0 + map.cols - 1, Math.floor((canvasW - 1 - offsetX) / s))
+  const r0 = Math.max(map.row0, Math.floor(-offsetY / s))
+  const r1 = Math.min(map.row0 + map.rows - 1, Math.floor((canvasH - 1 - offsetY) / s))
+  return c0 > c1 || r0 > r1 ? null : { c0, c1, r0, r1 }
+}
+
+/**
+ * Screen rectangles the outdoor weather will draw into this frame - one per run of wet tiles in a
+ * row, clipped to the canvas. The headless renderer damages these, since rain never looks the same
+ * twice; empty when the sky is clear.
+ */
+export function outdoorWeatherRects(
+  map: OutdoorWeatherMap, offsetX: number, offsetY: number, zoom: number, canvasW: number, canvasH: number,
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const out: Array<{ x: number; y: number; w: number; h: number }> = []
+  if (!isWeatherActive()) return out
+  const v = visibleRange(map, offsetX, offsetY, zoom, canvasW, canvasH)
+  if (!v) return out
+  const s = TILE_SIZE * zoom
+  for (let r = v.r0; r <= v.r1; r++) {
+    let runStart = -1
+    for (let c = v.c0; c <= v.c1 + 1; c++) {
+      const wet = c <= v.c1 && map.level[(r - map.row0) * map.cols + (c - map.col0)] > 0
+      if (wet && runStart < 0) runStart = c
+      if (!wet && runStart >= 0) {
+        // One tile of margin below: a raindrop starting at the bottom of a tile streaks past it
+        out.push({ x: offsetX + runStart * s, y: offsetY + r * s, w: (c - runStart) * s, h: 2 * s })
+        runStart = -1
+      }
+    }
+  }
+  return out
+}
+
+/** A stable per-cell shift, so the particle pattern does not visibly repeat every two tiles */
+function cellShift(cc: number, cr: number): number {
+  return ((Math.imul(cc, 73856093) ^ Math.imul(cr, 19349663)) >>> 0) / 4294967296
+}
+
+/** The wrap of a value into [0, 1) */
+const frac = (v: number) => v - Math.floor(v)
+
+/**
+ * Draw the outdoor weather. The particles are the same ones the windows use, laid over the ground
+ * in two-tile cells (the space the windows draw them in), thinned and faded. Each strength level
+ * is one batched path, so a screen full of rain is a handful of draw calls, not one per drop.
+ */
+export function renderOutdoorWeather(
+  ctx: CanvasRenderingContext2D,
+  map: OutdoorWeatherMap,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  canvasW: number,
+  canvasH: number,
+): void {
+  const { rainLevel, rainAlpha, snow, blizzard } = getWeatherIntensities()
+  const raining = !!rainLevel && rainAlpha > 0
+  if (!raining && snow <= 0 && blizzard <= 0) return
+  const v = visibleRange(map, offsetX, offsetY, zoom, canvasW, canvasH)
+  if (!v) return
+
+  // Sort the visible wet tiles by strength first, so each strength is drawn in a single pass
+  const steps = OUTDOOR_WEATHER_ALPHA_STEPS
+  const byLevel: number[][] = Array.from({ length: steps + 1 }, () => [])
+  for (let r = v.r0; r <= v.r1; r++) {
+    for (let c = v.c0; c <= v.c1; c++) {
+      const lv = map.level[(r - map.row0) * map.cols + (c - map.col0)]
+      if (lv > 0) byLevel[lv].push(c, r)
+    }
+  }
+
+  const s = TILE_SIZE * zoom
+  const cell = 2 * TILE_SIZE // world px - the same space the windows draw particles in
+
+  /**
+   * Visit every particle of a set that lands on the given tile, with its screen position. A particle
+   * belongs to the tile whose quarter of the cell it falls in, after the cell's own shift.
+   */
+  const eachOnTile = (
+    set: WeatherParticle[], count: number, c: number, r: number,
+    xOf: (p: WeatherParticle) => number,
+    visit: (p: WeatherParticle, sx: number, sy: number) => void,
+  ) => {
+    const qx = c & 1, qy = r & 1
+    const shift = cellShift(c >> 1, r >> 1)
+    const tileX = offsetX + c * s
+    const tileY = offsetY + r * s
+    for (let i = 0; i < count; i++) {
+      const p = set[i]
+      const wx = frac(xOf(p) + shift) * cell
+      const wy = frac(p.y) * cell
+      if ((wx >= TILE_SIZE ? 1 : 0) !== qx || (wy >= TILE_SIZE ? 1 : 0) !== qy) continue
+      visit(p, tileX + (wx - qx * TILE_SIZE) * zoom, tileY + (wy - qy * TILE_SIZE) * zoom)
+    }
+  }
+
+  ctx.save()
+  for (let lv = 1; lv <= steps; lv++) {
+    const tiles = byLevel[lv]
+    if (tiles.length === 0) continue
+    const strength = (lv / steps) * OUTDOOR_WEATHER_OPACITY
+
+    if (raining) {
+      const count = Math.floor(rainParticles.length * rainLevel!.particleFraction * OUTDOOR_WEATHER_DENSITY)
+      ctx.globalAlpha = rainAlpha * strength
+      ctx.strokeStyle = WEATHER_RAIN_COLOR
+      ctx.lineWidth = Math.max(1, zoom * 0.5)
+      ctx.beginPath()
+      for (let t = 0; t < tiles.length; t += 2) {
+        eachOnTile(rainParticles, count, tiles[t], tiles[t + 1], (p) => p.x, (p, sx, sy) => {
+          const len = WEATHER_RAIN_LENGTH_PX * zoom * p.size * rainLevel!.streakScale
+          ctx.moveTo(sx, sy)
+          ctx.lineTo(sx - 0.3 * zoom, sy + len)
+        })
+      }
+      ctx.stroke()
+    }
+
+    if (snow > 0) {
+      const count = Math.floor(snowParticles.length * OUTDOOR_WEATHER_DENSITY)
+      ctx.globalAlpha = snow * strength
+      ctx.fillStyle = WEATHER_SNOW_COLOR
+      ctx.beginPath()
+      for (let t = 0; t < tiles.length; t += 2) {
+        eachOnTile(snowParticles, count, tiles[t], tiles[t + 1],
+          (p) => p.x + (Math.sin(p.driftPhase) * WEATHER_SNOW_DRIFT_AMPLITUDE_PX) / cell,
+          (p, sx, sy) => {
+            const size = Math.max(1, Math.round(WEATHER_SNOW_SIZE_PX * zoom * p.size))
+            ctx.rect(sx, sy, size, size)
+          })
+      }
+      ctx.fill()
+    }
+
+    if (blizzard > 0) {
+      const count = Math.floor(blizzardParticles.length * OUTDOOR_WEATHER_DENSITY)
+      ctx.globalAlpha = blizzard * strength
+      ctx.fillStyle = WEATHER_SNOW_COLOR
+      ctx.strokeStyle = WEATHER_SNOW_COLOR
+      ctx.lineWidth = Math.max(0.5, zoom * 0.3)
+      ctx.beginPath()
+      const flakes: number[] = []
+      for (let t = 0; t < tiles.length; t += 2) {
+        eachOnTile(blizzardParticles, count, tiles[t], tiles[t + 1], (p) => p.x, (p, sx, sy) => {
+          const size = Math.max(1, Math.round(WEATHER_SNOW_SIZE_PX * zoom * p.size))
+          flakes.push(sx, sy, size)
+          // Wind streak behind each flake
+          ctx.moveTo(sx, sy)
+          ctx.lineTo(sx - 2 * zoom * p.size, sy + 0.5 * zoom * p.size)
+        })
+      }
+      ctx.stroke()
+      ctx.beginPath()
+      for (let i = 0; i < flakes.length; i += 3) ctx.rect(flakes[i], flakes[i + 1], flakes[i + 2], flakes[i + 2])
+      ctx.fill()
+    }
+  }
+  ctx.restore()
 }

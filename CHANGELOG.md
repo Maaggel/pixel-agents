@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.39.0
+
+- Weather outside the building, not only in the windows: rain, snow and blizzard now fall over the ground around the office and in the courtyards and light wells enclosed by its walls, toned down (fainter and sparser than in the glass) and fading out over a few tiles away from the building so it frames the office rather than filling the screen. Off with "Weather outside" in the View dropdown (on by default in a browser). Only the tiles on screen are drawn, and a clear sky costs nothing.
+- A new "Outdoors" zone in the layout editor for a floored area that is really outside - a terrace, a paved yard - so the weather falls there too.
+- Kiosk displays (the tablet) leave it off until it is turned on and sent with "Apply to kiosk displays": the tablet's frames are drawn on the box Claude Code runs on, and a blizzard costs about 2 ms a frame there.
+
 ## v1.38.1
 
 - Duplicate moved off the canvas and into the toolbar: a "Duplicate" button next to Color and Clear, always the same size regardless of what's selected. The bottom-right corner icon from v1.38.0 wasn't showing up reliably and was a small target for small furniture anyway - a fixed-position toolbar button next to controls that were already working solves both. Ctrl/Cmd+D still works the same way.

@@ -6,6 +6,8 @@ export interface ViewOptions {
   showNametags: boolean
   alwaysShowActivities: boolean
   showSunlight: boolean
+  /** Rain and snow on the ground outside the building, not only through the windows */
+  outdoorWeather: boolean
   showVacuumPanel: boolean
   autoFollowOnFocus: boolean
   showWeatherClock: boolean
@@ -152,6 +154,10 @@ export function ViewOptionsPanel({ options, onChange, onApplyToKiosk }: ViewOpti
           <label style={labelStyle}>
             <input type="checkbox" checked={options.showSunlight} onChange={() => toggle('showSunlight')} style={checkboxStyle} />
             Sunlight
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={options.outdoorWeather} onChange={() => toggle('outdoorWeather')} style={checkboxStyle} />
+            Weather outside
           </label>
           <label style={labelStyle}>
             <input type="checkbox" checked={options.showVacuumPanel} onChange={() => toggle('showVacuumPanel')} style={checkboxStyle} />

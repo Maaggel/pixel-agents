@@ -11,7 +11,7 @@ import { computeLampLights, renderLampLights } from './lampLight.js'
 import { getCatalogEntry } from '../layout/furnitureCatalog.js'
 import { getColorizedSprite } from '../colorize.js'
 import { HELD_ITEM_OFFSETS, PHONE_OFFSETS } from '../../constants.js'
-import { computeWindowEffectFrameData, renderSingleWindowEffect } from './windowEffects.js'
+import { computeWindowEffectFrameData, renderSingleWindowEffect, getOutdoorWeatherMap, renderOutdoorWeather } from './windowEffects.js'
 import type { WindowEffectFrameData } from './windowEffects.js'
 import { renderExteriorWalls, findExteriorWalls } from '../exteriorWall.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -1166,6 +1166,8 @@ export function renderFrame(
   exteriorWall?: { style: import('../types.js').ExteriorWallStyle; color: FloorColor; height: number },
   debugLampLights?: boolean,
   tileLayer?: TileLayerCache,
+  /** Weather falling outdoors too, not only behind the windows. Undefined = off. */
+  outdoorWeather?: { zones?: Array<string | null>; zoneCols: number },
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -1475,6 +1477,22 @@ export function renderFrame(
         }
       }
     }
+  }
+
+  // Outdoor weather - after the scene and the brick facade, because what is outdoors here is mostly
+  // the outside faces of walls, and rain falls in front of those. The glass of exterior windows is
+  // left out: those already show their own weather. Only the tiles on the canvas are visited.
+  if (outdoorWeather) {
+    const map = getOutdoorWeatherMap(tileMap, outdoorWeather.zones, outdoorWeather.zoneCols)
+    if (exteriorGlassScreenRects.length > 0) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, canvasWidth, canvasHeight)
+      for (const r of exteriorGlassScreenRects) ctx.rect(r.x, r.y, r.w, r.h)
+      ctx.clip('evenodd')
+    }
+    renderOutdoorWeather(ctx, map, offsetX, offsetY, zoom, canvasWidth, canvasHeight)
+    if (exteriorGlassScreenRects.length > 0) ctx.restore()
   }
 
   // Sunlight overlay (on top of furniture + floor, masked to exclude walls)

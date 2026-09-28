@@ -195,7 +195,7 @@ function App() {
   }, [showNametags, setShowNametags])
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false, dynamicItems: true, keepAwake: true }
+    const defaults: ViewOptions = { showZoom: true, showBottomBar: true, showNametags: true, alwaysShowActivities: false, showSunlight: true, outdoorWeather: true, showVacuumPanel: true, autoFollowOnFocus: true, showWeatherClock: true, debugLampLights: false, hideUi: false, dynamicItems: true, keepAwake: true }
     try {
       const saved = localStorage.getItem('pixel-agents-view-options')
       if (saved) return { ...defaults, ...JSON.parse(saved) as Partial<ViewOptions> }
@@ -293,7 +293,7 @@ function App() {
     const v = viewOptionsRef.current
     vscode.postMessage({ type: 'kioskOptions', options: {
       showNametags: v.showNametags, showSunlight: v.showSunlight, dynamicItems: v.dynamicItems,
-      debugLampLights: v.debugLampLights, weather: weatherMode,
+      debugLampLights: v.debugLampLights, outdoorWeather: v.outdoorWeather, weather: weatherMode,
     } })
     addBehaviourEntry({ agentId: 0, agentName: 'System', message: 'Look applied to kiosk displays', type: 'info' })
   }, [weatherMode])
@@ -304,7 +304,7 @@ function App() {
       if (msg?.type !== 'kioskOptions' || !msg.options) return
       const { weather, ...flags } = msg.options
       const allowed: Partial<ViewOptions> = {}
-      for (const k of ['showNametags', 'showSunlight', 'dynamicItems', 'debugLampLights'] as const) {
+      for (const k of ['showNametags', 'showSunlight', 'dynamicItems', 'debugLampLights', 'outdoorWeather'] as const) {
         if (typeof flags[k] === 'boolean') allowed[k] = flags[k]
       }
       if (Object.keys(allowed).length > 0) handleViewOptionsChangeRef.current({ ...viewOptionsRef.current, ...allowed })
@@ -504,6 +504,7 @@ function App() {
         panRef={editor.panRef}
         showNametags={showNametags}
         showSunlight={viewOptions.showSunlight}
+        showOutdoorWeather={viewOptions.outdoorWeather}
         debugLampLights={viewOptions.debugLampLights}
         autoFollowOnFocus={viewOptions.autoFollowOnFocus}
         fitCamera={kiosk}

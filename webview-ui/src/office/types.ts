@@ -248,6 +248,7 @@ export const ZoneType = {
   KITCHEN: 'kitchen',
   REST_AREA: 'rest_area',
   MEETING_ROOM: 'meeting_room',
+  OUTDOOR: 'outdoor',
 } as const
 export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType]
 

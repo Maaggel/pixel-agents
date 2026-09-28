@@ -33,6 +33,10 @@ ws.onmessage = (e) => {
   office.handleRelayMessage(msg)
   if (msg.type !== 'init') return
   ws.close()
+  // KIOSK='{"outdoorWeather":true,"weather":"rain_heavy"}' checks the office as the tablet would draw
+  // it with those display options - the live ones leave weather to chance, and a clear sky tests
+  // nothing about the rain
+  if (process.env.KIOSK) office.handleRelayMessage({ type: 'kioskOptions', options: JSON.parse(process.env.KIOSK) })
   for (let i = 0; i < 60; i++) office.tick(0.05) // let spawn effects finish
 
   let prev = null

@@ -20,7 +20,7 @@ import { OfficeState } from '../office/engine/officeState.js'
 import { renderFrame, renderNametags, renderBubbles, createTileLayerCache, setNametagFont } from '../office/engine/renderer.js'
 import type { SelectionRenderState } from '../office/engine/renderer.js'
 import { updateSunCycle, getSunState, computeSunBeams, getOfficeHour } from '../office/engine/sunlight.js'
-import { updateWeather, getWeatherSeverity, setWeather } from '../office/engine/windowEffects.js'
+import { updateWeather, getWeatherSeverity, setWeather, getOutdoorWeatherMap, outdoorWeatherRects } from '../office/engine/windowEffects.js'
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js'
 import { buildDynamicCatalog, getCatalogEntry } from '../office/layout/furnitureCatalog.js'
 import { setFloorSprites } from '../office/floorTiles.js'
@@ -62,9 +62,12 @@ export interface KioskFlags {
   showSunlight: boolean
   dynamicItems: boolean
   debugLampLights: boolean
+  /** Rain and snow on the ground outside. Off until a viewer applies it: while it rains it redraws
+   *  every wet tile on screen each frame, and this renderer shares its CPU with Mix's sessions. */
+  outdoorWeather: boolean
 }
 
-const DEFAULT_FLAGS: KioskFlags = { showNametags: true, showSunlight: true, dynamicItems: true, debugLampLights: false }
+const DEFAULT_FLAGS: KioskFlags = { showNametags: true, showSunlight: true, dynamicItems: true, debugLampLights: false, outdoorWeather: false }
 const DEFAULT_EXTERIOR_WALL = { style: 'brick_small' as const, color: { h: 10, s: 50, b: -15, c: 10 }, height: 0 }
 
 // ── Damage tracking ───────────────────────────────────────────
@@ -412,7 +415,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
   }
 
   function setFlags(next: Partial<KioskFlags>): void {
-    for (const k of ['showNametags', 'showSunlight', 'dynamicItems', 'debugLampLights'] as const) {
+    for (const k of ['showNametags', 'showSunlight', 'dynamicItems', 'debugLampLights', 'outdoorWeather'] as const) {
       if (typeof next[k] === 'boolean') flags[k] = next[k]
     }
     os.setDynamicItems(flags.dynamicItems)
@@ -682,6 +685,13 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       }
     }
 
+    // Rain outside never looks the same twice either - but only the wet tiles on screen change
+    if (flags.outdoorWeather) {
+      const layout = os.getLayout()
+      const map = getOutdoorWeatherMap(os.tileMap, layout.zones ?? undefined, layout.cols)
+      for (const r of outdoorWeatherRects(map, lastOffset.x, lastOffset.y, zoom, width, height)) addRect(rects, r)
+    }
+
     return mergeRects(rects)
   }
 
@@ -747,6 +757,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       layout.exteriorWall ?? DEFAULT_EXTERIOR_WALL,
       flags.debugLampLights,
       tileLayer,
+      flags.outdoorWeather ? { zones: layout.zones ?? undefined, zoneCols: layout.cols } : undefined,
     )
     lastOffset = { x: offsetX, y: offsetY }
     if (opts.background) {

@@ -137,30 +137,35 @@ export const ZONE_COLORS: Record<string, string> = {
   kitchen: 'rgba(255, 160, 40, 0.18)',
   rest_area: 'rgba(80, 200, 80, 0.18)',
   meeting_room: 'rgba(200, 80, 220, 0.18)',
+  outdoor: 'rgba(120, 170, 200, 0.18)',
 }
 export const ZONE_BORDER_COLORS: Record<string, string> = {
   workspace: 'rgba(50, 140, 255, 0.7)',
   kitchen: 'rgba(255, 160, 40, 0.7)',
   rest_area: 'rgba(80, 200, 80, 0.7)',
   meeting_room: 'rgba(200, 80, 220, 0.7)',
+  outdoor: 'rgba(120, 170, 200, 0.7)',
 }
 export const ZONE_LABEL_COLORS: Record<string, string> = {
   workspace: 'rgba(100, 180, 255, 0.85)',
   kitchen: 'rgba(255, 190, 80, 0.85)',
   rest_area: 'rgba(120, 230, 120, 0.85)',
   meeting_room: 'rgba(220, 130, 240, 0.85)',
+  outdoor: 'rgba(160, 200, 225, 0.85)',
 }
 export const ZONE_LABELS: Record<string, string> = {
   workspace: 'Workspace',
   kitchen: 'Kitchen',
   rest_area: 'Rest Area',
   meeting_room: 'Meeting Room',
+  outdoor: 'Outdoors',
 }
 export const ZONE_ICONS: Record<string, string> = {
   workspace: '\u{1F4BB}',
   kitchen: '\u{2615}',
   rest_area: '\u{1F6CB}',
   meeting_room: '\u{1F4AC}',
+  outdoor: '\u{1F326}',
 }
 /** Probability (0-1) that an idle character picks a zone-appropriate tile vs random */
 export const ZONE_WANDER_PREFERENCE = 0.7
@@ -284,6 +289,21 @@ export const WEATHER_SNOW_COLOR = 'rgba(240, 245, 255, 0.85)'
 export const WEATHER_SNOW_SIZE_PX = 1
 /** Blizzard particle count (more than regular snow) */
 export const WEATHER_BLIZZARD_PARTICLE_COUNT = 50
+
+// ── Outdoor weather ─────────────────────────────────────────
+// The same rain and snow as the windows, falling on the empty ground around the building, in the
+// walled-in light wells, and on any floor painted with the Outdoors zone. Deliberately quieter than
+// the windows: it is scenery at the edge of the picture, not something to watch.
+/** Overall opacity multiplier against the window weather */
+export const OUTDOOR_WEATHER_OPACITY = 0.45
+/** Fraction of each particle set drawn outdoors - thinner than behind the glass */
+export const OUTDOOR_WEATHER_DENSITY = 0.5
+/** Void tiles this close to the building (Chebyshev, in tiles) get the full effect */
+export const OUTDOOR_WEATHER_FULL_TILES = 2
+/** ...fading to nothing by this distance, so it trails off rather than ending at a hard edge */
+export const OUTDOOR_WEATHER_FADE_TILES = 5
+/** Fade is drawn in this many steps, one batched path each, rather than a stroke per particle */
+export const OUTDOOR_WEATHER_ALPHA_STEPS = 4
 /** Blizzard horizontal wind speed in sprite pixels per second */
 export const WEATHER_BLIZZARD_WIND_SPEED_PX_SEC = 25
 /** Blizzard fall speed in sprite pixels per second */

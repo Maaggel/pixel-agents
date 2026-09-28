@@ -29,13 +29,15 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>
   showNametags?: boolean
   showSunlight?: boolean
+  /** Rain and snow on the ground outside, not only through the windows */
+  showOutdoorWeather?: boolean
   debugLampLights?: boolean
   autoFollowOnFocus?: boolean
   /** Kiosk/headless: keep the camera centred on the office's non-void tiles (overrides follow) */
   fitCamera?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, debugLampLights, autoFollowOnFocus = true, fitCamera = false }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showNametags, showSunlight, showOutdoorWeather, debugLampLights, autoFollowOnFocus = true, fitCamera = false }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -322,6 +324,10 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           vacuumOverlays.length > 0 ? vacuumOverlays : undefined,
           officeState.getLayout().exteriorWall ?? { style: 'brick_small' as const, color: { h: 10, s: 50, b: -15, c: 10 }, height: 0 },
           debugLampLights,
+          undefined,
+          showOutdoorWeather
+            ? { zones: officeState.getLayout().zones ?? undefined, zoneCols: officeState.getLayout().cols }
+            : undefined,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
@@ -335,7 +341,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
       stop()
       observer.disconnect()
     }
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags, showSunlight, debugLampLights])
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showNametags, showSunlight, showOutdoorWeather, debugLampLights])
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(

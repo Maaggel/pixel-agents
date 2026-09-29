@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.44.1
+
+- The relay gives each tablet a bandwidth budget, 600 KB/s by default (`?kbps=` on `/stream` to change it). Every frame on the tablet stream is a whole picture, so a busy office - a sunrise relighting every tile, rain, people walking - went out at 30 full frames a second, over 1 MB/s. Both of the tablet's freezes on 2026-09-29 came in the minute the stream peaked above 1 MB/s; its Wi-Fi could not carry it, the connection backed up and stalled. Over budget, a frame is now skipped instead: a busy spell drops to about 18 fps, a quiet one keeps 30. `/api/stream` shows each stream's budget and how many frames it skipped, and the relay logs both when a stream ends.
+
 ## v1.44.0
 
 - The tablet's info text (version and fps counters) can hide itself: with "Auto-hide info text after 30 s" on in the long-press menu (the default), it shows for 30 s after the app opens and after any tap on the screen, and always while the connection overlay is up.

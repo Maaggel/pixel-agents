@@ -488,6 +488,16 @@ function saveLooks(update) {
 // A renderer connects as a publisher and sends binary FRAME_FULL payloads; tablets GET /stream
 // and receive CONFIG followed by every frame. Only the latest frame is kept.
 const STREAM_DEFAULT = { width: 1024, height: 600, maxFps: 15 }
+// Each tablet's bandwidth budget. Every frame is a whole picture, so a busy office (a sunrise
+// relighting every tile, rain, people walking) sends 30 of them a second - over 1 MB/s - and the
+// Galaxy Tab 2's Wi-Fi stalled for a minute at exactly those peaks (2026-09-29, both freezes).
+// Over budget a frame is skipped rather than queued: busy spells lose fps, quiet ones keep 30.
+// A client can ask for another budget with ?kbps= on /stream.
+const STREAM_BUDGET_KBPS = 600
+const STREAM_BUDGET_MIN_KBPS = 50
+const STREAM_BUDGET_MAX_KBPS = 5000
+/** How much unused budget a client can save up, in seconds of it: enough for a few frames in a burst */
+const STREAM_BUDGET_BURST_SEC = 0.5
 let streamConfig = { ...STREAM_DEFAULT }
 /** Latest FRAME_FULL payload per compression tag (0x01 lz4 block, 0x02 raw deflate) */
 const lastFramePayload = new Map()
@@ -505,11 +515,17 @@ function broadcastFrame(comp, payload) {
     if (c.res.writableEnded || c.res.destroyed) { streamClients.delete(c); continue }
     if (c.comp !== comp) continue
     if (now - c.lastSentAt < c.minIntervalMs) continue // per-client fps cap (roaming tablets)
+    // Bandwidth budget: a token bucket in bytes, refilled at the client's rate
+    const cap = c.budgetBytesPerSec * STREAM_BUDGET_BURST_SEC
+    c.tokens = Math.min(cap, c.tokens + ((now - c.tokensAt) / 1000) * c.budgetBytesPerSec)
+    c.tokensAt = now
+    if (c.tokens < msg.length) { c.overBudget++; continue }
     // Never queue behind a slow link: if the previous frame is still in our buffers, drop this one.
     // Queued frames would replay too fast when the link recovers ("catch-up"); a dropped frame is
     // invisible because the next one carries the whole picture.
     if (c.res.writableLength > 0 || (c.res.socket && c.res.socket.writableLength > 0)) { c.dropped++; continue }
     c.lastSentAt = now
+    c.tokens -= msg.length
     c.res.write(msg)
   }
 }
@@ -1268,6 +1284,10 @@ const server = createServer((req, res) => {
     const comp = url.searchParams.get('comp') === 'deflate' ? COMPRESSION_DEFLATE_RAW : COMPRESSION_LZ4_BLOCK
     const fpsReq = parseInt(url.searchParams.get('fps') || '', 10)
     const fps = Number.isFinite(fpsReq) && fpsReq > 0 ? Math.min(fpsReq, streamConfig.maxFps) : streamConfig.maxFps
+    const kbpsReq = parseInt(url.searchParams.get('kbps') || '', 10)
+    const kbps = Number.isFinite(kbpsReq) && kbpsReq > 0
+      ? Math.max(STREAM_BUDGET_MIN_KBPS, Math.min(STREAM_BUDGET_MAX_KBPS, kbpsReq))
+      : STREAM_BUDGET_KBPS
     res.writeHead(200, {
       'Content-Type': 'application/octet-stream',
       // what the tablet is looking at, so its status line can say so without a protocol change
@@ -1280,11 +1300,18 @@ const server = createServer((req, res) => {
     res.write(encodeConfig({ ...streamConfig, maxFps: fps, compression: comp }))
     const latest = lastFramePayload.get(comp)
     if (latest) res.write(frameFull(latest))
-    const client = { res, comp, minIntervalMs: Math.floor(1000 / fps) - 20, lastSentAt: latest ? Date.now() : 0, dropped: 0 }
+    const budgetBytesPerSec = kbps * 1024
+    // The opening frame is sent outside the budget; the bucket starts empty so it is paid back first
+    const client = { res, comp, minIntervalMs: Math.floor(1000 / fps) - 20, lastSentAt: latest ? Date.now() : 0, dropped: 0,
+      budgetBytesPerSec, tokens: 0, tokensAt: Date.now(), overBudget: 0, openedAt: Date.now() }
     res.socket?.setNoDelay(true)
     streamClients.add(client)
-    console.log(`[Relay] Stream client connected (${comp === COMPRESSION_DEFLATE_RAW ? 'deflate' : 'lz4'} @${fps}fps, total: ${streamClients.size})`)
-    const drop = () => { if (streamClients.delete(client)) console.log(`[Relay] Stream client disconnected (dropped ${client.dropped} frames to slow link, total: ${streamClients.size})`) }
+    console.log(`[Relay] Stream client connected (${comp === COMPRESSION_DEFLATE_RAW ? 'deflate' : 'lz4'} @${fps}fps, ${kbps} KB/s budget, total: ${streamClients.size})`)
+    const drop = () => {
+      if (!streamClients.delete(client)) return
+      const mins = ((Date.now() - client.openedAt) / 60000).toFixed(1)
+      console.log(`[Relay] Stream client disconnected after ${mins} min (skipped ${client.overBudget} frames over budget, ${client.dropped} to a slow link, total: ${streamClients.size})`)
+    }
     req.on('close', drop)
     res.on('close', drop)
     res.on('error', drop)
@@ -1357,7 +1384,8 @@ const server = createServer((req, res) => {
     const lz = lastFramePayload.get(COMPRESSION_LZ4_BLOCK), df = lastFramePayload.get(COMPRESSION_DEFLATE_RAW)
     let clientsLz4 = 0, clientsDeflate = 0
     for (const c of streamClients) { if (c.comp === COMPRESSION_DEFLATE_RAW) clientsDeflate++; else clientsLz4++ }
-    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!(lz || df), lastFrameAgeMs: (lz || df) ? Date.now() - lastFrameAt : null, frameBytesLz4: lz ? lz.length : 0, frameBytesDeflate: df ? df.length : 0, frames: frameCount, clients: streamClients.size, clientsLz4, clientsDeflate }))
+    res.end(JSON.stringify({ config: streamConfig, hasFrame: !!(lz || df), lastFrameAgeMs: (lz || df) ? Date.now() - lastFrameAt : null, frameBytesLz4: lz ? lz.length : 0, frameBytesDeflate: df ? df.length : 0, frames: frameCount, clients: streamClients.size, clientsLz4, clientsDeflate,
+      streams: [...streamClients].map(c => ({ minutes: +((Date.now() - c.openedAt) / 60000).toFixed(1), budgetKBps: Math.round(c.budgetBytesPerSec / 1024), overBudget: c.overBudget, slowLink: c.dropped })) }))
     return
   }
 

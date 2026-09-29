@@ -1,31 +1,42 @@
 <#
-  adb-helper.ps1 - get an Android device listed and online, then do things with it.
+  adb-helper.ps1 - get an Android device online over adb, then do things with it.
   Part of Pixel Agents (tools/adb-helper); made for the Galaxy Tab 2 that shows the office.
 
   Setup: put this file and adb-helper.cmd in a folder of their own (C:\Mix\Programs\adb) and
-  double-click adb-helper.cmd, which runs this with no execution-policy prompt.
-  On first run it downloads adb (Google's platform-tools) into that folder if there is none, and
-  puts the folder on your PATH, so "adb" and "adb-helper" work from any terminal after that.
-  Menu option s makes desktop and Start menu shortcuts.
+  double-click adb-helper.cmd, which runs this with no execution-policy prompt. The first run
+  downloads adb (Google's platform-tools) into the folder if it is not there.
 
-  It escalates through the fixes one at a time and stops as soon as a device is online:
+  It opens on a list of connected devices with a menu below it: arrow keys and Enter, or the
+  key shown on each line. If a device is missing or offline, "Scan and reconnect" works through
+  the fixes one at a time and stops at the first that brings it online:
     1. just ask            4. restart the adb server
-    2. wait and ask again  5. kill EVERY adb.exe (other programs bring their own, and two
-    3. reconnect offline      versions fighting over port 5037 is the classic "offline")
-                           6. ask you to replug / toggle USB debugging, and show the drivers
-  Then a menu: install an APK (picked from the apks folder beside this script, newest first,
-  or dragged in), start the Pixel Agents viewer, save its log, screenshot, shell, Wi-Fi adb...
+    2. wait and ask again  5. stop EVERY adb.exe (other programs bring their own, and two
+    3. reconnect offline      versions sharing the adb server is the classic "offline")
+                           6. walk you through replugging, and show the USB drivers
 #>
 
 $ErrorActionPreference = 'Continue'
 $Package = 'dk.mix.pixelagents.viewer'
 $Activity = "$Package/.MainActivity"
 $Here = $PSScriptRoot
+$ApkDir = Join-Path $Here 'apks'
 $PlatformToolsUrl = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip'
 
 function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
 
-# --- Setup: adb itself, and this folder on the PATH --------------------------------------------
+# Arrow keys need a real console; anywhere else (the ISE, redirected input) the menus fall back
+# to typing the key shown on each line
+$script:CanReadKey = $true
+try { $null = [Console]::KeyAvailable } catch { $script:CanReadKey = $false }
+
+function Wait-Key($message = 'Press any key to go back to the menu') {
+    if ($script:CanReadKey) { Say "`n$message" 'DarkGray'; $null = [Console]::ReadKey($true) }
+    else { $null = Read-Host "`n$message (Enter)" }
+}
+
+function Clean-Path($p) { return $p.Trim().Trim('"').Trim("'") }
+
+# --- adb itself ---------------------------------------------------------------------------------
 
 function Install-PlatformTools {
     Say "Downloading adb from Google ($PlatformToolsUrl)..." 'Cyan'
@@ -52,6 +63,27 @@ function Install-PlatformTools {
     }
 }
 
+# The copy beside this script wins: two adb versions sharing the adb server is what makes a
+# device go offline, so the helper does not borrow whichever one happens to be on the PATH
+$Adb = Join-Path $Here 'adb.exe'
+if (-not (Test-Path $Adb)) {
+    Say "adb is not in $Here yet." 'Yellow'
+    $other = Get-Command adb.exe -ErrorAction SilentlyContinue
+    if ($other) { Say "(There is another adb at $($other.Source) - this helper keeps its own copy.)" 'DarkGray' }
+    $a = Read-Host 'Download it from Google now? (Y/n)'
+    if ($a -eq 'n' -or -not (Install-PlatformTools)) {
+        if ($other) { $Adb = $other.Source; Say "Using $Adb" 'DarkGray' }
+        else {
+            Say 'No adb to use. Put adb.exe, AdbWinApi.dll and AdbWinUsbApi.dll in this folder, or run again.' 'Red'
+            Wait-Key 'Press any key to close'
+            exit 1
+        }
+    }
+}
+if (-not (Test-Path $ApkDir)) { New-Item -ItemType Directory -Force $ApkDir | Out-Null }
+
+# --- PATH ---------------------------------------------------------------------------------------
+
 function Test-OnUserPath($dir) {
     $p = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not $p) { return $false }
@@ -59,52 +91,22 @@ function Test-OnUserPath($dir) {
     return $false
 }
 
-function Add-ToUserPath($dir) {
+function Switch-UserPath {
     $p = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if ($p) { $p = $p.TrimEnd(';') + ';' + $dir } else { $p = $dir }
-    [Environment]::SetEnvironmentVariable('Path', $p, 'User')
-    $env:Path = $env:Path.TrimEnd(';') + ';' + $dir # this window too, not only new ones
-    Say "Added $dir to your PATH. New terminals can now run: adb, adb-helper" 'Green'
-}
-
-# adb: the copy beside this script wins, so every tool on this PC that finds "adb" on the PATH
-# gets the same version - two versions sharing the adb server is what makes devices go offline
-$Adb = Join-Path $Here 'adb.exe'
-if (-not (Test-Path $Adb)) {
-    $other = Get-Command adb.exe -ErrorAction SilentlyContinue
-    if ($other) { Say "Found another adb at $($other.Source); this helper keeps its own copy beside it." 'DarkGray' }
-    $a = Read-Host "adb is not in $Here. Download it from Google now? (Y/n)"
-    if ($a -ne 'n' -and (Install-PlatformTools)) {
-        # fresh copy
-    } elseif ($other) {
-        $Adb = $other.Source
-        Say "Using $Adb" 'DarkGray'
+    if (Test-OnUserPath $Here) {
+        $kept = @($p.Split(';') | Where-Object { $_ -and $_.TrimEnd('\') -ine $Here.TrimEnd('\') })
+        [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')
+        Say "Removed $Here from your PATH." 'Green'
+        Say "New terminals will no longer find 'adb' or 'adb-helper' outside this folder." 'DarkGray'
     } else {
-        Say 'No adb to use. Put adb.exe, AdbWinApi.dll and AdbWinUsbApi.dll in this folder, or run again.' 'Red'
-        exit 1
+        if ($p) { $p = $p.TrimEnd(';') + ';' + $Here } else { $p = $Here }
+        [Environment]::SetEnvironmentVariable('Path', $p, 'User')
+        Say "Added $Here to your PATH." 'Green'
+        Say "Open a new terminal and 'adb' and 'adb-helper' work from anywhere." 'DarkGray'
     }
 }
 
-if (-not (Test-OnUserPath $Here)) {
-    $a = Read-Host "$Here is not on your PATH, so plain 'adb' and 'adb-helper' will not work in a terminal. Add it? (Y/n)"
-    if ($a -ne 'n') { Add-ToUserPath $Here }
-}
-
-function New-Shortcuts {
-    $shell = New-Object -ComObject WScript.Shell
-    $ps = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
-    $places = @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
-    foreach ($dir in $places) {
-        $lnk = $shell.CreateShortcut((Join-Path $dir 'adb helper.lnk'))
-        $lnk.TargetPath = $ps
-        $lnk.Arguments = "-NoExit -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-        $lnk.WorkingDirectory = $Here
-        $lnk.IconLocation = "$ps,0"
-        $lnk.Description = 'Connect an Android device and install APKs'
-        $lnk.Save()
-        Say "Shortcut: $(Join-Path $dir 'adb helper.lnk')" 'Green'
-    }
-}
+# --- devices ------------------------------------------------------------------------------------
 
 # Devices as objects: Serial, State ('device', 'offline', 'unauthorized', ...)
 function Get-Devices {
@@ -112,28 +114,39 @@ function Get-Devices {
     $list = @()
     foreach ($l in $lines) {
         if ($l -match '^\s*$' -or $l -match '^List of devices' -or $l -match '^\*') { continue }
-        $parts = $l -split '\s+', 2
-        if ($parts.Count -eq 2) {
-            $list += [pscustomobject]@{ Serial = $parts[0]; State = $parts[1].Trim() }
-        } elseif ($l -match '^\(no serial number\)\s+(\S+)') {
+        if ($l -match '^\(no serial number\)\s+(\S+)') {
             $list += [pscustomobject]@{ Serial = '(no serial number)'; State = $Matches[1] }
+            continue
         }
+        $parts = $l -split '\s+', 2
+        if ($parts.Count -eq 2) { $list += [pscustomobject]@{ Serial = $parts[0]; State = $parts[1].Trim() } }
     }
-    return ,$list
+    return $list # callers wrap it in @(), so one device or none still reads as a list
 }
+
+$script:Devices = @()
+function Update-Devices { $script:Devices = @(Get-Devices) }
+function Get-Online { return @($script:Devices | Where-Object { $_.State -eq 'device' }) }
 
 function Show-Devices($devs) {
-    if ($devs.Count -eq 0) { Say '  (no devices listed)' 'DarkYellow'; return }
+    if (@($devs).Count -eq 0) { Say '  (none found)' 'DarkYellow'; return }
     foreach ($d in $devs) {
         $c = 'DarkYellow'; if ($d.State -eq 'device') { $c = 'Green' }
-        Say ("  {0,-22} {1}" -f $d.Serial, $d.State) $c
+        $state = $d.State; if ($state -eq 'device') { $state = 'online' }
+        Say ("  {0,-24} {1}" -f $d.Serial, $state) $c
     }
 }
 
-function Get-Online { return @((Get-Devices) | Where-Object { $_.State -eq 'device' }) }
+function Show-Header {
+    Say 'adb helper' 'Cyan'
+    Say "Devices:" 'Gray'
+    Show-Devices $script:Devices
+    Say ''
+}
 
 function Wait-Online($seconds) {
     for ($i = 0; $i -lt $seconds; $i++) {
+        Update-Devices
         $on = @(Get-Online)
         if ($on.Count -gt 0) { return $on }
         Start-Sleep -Seconds 1
@@ -146,7 +159,7 @@ function Show-UsbDrivers {
     try {
         $pnp = Get-PnpDevice -PresentOnly -ErrorAction Stop |
             Where-Object { $_.FriendlyName -match 'ADB|Android|Samsung|SAMSUNG|Galaxy|MTP|GT-P' }
-        if (-not $pnp) { Say '  none - the cable, the port, or the tablet is not presenting USB at all' 'DarkYellow' }
+        if (-not $pnp) { Say '  none - the cable, the port, or the device is not presenting USB at all' 'DarkYellow' }
         foreach ($p in $pnp) {
             $c = 'Gray'; if ($p.Status -ne 'OK') { $c = 'DarkYellow' }
             Say ("  [{0}] {1}  ({2})" -f $p.Status, $p.FriendlyName, $p.Class) $c
@@ -156,6 +169,19 @@ function Show-UsbDrivers {
     } catch { Say '  (could not query drivers)' 'DarkGray' }
 }
 
+# A quick look at start-up: give a device that is mid-handshake a moment, nothing more
+function Find-Devices {
+    Say 'Looking for devices...' 'Cyan'
+    & $Adb start-server *> $null
+    for ($i = 0; $i -lt 3; $i++) {
+        Update-Devices
+        $settling = @($script:Devices | Where-Object { $_.State -ne 'device' })
+        if ($script:Devices.Count -gt 0 -and $settling.Count -eq 0) { return }
+        Start-Sleep -Seconds 1
+    }
+}
+
+# The full treatment: one fix at a time, stopping at the first that brings a device online
 function Connect-Device {
     Say "adb: $Adb" 'DarkGray'
     Say ((& $Adb version 2>$null | Select-Object -First 1)) 'DarkGray'
@@ -168,7 +194,7 @@ function Connect-Device {
         @{ Name = 'Stopping every adb.exe on this PC (other tools bring their own)'; Do = {
                 & $Adb kill-server *> $null
                 Get-Process adb -ErrorAction SilentlyContinue | ForEach-Object {
-                    Say ("    killing adb.exe pid {0}  {1}" -f $_.Id, $_.Path) 'DarkGray'
+                    Say ("    stopping adb.exe pid {0}  {1}" -f $_.Id, $_.Path) 'DarkGray'
                     Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
                 }
                 Start-Sleep 1
@@ -180,169 +206,273 @@ function Connect-Device {
         Say "`n> $($s.Name)..." 'Cyan'
         & $s.Do
         $on = @(Wait-Online $s.Wait)
-        Show-Devices (Get-Devices)
-        if ($on.Count -gt 0) { return $on }
+        Show-Devices $script:Devices
+        if ($on.Count -gt 0) { Say "`nOnline." 'Green'; return }
     }
 
     # Needs hands
     for ($round = 1; $round -le 3; $round++) {
         Show-UsbDrivers
-        Say "`nStill not online. On the tablet:" 'Yellow'
+        Say "`nStill not online. On the device:" 'Yellow'
         Say '  - unlock the screen' 'Yellow'
         Say '  - Settings > Developer options: turn USB debugging OFF and ON again' 'Yellow'
         Say '  - unplug the cable and plug it back in (a port directly on the PC, not a hub)' 'Yellow'
-        $a = Read-Host 'Press Enter when done (or q to give up and go to the menu anyway)'
-        if ($a -eq 'q') { return @() }
+        Say '  - close any other program that uses adb (TabScreen Host, Android Studio, phone suites)' 'Yellow'
+        $a = Read-Host 'Press Enter when done, or q to stop trying'
+        if ($a -eq 'q') { return }
         & $Adb kill-server *> $null
         & $Adb start-server *> $null
         $on = @(Wait-Online 12)
-        Show-Devices (Get-Devices)
-        if ($on.Count -gt 0) { return $on }
-        & $Adb reconnect offline *> $null
-        $on = @(Wait-Online 8)
-        if ($on.Count -gt 0) { Show-Devices (Get-Devices); return $on }
+        if ($on.Count -eq 0) { & $Adb reconnect offline *> $null; $on = @(Wait-Online 8) }
+        Show-Devices $script:Devices
+        if ($on.Count -gt 0) { Say "`nOnline." 'Green'; return }
     }
-    return @()
+    Say "`nNo luck. Try another cable or port, or the Samsung USB driver." 'Yellow'
+}
+
+# --- menus --------------------------------------------------------------------------------------
+
+<#
+  Draw a menu under the header and return the index chosen, or -1 for Esc. Items are hashtables:
+  Label, Hot (the key that picks it at once), Note (grey text after it), Dim (drawn grey).
+#>
+function Show-Menu($title, $items, [int]$selected = 0) {
+    if ($selected -lt 0 -or $selected -ge $items.Count) { $selected = 0 }
+    $width = 0
+    foreach ($it in $items) { if ($it.Label.Length -gt $width) { $width = $it.Label.Length } }
+    while ($true) {
+        Clear-Host
+        Show-Header
+        Say $title 'Cyan'
+        for ($i = 0; $i -lt $items.Count; $i++) {
+            $it = $items[$i]
+            $hot = '  '; if ($it.Hot) { $hot = "$($it.Hot))" }
+            $text = "{0,-4}{1}" -f $hot, $it.Label.PadRight($width)
+            if ($i -eq $selected -and $script:CanReadKey) {
+                Write-Host (' > ' + $text + ' ') -NoNewline -ForegroundColor Black -BackgroundColor Cyan
+            } else {
+                $c = 'Gray'; if ($it.Dim) { $c = 'DarkGray' }
+                Write-Host ('   ' + $text + ' ') -NoNewline -ForegroundColor $c
+            }
+            if ($it.Note) { Write-Host ('  ' + $it.Note) -ForegroundColor DarkGray } else { Write-Host '' }
+        }
+
+        if (-not $script:CanReadKey) {
+            $a = (Read-Host "`nType the key shown (Enter = $($items[$selected].Label))").Trim()
+            if ($a -eq '') { return $selected }
+            for ($i = 0; $i -lt $items.Count; $i++) { if ($items[$i].Hot -and $items[$i].Hot -ieq $a) { return $i } }
+            continue
+        }
+
+        Say "`n  Up/Down and Enter, or press the key shown. Esc goes back." 'DarkGray'
+        $k = [Console]::ReadKey($true)
+        if ($k.Key -eq 'UpArrow') { $selected = ($selected - 1 + $items.Count) % $items.Count }
+        elseif ($k.Key -eq 'DownArrow') { $selected = ($selected + 1) % $items.Count }
+        elseif ($k.Key -eq 'Home' -or $k.Key -eq 'PageUp') { $selected = 0 }
+        elseif ($k.Key -eq 'End' -or $k.Key -eq 'PageDown') { $selected = $items.Count - 1 }
+        elseif ($k.Key -eq 'Enter') { return $selected }
+        elseif ($k.Key -eq 'Escape') { return -1 }
+        else {
+            $ch = [string]$k.KeyChar
+            for ($i = 0; $i -lt $items.Count; $i++) { if ($items[$i].Hot -and $items[$i].Hot -ieq $ch) { return $i } }
+        }
+    }
 }
 
 function Pick-Device {
+    Update-Devices
     $on = @(Get-Online)
-    if ($on.Count -eq 0) { return $null }
+    if ($on.Count -eq 0) {
+        Say 'No device online. Choose "Scan and reconnect to devices" first.' 'Yellow'
+        return $null
+    }
     if ($on.Count -eq 1) { return $on[0].Serial }
-    for ($i = 0; $i -lt $on.Count; $i++) { Say ("  {0}) {1}" -f ($i + 1), $on[$i].Serial) }
-    $n = Read-Host 'Which device'
-    return $on[[int]$n - 1].Serial
+    $items = @()
+    for ($i = 0; $i -lt $on.Count; $i++) { $items += @{ Label = $on[$i].Serial; Hot = [string]($i + 1) } }
+    $n = Show-Menu 'Which device?' $items 0
+    Clear-Host
+    if ($n -lt 0) { return $null }
+    return $on[$n].Serial
 }
 
-function Clean-Path($p) { return $p.Trim().Trim('"').Trim("'") }
-
-# Drop APKs into the apks folder beside this script; the newest is listed first
-$ApkDir = Join-Path $Here 'apks'
-if (-not (Test-Path $ApkDir)) { New-Item -ItemType Directory -Force $ApkDir | Out-Null }
-
 function Select-Apk {
-    $files = @(Get-ChildItem -Path $ApkDir -Filter *.apk -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
-    Say "`nAPKs in $ApkDir (newest first):" 'Cyan'
-    if ($files.Count -eq 0) { Say '  (none yet - put .apk files in that folder)' 'DarkYellow' }
-    for ($i = 0; $i -lt $files.Count; $i++) {
-        Say ("  {0,2}) {1,-45} {2:yyyy-MM-dd HH:mm}  {3,6:N0} KB" -f ($i + 1), $files[$i].Name, $files[$i].LastWriteTime, ($files[$i].Length / 1KB))
+    while ($true) {
+        $files = @(Get-ChildItem -Path $ApkDir -Filter *.apk -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+        $items = @()
+        for ($i = 0; $i -lt $files.Count; $i++) {
+            $hot = ''; if ($i -lt 9) { $hot = [string]($i + 1) }
+            $items += @{ Label = $files[$i].Name; Hot = $hot; File = $files[$i].FullName
+                         Note = ("{0:yyyy-MM-dd HH:mm}  {1:N0} KB" -f $files[$i].LastWriteTime, ($files[$i].Length / 1KB)) }
+        }
+        if ($files.Count -eq 0) { $items += @{ Label = '(no APKs in the folder yet)'; Dim = $true; Act = 'none' } }
+        $items += @{ Label = 'Drag in or type a path instead'; Hot = 'p'; Act = 'path' }
+        $items += @{ Label = 'Open the apks folder in Explorer'; Hot = 'o'; Act = 'open' }
+        $items += @{ Label = 'Back'; Hot = 'b'; Act = 'back' }
+
+        $n = Show-Menu "Install which APK? Newest first, from $ApkDir" $items 0
+        Clear-Host
+        if ($n -lt 0) { return $null }
+        $it = $items[$n]
+        if ($it.File) { return $it.File }
+        if ($it.Act -eq 'path') { return (Clean-Path (Read-Host 'Path to the .apk (drag the file into this window)')) }
+        if ($it.Act -eq 'open') { Invoke-Item $ApkDir }
+        if ($it.Act -eq 'back') { return $null }
     }
-    Say '   p) type or drag in a path instead'
-    Say '   o) open the folder in Explorer'
-    Say '   b) back'
-    $default = ''; if ($files.Count -gt 0) { $default = ' (Enter = 1, the newest)' }
-    $a = (Read-Host "Which$default").Trim()
-    if ($a -eq '' -and $files.Count -gt 0) { return $files[0].FullName }
-    if ($a -eq 'b' -or $a -eq '') { return $null }
-    if ($a -eq 'o') { Invoke-Item $ApkDir; return (Select-Apk) }
-    if ($a -eq 'p') { return (Clean-Path (Read-Host 'Path to the .apk (you can drag the file into this window)')) }
-    $n = 0
-    if ([int]::TryParse($a, [ref]$n) -and $n -ge 1 -and $n -le $files.Count) { return $files[$n - 1].FullName }
-    Say 'Not one of the choices.' 'DarkYellow'
-    return $null
 }
 
 function Invoke-Adb($serial, [string[]]$argList) {
     if ($serial) { & $Adb -s $serial @argList } else { & $Adb @argList }
 }
 
-# ---------------------------------------------------------------------------------------------
+# --- actions ------------------------------------------------------------------------------------
 
-$online = @(Connect-Device)
-if ($online.Count -gt 0) { Say "`nOnline." 'Green' } else { Say "`nNo device online. Some menu items will not work until one is." 'DarkYellow' }
-
-while ($true) {
-    Say "`n==== adb helper ====" 'Cyan'
-    Show-Devices (Get-Devices)
-    Say '  1) Install an APK from the apks folder (keeps the app''s data and settings)'
-    Say '  2) Start the Pixel Agents viewer'
-    Say '  3) Save the Pixel Agents viewer''s log to a file'
-    Say '  4) Take a screenshot'
-    Say '  5) Open a shell on the device'
-    Say '  6) Switch to adb over Wi-Fi (then the cable can go)'
-    Say '  7) Connect to a device over Wi-Fi by IP'
-    Say '  8) Uninstall an app'
-    Say '  9) Try to reconnect again'
-    Say '  s) Make desktop and Start menu shortcuts'
-    Say '  0) Quit'
-    $choice = Read-Host 'Choose'
-
-    switch ($choice) {
-        '1' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            $apk = Select-Apk
-            if (-not $apk) { break }
-            if (-not (Test-Path $apk)) { Say "Not found: $apk" 'Red'; break }
-            Invoke-Adb $serial @('install', '-r', $apk)
-            if ($LASTEXITCODE -ne 0) {
-                Say 'Install failed. If it says INSTALL_FAILED_VERSION_DOWNGRADE or a signature mismatch,' 'Yellow'
-                Say 'uninstall first (option 8) - that also clears the app''s settings.' 'Yellow'
-            } else {
-                $pkg = $null
-                $aapt = Join-Path $Here 'aapt.exe'
-                if (Test-Path $aapt) { $m = (& $aapt dump badging $apk | Select-String "package: name='([^']+)'"); if ($m) { $pkg = $m.Matches[0].Groups[1].Value } }
-                if (-not $pkg -and $apk -match 'pixel-agents-viewer') { $pkg = $Package }
-                if ($pkg -eq $Package) {
-                    $go = Read-Host 'Start the Pixel Agents viewer now? (Y/n)'
-                    if ($go -ne 'n') { Invoke-Adb $serial @('shell', 'am', 'start', '-n', $Activity) }
-                }
-            }
-        }
-        '2' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            Invoke-Adb $serial @('shell', 'am', 'start', '-n', $Activity)
-        }
-        '3' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            $file = Join-Path (Get-Location) ("pixelagents-log-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-            Invoke-Adb $serial @('logcat', '-d', '-v', 'time', '-s', 'PixelAgents:*', 'TabScreen:*', 'AndroidRuntime:*') | Out-File -Encoding utf8 $file
-            Say "Saved $file" 'Green'
-            Get-Content $file -Tail 25
-        }
-        '4' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            $file = Join-Path (Get-Location) ("screenshot-{0}.png" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-            Invoke-Adb $serial @('shell', 'screencap', '-p', '/sdcard/adb-helper-shot.png')
-            Invoke-Adb $serial @('pull', '/sdcard/adb-helper-shot.png', $file)
-            Invoke-Adb $serial @('shell', 'rm', '/sdcard/adb-helper-shot.png')
-            if (Test-Path $file) { Say "Saved $file" 'Green' }
-        }
-        '5' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            Say 'Type exit to come back.' 'DarkGray'
-            Invoke-Adb $serial @('shell')
-        }
-        '6' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online (this needs the cable first).' 'Red'; break }
-            $ipLine = Invoke-Adb $serial @('shell', 'ip', '-f', 'inet', 'addr', 'show', 'wlan0') | Select-String 'inet (\d+\.\d+\.\d+\.\d+)'
-            $ip = $null; if ($ipLine) { $ip = $ipLine.Matches[0].Groups[1].Value }
-            if (-not $ip) {
-                $ipLine = Invoke-Adb $serial @('shell', 'getprop', 'dhcp.wlan0.ipaddress')
-                if ($ipLine -match '\d+\.\d+\.\d+\.\d+') { $ip = $Matches[0] }
-            }
-            Invoke-Adb $serial @('tcpip', '5555')
-            Start-Sleep 3
-            if ($ip) {
-                & $Adb connect "${ip}:5555"
-                Say "Next time: adb connect ${ip}:5555 (until the tablet reboots)" 'Green'
-            } else { Say 'Could not read the tablet''s Wi-Fi address - use option 7 with the IP from its Wi-Fi settings.' 'Yellow' }
-        }
-        '7' {
-            $ip = (Read-Host 'IP address (port 5555 is assumed)').Trim()
-            if ($ip -notmatch ':') { $ip = "${ip}:5555" }
-            & $Adb connect $ip
-        }
-        '8' {
-            $serial = Pick-Device; if (-not $serial) { Say 'No device online.' 'Red'; break }
-            $pkg = (Read-Host "Package name (Enter for $Package)").Trim()
-            if (-not $pkg) { $pkg = $Package }
-            Invoke-Adb $serial @('uninstall', $pkg)
-        }
-        '9' {
-            $online = @(Connect-Device)
-        }
-        's' { New-Shortcuts }
-        '0' { exit 0 }
-        default { Say 'Pick a number from the list.' 'DarkYellow' }
+function Do-Install {
+    $serial = Pick-Device; if (-not $serial) { return }
+    $apk = Select-Apk
+    if (-not $apk) { return 'back' }
+    if (-not (Test-Path $apk)) { Say "Not found: $apk" 'Red'; return }
+    Say "Installing $(Split-Path $apk -Leaf) on $serial..." 'Cyan'
+    # Out-Host throughout: this function's result is assigned, and anything left in the pipeline
+    # would be swallowed into it instead of shown
+    Invoke-Adb $serial @('install', '-r', $apk) | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Say 'Install failed. If it says INSTALL_FAILED_VERSION_DOWNGRADE or a signature mismatch,' 'Yellow'
+        Say 'uninstall the app first - that also clears its settings.' 'Yellow'
+        return
     }
+    if ((Split-Path $apk -Leaf) -match 'pixel-agents-viewer') {
+        $go = Read-Host 'Start the Pixel Agents viewer now? (Y/n)'
+        if ($go -ne 'n') { Invoke-Adb $serial @('shell', 'am', 'start', '-n', $Activity) | Out-Host }
+    }
+}
+
+function Do-Start {
+    $serial = Pick-Device; if (-not $serial) { return }
+    Invoke-Adb $serial @('shell', 'am', 'start', '-n', $Activity)
+}
+
+function Do-Log {
+    $serial = Pick-Device; if (-not $serial) { return }
+    $file = Join-Path $Here ("pixelagents-log-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    Invoke-Adb $serial @('logcat', '-d', '-v', 'time', '-s', 'PixelAgents:*', 'TabScreen:*', 'AndroidRuntime:*') | Out-File -Encoding utf8 $file
+    Say "Saved $file" 'Green'
+    Get-Content $file -Tail 25
+}
+
+function Do-Screenshot {
+    $serial = Pick-Device; if (-not $serial) { return }
+    $file = Join-Path $Here ("screenshot-{0}.png" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    Invoke-Adb $serial @('shell', 'screencap', '-p', '/sdcard/adb-helper-shot.png')
+    Invoke-Adb $serial @('pull', '/sdcard/adb-helper-shot.png', $file)
+    Invoke-Adb $serial @('shell', 'rm', '/sdcard/adb-helper-shot.png')
+    if (Test-Path $file) { Say "Saved $file" 'Green'; Invoke-Item $file }
+}
+
+function Do-Shell {
+    $serial = Pick-Device; if (-not $serial) { return }
+    Say 'Type exit to come back.' 'DarkGray'
+    Invoke-Adb $serial @('shell')
+}
+
+function Do-WifiSwitch {
+    $serial = Pick-Device; if (-not $serial) { return }
+    $ip = $null
+    $ipLine = Invoke-Adb $serial @('shell', 'ip', '-f', 'inet', 'addr', 'show', 'wlan0') | Select-String 'inet (\d+\.\d+\.\d+\.\d+)'
+    if ($ipLine) { $ip = $ipLine.Matches[0].Groups[1].Value }
+    if (-not $ip) {
+        $prop = Invoke-Adb $serial @('shell', 'getprop', 'dhcp.wlan0.ipaddress')
+        if ($prop -match '\d+\.\d+\.\d+\.\d+') { $ip = $Matches[0] }
+    }
+    Invoke-Adb $serial @('tcpip', '5555')
+    Start-Sleep 3
+    if ($ip) {
+        & $Adb connect "${ip}:5555"
+        Say "The cable can go now. Next time: 'Connect over Wi-Fi by IP' with $ip (until the device reboots)." 'Green'
+    } else { Say 'Could not read the Wi-Fi address - use "Connect over Wi-Fi by IP" with the one in its Wi-Fi settings.' 'Yellow' }
+}
+
+function Do-WifiConnect {
+    $ip = (Read-Host 'IP address (port 5555 is assumed)').Trim()
+    if (-not $ip) { return 'back' }
+    if ($ip -notmatch ':') { $ip = "${ip}:5555" }
+    & $Adb connect $ip | Out-Host
+}
+
+function Do-Uninstall {
+    $serial = Pick-Device; if (-not $serial) { return }
+    $pkg = (Read-Host "Package name (Enter for $Package)").Trim()
+    if (-not $pkg) { $pkg = $Package }
+    Invoke-Adb $serial @('uninstall', $pkg)
+}
+
+function New-Shortcuts {
+    $shell = New-Object -ComObject WScript.Shell
+    $cmd = Join-Path $Here 'adb-helper.cmd'
+    $ps = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $places = @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
+    foreach ($dir in $places) {
+        $path = Join-Path $dir 'adb helper.lnk'
+        $lnk = $shell.CreateShortcut($path)
+        if (Test-Path $cmd) { $lnk.TargetPath = $cmd }
+        else { $lnk.TargetPath = $ps; $lnk.Arguments = "-NoExit -ExecutionPolicy Bypass -File `"$PSCommandPath`"" }
+        $lnk.WorkingDirectory = $Here
+        $lnk.IconLocation = "$ps,0"
+        $lnk.Description = 'Connect an Android device and install APKs'
+        $lnk.Save()
+        Say "Shortcut: $path" 'Green'
+    }
+}
+
+# --- main ---------------------------------------------------------------------------------------
+
+Find-Devices
+$last = -1
+while ($true) {
+    $has = (@(Get-Online)).Count -gt 0
+    $needs = ''; if (-not $has) { $needs = 'needs a device online' }
+    $scanNote = ''; if (-not $has) { $scanNote = 'no device online - start here' }
+    $onPath = Test-OnUserPath $Here
+    $pathLabel = 'Add adb to PATH'; $pathNote = "currently not on PATH - 'adb' only works in this folder"
+    if ($onPath) { $pathLabel = 'Remove adb from PATH'; $pathNote = "currently on PATH - 'adb' and 'adb-helper' work anywhere" }
+
+    $items = @(
+        @{ Label = 'Install an APK';                      Hot = '1'; Act = 'install';    Dim = -not $has; Note = $needs },
+        @{ Label = 'Start the Pixel Agents viewer';       Hot = '2'; Act = 'start';      Dim = -not $has },
+        @{ Label = 'Save the viewer''s log to a file';    Hot = '3'; Act = 'log';        Dim = -not $has },
+        @{ Label = 'Take a screenshot';                   Hot = '4'; Act = 'screenshot'; Dim = -not $has },
+        @{ Label = 'Open a shell on the device';          Hot = '5'; Act = 'shell';      Dim = -not $has },
+        @{ Label = 'Switch to adb over Wi-Fi';            Hot = '6'; Act = 'wifi';       Dim = -not $has; Note = 'then the cable can go' },
+        @{ Label = 'Connect over Wi-Fi by IP';            Hot = '7'; Act = 'connect' },
+        @{ Label = 'Uninstall an app';                    Hot = '8'; Act = 'uninstall';  Dim = -not $has },
+        @{ Label = 'Scan and reconnect to devices';       Hot = 'r'; Act = 'scan';       Note = $scanNote },
+        @{ Label = $pathLabel;                            Hot = 'p'; Act = 'path';       Note = $pathNote },
+        @{ Label = 'Make desktop and Start menu shortcuts'; Hot = 's'; Act = 'shortcuts' },
+        @{ Label = 'Quit';                                Hot = 'q'; Act = 'quit' }
+    )
+    # Start on the install when a device is online, on the scan when none is
+    $sel = $last
+    if ($sel -lt 0) { $sel = 0; if (-not $has) { $sel = 8 } }
+
+    $n = Show-Menu 'What next?' $items $sel
+    if ($n -lt 0) { $n = $items.Count - 1 } # Esc on the main menu = quit
+    $last = $n
+    $act = $items[$n].Act
+    Clear-Host
+    if ($act -eq 'quit') { exit 0 }
+
+    $result = $null
+    if ($act -eq 'install') { $result = Do-Install }
+    elseif ($act -eq 'start') { Do-Start }
+    elseif ($act -eq 'log') { Do-Log }
+    elseif ($act -eq 'screenshot') { Do-Screenshot }
+    elseif ($act -eq 'shell') { Do-Shell }
+    elseif ($act -eq 'wifi') { Do-WifiSwitch }
+    elseif ($act -eq 'connect') { $result = Do-WifiConnect }
+    elseif ($act -eq 'uninstall') { Do-Uninstall }
+    elseif ($act -eq 'scan') { Connect-Device }
+    elseif ($act -eq 'path') { Switch-UserPath }
+    elseif ($act -eq 'shortcuts') { New-Shortcuts }
+
+    Update-Devices
+    if ($result -ne 'back') { Wait-Key }
 }

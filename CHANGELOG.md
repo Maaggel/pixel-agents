@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.41.0
+
+- The adb helper opens on the connected devices with the menu below them, navigated with the arrow keys and Enter or the key on each line. The step-by-step reconnect is a menu action, "Scan and reconnect to devices", selected for you when nothing is online, instead of running on every start. Adding adb to the PATH is an action too, with its current state shown beside it, rather than a question at start-up - with its own copy of adb and a double-click launcher, the helper does not need it.
+
 ## v1.40.1
 
 - `tools/adb-helper/adb-helper.cmd`: double-click it to run the adb helper from wherever its folder is, with no execution-policy prompt.

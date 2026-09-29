@@ -30,7 +30,7 @@ import dk.mix.pixelagents.viewer.net.HttpsFrameClient;
  * Oriel's proven client stack.
  *
  * Settings live in SharedPreferences: first launch asks for the instance key. Long-press the screen
- * for a menu: keep Wi-Fi awake, connection settings (the key, the relay URL, the compression -
+ * for a menu: keep Wi-Fi awake, the connection overlay, connection settings (the key, the relay URL, the compression -
  * deflate is ~3x smaller than lz4 - and the fps cap), reconnect now.
  */
 public class MainActivity extends Activity {
@@ -46,10 +46,16 @@ public class MainActivity extends Activity {
      * every 15 s. The watchdog then does what closing and reopening the app did by hand.
      */
     private static final long STALL_MS = 30000;
-    private static final long WATCHDOG_EVERY_MS = 5000;
+    private static final long WATCHDOG_EVERY_MS = 1000;
+    /** No new picture for this long darkens the screen and says so. Frames come every 2 s even when nothing moves. */
+    private static final long OVERLAY_AFTER_MS = 6000;
 
     private DisplaySurfaceView display;
     private TextView statusView;
+    private View overlay;
+    private TextView overlayDetail;
+    /** The client's own latest line (connecting, disconnected - retry in...), not the fps counters */
+    private volatile String connLine = "";
     private HttpsFrameClient client;
     private SharedPreferences prefs;
     /**
@@ -67,6 +73,7 @@ public class MainActivity extends Activity {
     private final Runnable watchdog = new Runnable() {
         @Override public void run() {
             checkStall();
+            updateOverlay();
             handler.postDelayed(this, WATCHDOG_EVERY_MS);
         }
     };
@@ -82,6 +89,35 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         display = new DisplaySurfaceView(this);
         root.addView(display, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // Connection overlay: dims the frozen picture and says what is happening. Added before the
+        // status line so that stays readable on top; it takes no touches, so long-press still works
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setBackgroundColor(0xFF1E1E2E);
+        box.setPadding(48, 28, 48, 28);
+        TextView title = new TextView(this);
+        title.setText("Connecting...");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
+        box.addView(title);
+        overlayDetail = new TextView(this);
+        overlayDetail.setTextColor(0xFFB0B0C8);
+        overlayDetail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        overlayDetail.setGravity(Gravity.CENTER_HORIZONTAL);
+        overlayDetail.setPadding(0, 12, 0, 0);
+        box.addView(overlayDetail);
+        FrameLayout dim = new FrameLayout(this);
+        dim.setBackgroundColor(0xB0000000);
+        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        boxLp.gravity = Gravity.CENTER;
+        dim.addView(box, boxLp);
+        dim.setVisibility(View.GONE);
+        overlay = dim;
+        root.addView(overlay, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         statusView = new TextView(this);
@@ -132,6 +168,25 @@ public class MainActivity extends Activity {
         super.onStop();
     }
 
+    private boolean showOverlay() {
+        return prefs.getBoolean("connOverlay", true);
+    }
+
+    /** Show the overlay while no picture has arrived for OVERLAY_AFTER_MS; runs on the UI thread every second */
+    private void updateOverlay() {
+        long since = Math.max(clientStartedAt, display.lastFrameAt());
+        long quiet = SystemClock.uptimeMillis() - since;
+        boolean show = showOverlay() && client != null && quiet >= OVERLAY_AFTER_MS;
+        if (show) {
+            String detail = "No new picture for " + (quiet / 1000) + " s";
+            String c = connLine;
+            if (c != null && c.length() > 0 && !c.startsWith("connecting")) detail += "\n" + c;
+            if (stalls > 0) detail += "\nRestarted " + stalls + (stalls == 1 ? " time" : " times") + " since the app opened";
+            overlayDetail.setText(detail);
+        }
+        overlay.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
     private boolean keepWifiAwake() {
         return prefs.getBoolean("wifiAwake", true);
     }
@@ -146,6 +201,7 @@ public class MainActivity extends Activity {
     private void showMenu() {
         final String[] items = {
                 "Keep Wi-Fi awake: " + (keepWifiAwake() ? "ON" : "OFF"),
+                "Connection overlay: " + (showOverlay() ? "ON" : "OFF"),
                 "Connection settings...",
                 "Reconnect now",
         };
@@ -161,8 +217,11 @@ public class MainActivity extends Activity {
                                     ? "Wi-Fi kept awake while the office is on screen"
                                     : "Wi-Fi may power save (the stream can pause)", Toast.LENGTH_SHORT).show();
                         } else if (which == 1) {
-                            showSettings();
+                            prefs.edit().putBoolean("connOverlay", !showOverlay()).apply();
+                            updateOverlay();
                         } else if (which == 2) {
+                            showSettings();
+                        } else if (which == 3) {
                             startClient();
                         }
                     }
@@ -200,12 +259,13 @@ public class MainActivity extends Activity {
 
     private void startClient() {
         stopClient();
+        connLine = "";
         String base = prefs.getString("base", DEFAULT_BASE);
         String comp = prefs.getString("comp", "deflate");
         int fps = prefs.getInt("fps", DEFAULT_FPS);
         String url = base + "/stream?w=1024&h=600&comp=" + comp + "&fps=" + fps;
         client = new HttpsFrameClient(this, url, prefs.getString("token", DEFAULT_TOKEN), display, new HttpsFrameClient.Listener() {
-            @Override public void onStatus(String line) { setStatus(line); }
+            @Override public void onStatus(String line) { connLine = line; setStatus(line); }
         });
         clientStartedAt = SystemClock.uptimeMillis();
         client.start();

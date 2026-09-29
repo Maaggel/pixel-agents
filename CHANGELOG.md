@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.43.0
+
+- A connection overlay on the tablet: when no new picture has arrived for 6 s, the office darkens and a "Connecting..." box says how long it has been frozen, what the connection is doing, and how many times the watchdog has restarted it. The status line stays readable above it. "Connection overlay" in the long-press menu turns it off; on by default.
+
 ## v1.42.0
 
 - The tablet app holds a high-performance Wi-Fi lock while the office is on screen, so the radio stays out of power save. The freeze on 2026-09-29 showed the pattern: the relay answered a reconnect at once and the answer reached the tablet over a minute later, held back while the radio dozed. The watchdog already recovers from that by itself; this is meant to stop it happening. Costs a fraction of what the screen does, and is released when the app is closed.

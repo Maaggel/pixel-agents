@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.43.1
+
+- The connection overlay shows from the moment the tablet starts connecting until the first picture arrives - "Reconnect now", the watchdog's restarts and a fresh start included - instead of only after 6 s of a still picture, which a quick reconnect never reached. The 6 s rule still covers a picture that freezes mid-stream.
+
 ## v1.43.0
 
 - A connection overlay on the tablet: when no new picture has arrived for 6 s, the office darkens and a "Connecting..." box says how long it has been frozen, what the connection is doing, and how many times the watchdog has restarted it. The status line stays readable above it. "Connection overlay" in the long-press menu turns it off; on by default.

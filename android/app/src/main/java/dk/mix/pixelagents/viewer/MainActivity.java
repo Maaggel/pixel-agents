@@ -172,13 +172,22 @@ public class MainActivity extends Activity {
         return prefs.getBoolean("connOverlay", true);
     }
 
-    /** Show the overlay while no picture has arrived for OVERLAY_AFTER_MS; runs on the UI thread every second */
+    /**
+     * Show the overlay from the moment a connection starts until its first picture arrives, and
+     * whenever the picture has been still for OVERLAY_AFTER_MS mid-stream. Runs on the UI thread
+     * every second, and at once when a connection starts.
+     */
     private void updateOverlay() {
-        long since = Math.max(clientStartedAt, display.lastFrameAt());
-        long quiet = SystemClock.uptimeMillis() - since;
-        boolean show = showOverlay() && client != null && quiet >= OVERLAY_AFTER_MS;
+        long now = SystemClock.uptimeMillis();
+        long lastFrame = display.lastFrameAt();
+        boolean connecting = lastFrame < clientStartedAt;
+        long quiet = now - Math.max(clientStartedAt, lastFrame);
+        boolean show = showOverlay() && client != null && (connecting || quiet >= OVERLAY_AFTER_MS);
         if (show) {
-            String detail = "No new picture for " + (quiet / 1000) + " s";
+            String detail;
+            if (connecting && lastFrame > 0) detail = "No new picture for " + ((now - lastFrame) / 1000) + " s";
+            else if (connecting) detail = "Waiting for the first picture";
+            else detail = "No new picture for " + (quiet / 1000) + " s";
             String c = connLine;
             if (c != null && c.length() > 0 && !c.startsWith("connecting")) detail += "\n" + c;
             if (stalls > 0) detail += "\nRestarted " + stalls + (stalls == 1 ? " time" : " times") + " since the app opened";
@@ -269,6 +278,7 @@ public class MainActivity extends Activity {
         });
         clientStartedAt = SystemClock.uptimeMillis();
         client.start();
+        updateOverlay();
     }
 
     private void stopClient() {

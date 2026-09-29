@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The Wi-Fi lock that keeps the radio out of power save while the office is on screen -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="Pixel Agents"
         android:allowBackup="false"

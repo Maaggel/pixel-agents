@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -18,6 +19,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import dk.mix.pixelagents.viewer.net.HttpsFrameClient;
 
@@ -27,8 +29,9 @@ import dk.mix.pixelagents.viewer.net.HttpsFrameClient;
  * authenticated HTTPS stream (docs/HANDOFF-from-TabScreen.md); everything below the surface is
  * Oriel's proven client stack.
  *
- * Settings live in SharedPreferences: first launch asks for the instance key; long-press the screen
- * to change the key, the relay URL, the compression (deflate is ~3x smaller than lz4) or the fps cap.
+ * Settings live in SharedPreferences: first launch asks for the instance key. Long-press the screen
+ * for a menu: keep Wi-Fi awake, connection settings (the key, the relay URL, the compression -
+ * deflate is ~3x smaller than lz4 - and the fps cap), reconnect now.
  */
 public class MainActivity extends Activity {
     private static final String TAG = "PixelAgents";
@@ -49,6 +52,12 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private HttpsFrameClient client;
     private SharedPreferences prefs;
+    /**
+     * Holds the Wi-Fi radio out of power save while the office is on screen. Dozing between packets
+     * held the stream's data back at the router for a minute or two at a time, which froze the
+     * picture until it caught up. Costs a fraction of what the screen does; released in onStop.
+     */
+    private WifiManager.WifiLock wifiLock;
     private final Handler handler = new Handler();
     /** When the current client started (uptime ms), so a fresh one gets STALL_MS to show a frame */
     private long clientStartedAt;
@@ -95,8 +104,13 @@ public class MainActivity extends Activity {
             @Override public void onClick(View v) { statusView.setAlpha(statusView.getAlpha() < 1f ? 1f : 0.15f); }
         });
         root.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) { showSettings(); return true; }
+            @Override public boolean onLongClick(View v) { showMenu(); return true; }
         });
+        WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wifi != null) {
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "pixelagents-stream");
+            wifiLock.setReferenceCounted(false);
+        }
         Log.i(TAG, "Pixel Agents viewer " + versionName() + " on " + android.os.Build.MODEL
                 + " android " + android.os.Build.VERSION.RELEASE + " (api " + android.os.Build.VERSION.SDK_INT + ")");
     }
@@ -106,6 +120,7 @@ public class MainActivity extends Activity {
         super.onStart();
         if (prefs.getString("token", DEFAULT_TOKEN).length() == 0) showSettings();
         else startClient();
+        applyWifiLock();
         handler.postDelayed(watchdog, WATCHDOG_EVERY_MS);
     }
 
@@ -113,7 +128,47 @@ public class MainActivity extends Activity {
     protected void onStop() {
         handler.removeCallbacks(watchdog);
         stopClient();
+        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         super.onStop();
+    }
+
+    private boolean keepWifiAwake() {
+        return prefs.getBoolean("wifiAwake", true);
+    }
+
+    private void applyWifiLock() {
+        if (wifiLock == null) return;
+        if (keepWifiAwake()) { if (!wifiLock.isHeld()) wifiLock.acquire(); }
+        else if (wifiLock.isHeld()) wifiLock.release();
+    }
+
+    /** The long-press menu. Connection settings are a level down: they are rarely what you want. */
+    private void showMenu() {
+        final String[] items = {
+                "Keep Wi-Fi awake: " + (keepWifiAwake() ? "ON" : "OFF"),
+                "Connection settings...",
+                "Reconnect now",
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Pixel Agents viewer " + versionName())
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        if (which == 0) {
+                            boolean on = !keepWifiAwake();
+                            prefs.edit().putBoolean("wifiAwake", on).apply();
+                            applyWifiLock();
+                            Toast.makeText(MainActivity.this, on
+                                    ? "Wi-Fi kept awake while the office is on screen"
+                                    : "Wi-Fi may power save (the stream can pause)", Toast.LENGTH_SHORT).show();
+                        } else if (which == 1) {
+                            showSettings();
+                        } else if (which == 2) {
+                            startClient();
+                        }
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 
     /**
@@ -177,7 +232,7 @@ public class MainActivity extends Activity {
         final EditText comp = field(box, "Compression: deflate or lz4", prefs.getString("comp", "deflate"), InputType.TYPE_CLASS_TEXT);
         final EditText fps = field(box, "Max fps (1-" + MAX_FPS + ")", String.valueOf(prefs.getInt("fps", DEFAULT_FPS)), InputType.TYPE_CLASS_NUMBER);
         new AlertDialog.Builder(this)
-                .setTitle("Pixel Agents viewer")
+                .setTitle("Connection settings")
                 .setView(box)
                 .setPositiveButton("Connect", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) {

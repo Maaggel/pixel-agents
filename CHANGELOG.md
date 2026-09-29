@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.42.0
+
+- The tablet app holds a high-performance Wi-Fi lock while the office is on screen, so the radio stays out of power save. The freeze on 2026-09-29 showed the pattern: the relay answered a reconnect at once and the answer reached the tablet over a minute later, held back while the radio dozed. The watchdog already recovers from that by itself; this is meant to stop it happening. Costs a fraction of what the screen does, and is released when the app is closed.
+- Long-press opens a menu instead of going straight to the connection settings: **Keep Wi-Fi awake** (on by default, the line shows which), **Connection settings...** (the old dialog, unchanged) and **Reconnect now**, which does what closing and reopening the app did.
+
 ## v1.41.0
 
 - The adb helper opens on the connected devices with the menu below them, navigated with the arrow keys and Enter or the key on each line. The step-by-step reconnect is a menu action, "Scan and reconnect to devices", selected for you when nothing is online, instead of running on every start. Adding adb to the PATH is an action too, with its current state shown beside it, rather than a question at start-up - with its own copy of adb and a double-click launcher, the helper does not need it.

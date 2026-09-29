@@ -30,7 +30,7 @@ import dk.mix.pixelagents.viewer.net.HttpsFrameClient;
  * Oriel's proven client stack.
  *
  * Settings live in SharedPreferences: first launch asks for the instance key. Long-press the screen
- * for a menu: keep Wi-Fi awake, the connection overlay, connection settings (the key, the relay URL, the compression -
+ * for a menu: keep Wi-Fi awake, the connection overlay, auto-hiding the info text, connection settings (the key, the relay URL, the compression -
  * deflate is ~3x smaller than lz4 - and the fps cap), reconnect now.
  */
 public class MainActivity extends Activity {
@@ -48,6 +48,8 @@ public class MainActivity extends Activity {
     private static final long STALL_MS = 30000;
     private static final long WATCHDOG_EVERY_MS = 1000;
     /** No new picture for this long darkens the screen and says so. Frames come every 2 s even when nothing moves. */
+    /** With auto-hide on, the info text stays this long after the app opens or the screen is tapped */
+    private static final long STATUS_SHOW_MS = 30000;
     private static final long OVERLAY_AFTER_MS = 6000;
 
     private DisplaySurfaceView display;
@@ -58,8 +60,10 @@ public class MainActivity extends Activity {
     private volatile String connLine = "";
     /** When the stream last stopped being live (uptime ms): the overlay shows until a picture newer than this */
     private volatile long notStreamingSince;
+    /** When the info text was last asked for (uptime ms): app start or a tap on the screen */
+    private long statusShownAt;
     private final Runnable refreshOverlay = new Runnable() {
-        @Override public void run() { updateOverlay(); }
+        @Override public void run() { updateOverlay(); updateStatusVisibility(); }
     };
     private HttpsFrameClient client;
     private SharedPreferences prefs;
@@ -79,6 +83,7 @@ public class MainActivity extends Activity {
         @Override public void run() {
             checkStall();
             updateOverlay();
+            updateStatusVisibility();
             handler.postDelayed(this, WATCHDOG_EVERY_MS);
         }
     };
@@ -144,6 +149,10 @@ public class MainActivity extends Activity {
         statusView.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { statusView.setAlpha(statusView.getAlpha() < 1f ? 1f : 0.15f); }
         });
+        // A tap anywhere brings the info text back for STATUS_SHOW_MS when auto-hide is on
+        root.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { statusShownAt = SystemClock.uptimeMillis(); updateStatusVisibility(); }
+        });
         root.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) { showMenu(); return true; }
         });
@@ -162,6 +171,8 @@ public class MainActivity extends Activity {
         if (prefs.getString("token", DEFAULT_TOKEN).length() == 0) showSettings();
         else startClient();
         applyWifiLock();
+        statusShownAt = SystemClock.uptimeMillis();
+        updateStatusVisibility();
         handler.postDelayed(watchdog, WATCHDOG_EVERY_MS);
     }
 
@@ -202,6 +213,18 @@ public class MainActivity extends Activity {
         overlay.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
+    private boolean autoHideStatus() {
+        return prefs.getBoolean("statusAutoHide", true);
+    }
+
+    /** The info text shows unless auto-hide is on and it has had its STATUS_SHOW_MS - but always while the overlay is up */
+    private void updateStatusVisibility() {
+        boolean show = !autoHideStatus()
+                || overlay.getVisibility() == View.VISIBLE
+                || SystemClock.uptimeMillis() - statusShownAt < STATUS_SHOW_MS;
+        statusView.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
     private boolean keepWifiAwake() {
         return prefs.getBoolean("wifiAwake", true);
     }
@@ -217,6 +240,7 @@ public class MainActivity extends Activity {
         final String[] items = {
                 "Keep Wi-Fi awake: " + (keepWifiAwake() ? "ON" : "OFF"),
                 "Connection overlay: " + (showOverlay() ? "ON" : "OFF"),
+                "Auto-hide info text after 30 s: " + (autoHideStatus() ? "ON" : "OFF"),
                 "Connection settings...",
                 "Reconnect now",
         };
@@ -235,8 +259,12 @@ public class MainActivity extends Activity {
                             prefs.edit().putBoolean("connOverlay", !showOverlay()).apply();
                             updateOverlay();
                         } else if (which == 2) {
-                            showSettings();
+                            prefs.edit().putBoolean("statusAutoHide", !autoHideStatus()).apply();
+                            statusShownAt = SystemClock.uptimeMillis();
+                            updateStatusVisibility();
                         } else if (which == 3) {
+                            showSettings();
+                        } else if (which == 4) {
                             startClient();
                         }
                     }

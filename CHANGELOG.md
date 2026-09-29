@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.44.0
+
+- The tablet's info text (version and fps counters) can hide itself: with "Auto-hide info text after 30 s" on in the long-press menu (the default), it shows for 30 s after the app opens and after any tap on the screen, and always while the connection overlay is up.
+
 ## v1.43.2
 
 - The connection overlay also shows the moment the app loses the stream and retries on its own, not 6 s later - until then a retry looked like the picture had simply frozen again. The connection thread now tells the screen whenever the stream stops being live, and the overlay stays until a new picture arrives.

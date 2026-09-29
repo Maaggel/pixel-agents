@@ -2,8 +2,8 @@
   adb-helper.ps1 - get an Android device listed and online, then do things with it.
   Part of Pixel Agents (tools/adb-helper); made for the Galaxy Tab 2 that shows the office.
 
-  Setup: put this file in a folder of its own (C:\Mix\Programs\adb) and run it once:
-      powershell -ExecutionPolicy Bypass -File C:\Mix\Programs\adb\adb-helper.ps1
+  Setup: put this file and adb-helper.cmd in a folder of their own (C:\Mix\Programs\adb) and
+  double-click adb-helper.cmd, which runs this with no execution-policy prompt.
   On first run it downloads adb (Google's platform-tools) into that folder if there is none, and
   puts the folder on your PATH, so "adb" and "adb-helper" work from any terminal after that.
   Menu option s makes desktop and Start menu shortcuts.

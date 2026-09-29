@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.40.1
+
+- `tools/adb-helper/adb-helper.cmd`: double-click it to run the adb helper from wherever its folder is, with no execution-policy prompt.
+
 ## v1.40.0
 
 - `tools/adb-helper/`: a PowerShell script for getting the tablet (or any Android device) connected over adb on Windows and installing the viewer app. It tries the fixes for a device stuck on `offline` one at a time and stops at the first that works, then offers a menu - install an APK picked from its `apks` folder, newest first, or dragged in; start the viewer; save its log; screenshot; shell; adb over Wi-Fi. On first run it downloads adb from Google and puts its folder on the PATH, and it can make its own desktop and Start menu shortcuts.

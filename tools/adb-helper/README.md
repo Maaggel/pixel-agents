@@ -6,12 +6,10 @@ it works for any device.
 
 ## Setup
 
-1. Copy `adb-helper.ps1` into a folder of its own, for example `C:\Mix\Programs\adb`.
-2. Run it once:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File C:\Mix\Programs\adb\adb-helper.ps1
-   ```
+1. Copy `adb-helper.ps1` and `adb-helper.cmd` into a folder of their own, for example
+   `C:\Mix\Programs\adb`.
+2. Double-click `adb-helper.cmd`. It runs the script from wherever the folder is, with no
+   execution-policy prompt, and leaves the window open when you quit.
 
    The first run downloads adb (Google's platform-tools) into that folder if it is not there, and
    offers to put the folder on your PATH, so `adb` and `adb-helper` work in any new terminal.

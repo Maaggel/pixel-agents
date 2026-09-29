@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.40.0
+
+- `tools/adb-helper/`: a PowerShell script for getting the tablet (or any Android device) connected over adb on Windows and installing the viewer app. It tries the fixes for a device stuck on `offline` one at a time and stops at the first that works, then offers a menu - install an APK picked from its `apks` folder, newest first, or dragged in; start the viewer; save its log; screenshot; shell; adb over Wi-Fi. On first run it downloads adb from Google and puts its folder on the PATH, and it can make its own desktop and Start menu shortcuts.
+
 ## v1.39.4
 
 - The real cause of the tablet freezing on "fps=0": the app skips a frame when a whole newer one is already waiting, and on a link slower than the stream there always is one - so it skipped every frame for ever, with the data still flowing. Skipping now never runs longer than 250 ms, so the screen shows what the link can carry. Weather made it much more common: rain changes the picture every frame, so the renderer sends a steady 30 fps instead of only when something moves. The status line shows `skip=` on a 0 fps line too.

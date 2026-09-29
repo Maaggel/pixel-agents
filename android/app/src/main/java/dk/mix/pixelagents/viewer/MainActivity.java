@@ -56,6 +56,11 @@ public class MainActivity extends Activity {
     private TextView overlayDetail;
     /** The client's own latest line (connecting, disconnected - retry in...), not the fps counters */
     private volatile String connLine = "";
+    /** When the stream last stopped being live (uptime ms): the overlay shows until a picture newer than this */
+    private volatile long notStreamingSince;
+    private final Runnable refreshOverlay = new Runnable() {
+        @Override public void run() { updateOverlay(); }
+    };
     private HttpsFrameClient client;
     private SharedPreferences prefs;
     /**
@@ -173,15 +178,16 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Show the overlay from the moment a connection starts until its first picture arrives, and
+     * Show the overlay from the moment a connection starts or drops until the next picture arrives, and
      * whenever the picture has been still for OVERLAY_AFTER_MS mid-stream. Runs on the UI thread
      * every second, and at once when a connection starts.
      */
     private void updateOverlay() {
         long now = SystemClock.uptimeMillis();
         long lastFrame = display.lastFrameAt();
-        boolean connecting = lastFrame < clientStartedAt;
-        long quiet = now - Math.max(clientStartedAt, lastFrame);
+        long since = Math.max(clientStartedAt, notStreamingSince);
+        boolean connecting = lastFrame < since;
+        long quiet = now - Math.max(since, lastFrame);
         boolean show = showOverlay() && client != null && (connecting || quiet >= OVERLAY_AFTER_MS);
         if (show) {
             String detail;
@@ -275,6 +281,10 @@ public class MainActivity extends Activity {
         String url = base + "/stream?w=1024&h=600&comp=" + comp + "&fps=" + fps;
         client = new HttpsFrameClient(this, url, prefs.getString("token", DEFAULT_TOKEN), display, new HttpsFrameClient.Listener() {
             @Override public void onStatus(String line) { connLine = line; setStatus(line); }
+            @Override public void onNotStreaming() {
+                notStreamingSince = SystemClock.uptimeMillis();
+                handler.post(refreshOverlay);
+            }
         });
         clientStartedAt = SystemClock.uptimeMillis();
         client.start();

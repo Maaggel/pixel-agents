@@ -29,6 +29,8 @@ public final class HttpsFrameClient extends Thread {
 
     public interface Listener {
         void onStatus(String line);
+        /** The stream is not live: a connection attempt is starting, or the last one just ended */
+        void onNotStreaming();
     }
 
     private final Context context;
@@ -76,6 +78,7 @@ public final class HttpsFrameClient extends Thread {
         while (running) {
             long started = System.currentTimeMillis();
             try {
+                notStreaming();
                 status("connecting...");
                 session(); // only returns by exception: EOF, a dropped socket, or a refusal
             } catch (KeyRejected e) {
@@ -84,6 +87,7 @@ public final class HttpsFrameClient extends Thread {
                 return;
             } catch (Exception e) {
                 if (!running) break;
+                notStreaming();
                 // A session that streamed for a while was healthy; a blip after an hour should not
                 // inherit the backoff of an outage (Oriel's review note #1).
                 if (System.currentTimeMillis() - started > HEALTHY_SESSION_MS) backoffMs = 1000;
@@ -154,6 +158,10 @@ public final class HttpsFrameClient extends Thread {
         ctx.init(null, tmf.getTrustManagers(), null);
         factory = new Tls12SocketFactory(ctx.getSocketFactory(), READ_TIMEOUT_MS);
         return factory;
+    }
+
+    private void notStreaming() {
+        if (listener != null) listener.onNotStreaming();
     }
 
     private void status(String line) {

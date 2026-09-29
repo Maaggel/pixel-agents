@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.43.2
+
+- The connection overlay also shows the moment the app loses the stream and retries on its own, not 6 s later - until then a retry looked like the picture had simply frozen again. The connection thread now tells the screen whenever the stream stops being live, and the overlay stays until a new picture arrives.
+
 ## v1.43.1
 
 - The connection overlay shows from the moment the tablet starts connecting until the first picture arrives - "Reconnect now", the watchdog's restarts and a fresh start included - instead of only after 6 s of a still picture, which a quick reconnect never reached. The 6 s rule still covers a picture that freezes mid-stream.

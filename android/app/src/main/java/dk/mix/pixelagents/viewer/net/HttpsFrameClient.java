@@ -40,6 +40,15 @@ public final class HttpsFrameClient extends Thread {
     private final Listener listener;
     private volatile boolean running = true;
     private volatile HttpURLConnection current;
+    private volatile FrameReceiver receiver;
+
+    /** The live session's link estimate in KB/s, or -1 when there is none or it is older than maxAgeMs */
+    public double linkKBps(long maxAgeMs) {
+        FrameReceiver r = receiver;
+        if (r == null || r.linkKBps() < 0) return -1;
+        if ((System.nanoTime() - r.linkSampleAt()) / 1000000L > maxAgeMs) return -1;
+        return r.linkKBps();
+    }
     private Tls12SocketFactory factory; // built once; the pinned root does not change between reconnects
     /** A session that streamed at least this long counts as healthy: the next drop retries at once. */
     private static final long HEALTHY_SESSION_MS = 5000;
@@ -127,9 +136,11 @@ public final class HttpsFrameClient extends Thread {
             // The relay tells us which build it is serving; show that rather than our own version,
             // which is only what this apk was built from and says nothing about what is live.
             if (serving != null && serving.length() > 0) receiver.setPrefix("v" + serving + "  ");
+            this.receiver = receiver;
             // HELLO is folded into the request URL; the receiver's HELLO goes to a sink that drops it.
             receiver.run(in, new ByteArrayOutputStream());
         } finally {
+            this.receiver = null;
             if (receiver != null) receiver.close();
             if (in != null) try { in.close(); } catch (IOException ignored) { }
             conn.disconnect();

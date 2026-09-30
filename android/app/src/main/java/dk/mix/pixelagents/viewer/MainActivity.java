@@ -30,7 +30,7 @@ import dk.mix.pixelagents.viewer.net.HttpsFrameClient;
  * Oriel's proven client stack.
  *
  * Settings live in SharedPreferences: first launch asks for the instance key. Long-press the screen
- * for a menu: keep Wi-Fi awake, the connection overlay, auto-hiding the info text, connection settings (the key, the relay URL, the compression -
+ * for a menu: keep Wi-Fi awake, fix slow Wi-Fi automatically, the connection overlay, auto-hiding the info text, connection settings (the key, the relay URL, the compression -
  * deflate is ~3x smaller than lz4 - and the fps cap), reconnect now.
  */
 public class MainActivity extends Activity {
@@ -47,6 +47,16 @@ public class MainActivity extends Activity {
      */
     private static final long STALL_MS = 30000;
     private static final long WATCHDOG_EVERY_MS = 1000;
+    /** The link counts as slow under this; it carried ~600 KB/s on a good day */
+    private static final int WIFI_SLOW_KBPS = 100;
+    /** Slow for this long before each step of fixing it */
+    private static final long WIFI_SLOW_FOR_MS = 120000;
+    /** Wi-Fi is switched off and on at most this often */
+    private static final long WIFI_TOGGLE_COOLDOWN_MS = 600000;
+    private static final long WIFI_OFF_MS = 3000;
+    private static final long WIFI_RECONNECT_AFTER_MS = 10000;
+    /** A link estimate older than this is not used - nothing big enough has arrived to measure */
+    private static final long WIFI_LINK_MAX_AGE_MS = 15000;
     /** No new picture for this long darkens the screen and says so. Frames come every 2 s even when nothing moves. */
     /** With auto-hide on, the info text stays this long after the app opens or the screen is tapped */
     private static final long STATUS_SHOW_MS = 30000;
@@ -73,6 +83,15 @@ public class MainActivity extends Activity {
      * picture until it caught up. Costs a fraction of what the screen does; released in onStop.
      */
     private WifiManager.WifiLock wifiLock;
+    private WifiManager wifiManager;
+    /** When the link was first seen slow in the current spell (uptime ms), 0 = not slow */
+    private long slowSince;
+    /** 0 = nothing tried yet this spell, 1 = reconnected to the router */
+    private int healStep;
+    private long lastWifiToggleAt;
+    private int wifiResets;
+    private String healNote = "";
+    private long healNoteAt;
     private final Handler handler = new Handler();
     /** When the current client started (uptime ms), so a fresh one gets STALL_MS to show a frame */
     private long clientStartedAt;
@@ -82,6 +101,7 @@ public class MainActivity extends Activity {
     private final Runnable watchdog = new Runnable() {
         @Override public void run() {
             checkStall();
+            checkLink();
             updateOverlay();
             updateStatusVisibility();
             handler.postDelayed(this, WATCHDOG_EVERY_MS);
@@ -157,6 +177,7 @@ public class MainActivity extends Activity {
             @Override public boolean onLongClick(View v) { showMenu(); return true; }
         });
         WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        wifiManager = wifi;
         if (wifi != null) {
             wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "pixelagents-stream");
             wifiLock.setReferenceCounted(false);
@@ -207,6 +228,7 @@ public class MainActivity extends Activity {
             else detail = "No new picture for " + (quiet / 1000) + " s";
             String c = connLine;
             if (c != null && c.length() > 0 && !c.startsWith("connecting")) detail += "\n" + c;
+            if (healNote.length() > 0 && SystemClock.uptimeMillis() - healNoteAt < 60000) detail += "\n" + healNote;
             if (stalls > 0) detail += "\nRestarted " + stalls + (stalls == 1 ? " time" : " times") + " since the app opened";
             overlayDetail.setText(detail);
         }
@@ -237,40 +259,98 @@ public class MainActivity extends Activity {
 
     /** The long-press menu. Connection settings are a level down: they are rarely what you want. */
     private void showMenu() {
-        final String[] items = {
-                "Keep Wi-Fi awake: " + (keepWifiAwake() ? "ON" : "OFF"),
-                "Connection overlay: " + (showOverlay() ? "ON" : "OFF"),
-                "Auto-hide info text after 30 s: " + (autoHideStatus() ? "ON" : "OFF"),
-                "Connection settings...",
-                "Reconnect now",
-        };
+        // Each line carries its own action, so adding one never renumbers the others
+        final java.util.List<String> labels = new java.util.ArrayList<String>();
+        final java.util.List<Runnable> actions = new java.util.ArrayList<Runnable>();
+        labels.add("Keep Wi-Fi awake: " + (keepWifiAwake() ? "ON" : "OFF"));
+        actions.add(new Runnable() { @Override public void run() {
+            boolean on = !keepWifiAwake();
+            prefs.edit().putBoolean("wifiAwake", on).apply();
+            applyWifiLock();
+            Toast.makeText(MainActivity.this, on
+                    ? "Wi-Fi kept awake while the office is on screen"
+                    : "Wi-Fi may power save (the stream can pause)", Toast.LENGTH_SHORT).show();
+        } });
+        labels.add("Fix slow Wi-Fi automatically: " + (healWifi() ? "ON" : "OFF"));
+        actions.add(new Runnable() { @Override public void run() {
+            boolean on = !healWifi();
+            prefs.edit().putBoolean("wifiHeal", on).apply();
+            slowSince = 0;
+            healStep = 0;
+            Toast.makeText(MainActivity.this, on
+                    ? "Wi-Fi is restarted when the link stays under " + WIFI_SLOW_KBPS + " KB/s"
+                    : "Wi-Fi is left alone", Toast.LENGTH_SHORT).show();
+        } });
+        labels.add("Connection overlay: " + (showOverlay() ? "ON" : "OFF"));
+        actions.add(new Runnable() { @Override public void run() {
+            prefs.edit().putBoolean("connOverlay", !showOverlay()).apply();
+            updateOverlay();
+        } });
+        labels.add("Auto-hide info text after 30 s: " + (autoHideStatus() ? "ON" : "OFF"));
+        actions.add(new Runnable() { @Override public void run() {
+            prefs.edit().putBoolean("statusAutoHide", !autoHideStatus()).apply();
+            statusShownAt = SystemClock.uptimeMillis();
+            updateStatusVisibility();
+        } });
+        labels.add("Connection settings...");
+        actions.add(new Runnable() { @Override public void run() { showSettings(); } });
+        labels.add("Reconnect now");
+        actions.add(new Runnable() { @Override public void run() { startClient(); } });
+
         new AlertDialog.Builder(this)
                 .setTitle("Pixel Agents viewer " + versionName())
-                .setItems(items, new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int which) {
-                        if (which == 0) {
-                            boolean on = !keepWifiAwake();
-                            prefs.edit().putBoolean("wifiAwake", on).apply();
-                            applyWifiLock();
-                            Toast.makeText(MainActivity.this, on
-                                    ? "Wi-Fi kept awake while the office is on screen"
-                                    : "Wi-Fi may power save (the stream can pause)", Toast.LENGTH_SHORT).show();
-                        } else if (which == 1) {
-                            prefs.edit().putBoolean("connOverlay", !showOverlay()).apply();
-                            updateOverlay();
-                        } else if (which == 2) {
-                            prefs.edit().putBoolean("statusAutoHide", !autoHideStatus()).apply();
-                            statusShownAt = SystemClock.uptimeMillis();
-                            updateStatusVisibility();
-                        } else if (which == 3) {
-                            showSettings();
-                        } else if (which == 4) {
-                            startClient();
-                        }
-                    }
+                .setItems(labels.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) { actions.get(which).run(); }
                 })
                 .setNegativeButton("Close", null)
                 .show();
+    }
+
+    private boolean healWifi() {
+        return prefs.getBoolean("wifiHeal", true);
+    }
+
+    private void healNote(String note) {
+        healNote = note;
+        healNoteAt = SystemClock.uptimeMillis();
+        Log.w(TAG, note);
+    }
+
+    /**
+     * Restart the Wi-Fi when the link stays slow: what restarting the tablet fixed by hand. The
+     * tablet's Wi-Fi can come back from the night stuck at a fraction of its speed (2026-09-30: 11 to
+     * 120 KB/s where it had carried 600), and stays there until it starts over. First a reconnect to
+     * the router, then - if that did not help - Wi-Fi off and on, at most every WIFI_TOGGLE_COOLDOWN_MS.
+     */
+    private void checkLink() {
+        HttpsFrameClient c = client;
+        if (!healWifi() || c == null || wifiManager == null) { slowSince = 0; healStep = 0; return; }
+        double link = c.linkKBps(WIFI_LINK_MAX_AGE_MS);
+        long now = SystemClock.uptimeMillis();
+        if (link < 0 || link >= WIFI_SLOW_KBPS) { slowSince = 0; healStep = 0; return; }
+        if (slowSince == 0) { slowSince = now; return; }
+        if (now - slowSince < WIFI_SLOW_FOR_MS) return;
+        if (healStep == 0) {
+            healNote("Slow Wi-Fi (" + Math.round(link) + " KB/s) - reconnecting to the router");
+            wifiManager.reassociate();
+            healStep = 1;
+            slowSince = now;
+            return;
+        }
+        if (lastWifiToggleAt != 0 && now - lastWifiToggleAt < WIFI_TOGGLE_COOLDOWN_MS) return;
+        healNote("Still slow Wi-Fi (" + Math.round(link) + " KB/s) - restarting Wi-Fi");
+        wifiResets++;
+        lastWifiToggleAt = now;
+        healStep = 0;
+        slowSince = 0;
+        wifiManager.setWifiEnabled(false);
+        handler.postDelayed(new Runnable() { @Override public void run() {
+            wifiManager.setWifiEnabled(true);
+            // Reconnect as soon as the network is likely back, rather than on the retry backoff
+            handler.postDelayed(new Runnable() { @Override public void run() {
+                if (client != null) startClient();
+            } }, WIFI_RECONNECT_AFTER_MS);
+        } }, WIFI_OFF_MS);
     }
 
     /**
@@ -326,7 +406,10 @@ public class MainActivity extends Activity {
     private void setStatus(final String line) {
         runOnUiThread(new Runnable() {
             @Override public void run() {
-                statusView.setText(stalls == 0 ? line : line + "  stalls=" + stalls + " (" + lastStallAt + ")");
+                String text = line;
+                if (stalls > 0) text += "  stalls=" + stalls + " (" + lastStallAt + ")";
+                if (wifiResets > 0) text += "  wifi resets=" + wifiResets;
+                statusView.setText(text);
             }
         });
     }

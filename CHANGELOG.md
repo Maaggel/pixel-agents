@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.45.0
+
+- The tablet app fixes a Wi-Fi link that has got stuck slow, which until now took restarting the tablet. On 2026-09-30 it came back from the night carrying 11 to 120 KB/s where it had carried 600 the afternoon before, and stayed there until a restart. The app now measures the link on every frame - how long its data takes to arrive once it has started, which is the Wi-Fi's speed whether the office is busy or still - and shows it on the info line as `link=`. Under 100 KB/s for 2 minutes, it reconnects to the router; still slow 2 minutes later, it switches Wi-Fi off and on, at most once every 10 minutes. The overlay says what it is doing and the info line counts `wifi resets=`. "Fix slow Wi-Fi automatically" in the long-press menu, on by default.
+- The long-press menu's lines carry their own actions, so adding one no longer renumbers the rest.
+
 ## v1.44.1
 
 - The relay gives each tablet a bandwidth budget, 600 KB/s by default (`?kbps=` on `/stream` to change it). Every frame on the tablet stream is a whole picture, so a busy office - a sunrise relighting every tile, rain, people walking - went out at 30 full frames a second, over 1 MB/s. Both of the tablet's freezes on 2026-09-29 came in the minute the stream peaked above 1 MB/s; its Wi-Fi could not carry it, the connection backed up and stalled. Over budget, a frame is now skipped instead: a busy spell drops to about 18 fps, a quiet one keeps 30. `/api/stream` shows each stream's budget and how many frames it skipped, and the relay logs both when a stream ends.

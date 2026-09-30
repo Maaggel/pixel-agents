@@ -3,6 +3,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- The Wi-Fi lock that keeps the radio out of power save while the office is on screen -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Restarting a Wi-Fi link that has got stuck slow, which otherwise took a restart of the tablet -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <application
         android:label="Pixel Agents"
         android:allowBackup="false"

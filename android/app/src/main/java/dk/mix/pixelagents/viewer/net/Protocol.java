@@ -43,6 +43,8 @@ public final class Protocol {
         public int type;
         public int length;
         public byte[] payload = new byte[64 * 1024];
+        /** How long the payload took to arrive once its header had: the link's speed, not the office's pace */
+        public long payloadNs;
     }
 
     public static final class Config {
@@ -85,7 +87,9 @@ public final class Protocol {
         if (len > MAX_PAYLOAD) throw new IOException("payload length " + len + " is absurd - out of sync?");
         m.length = (int) len;
         if (m.payload.length < m.length) m.payload = new byte[Math.max(m.length, m.payload.length * 2)];
+        long t0 = System.nanoTime();
         in.readFully(m.payload, 0, m.length);
+        m.payloadNs = System.nanoTime() - t0;
     }
 
     public static Config parseConfig(byte[] p, int off, int len) throws IOException {

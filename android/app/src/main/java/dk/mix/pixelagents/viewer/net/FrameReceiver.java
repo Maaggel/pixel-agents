@@ -43,6 +43,25 @@ public final class FrameReceiver {
     private static final long MAX_SKIP_NS = 250_000_000L;
     private long lastPresentNs;
     private int skipped;
+    /**
+     * Frames at least this big say something about the link: the time one takes to arrive once it
+     * has started is the Wi-Fi's speed, whether the office is busy or still
+     */
+    private static final int LINK_SAMPLE_MIN_BYTES = 8 * 1024;
+    /** Smoothing of the link estimate: each sample moves it this far */
+    private static final double LINK_SMOOTHING = 0.2;
+    /**
+     * A frame that was already waiting in full reads in no time and measures nothing but memory;
+     * capped, it counts as "fast" without swamping the average
+     */
+    private static final double LINK_SAMPLE_MAX_KBPS = 2000;
+    private volatile double linkKBps = -1;
+    private volatile long linkSampleAt;
+
+    /** The link's speed in KB/s, smoothed; -1 until a frame has been big enough to measure */
+    public double linkKBps() { return linkKBps; }
+    /** When the link was last measured (System.nanoTime), so a stale estimate can be ignored */
+    public long linkSampleAt() { return linkSampleAt; }
     /** Shown before the counters: the build the relay says it is serving. */
     private String prefix = "";
 
@@ -83,6 +102,11 @@ public final class FrameReceiver {
         while (true) {
             Protocol.readMessage(in, msg);
             bytes += Protocol.HEADER_SIZE + msg.length;
+            if (msg.length >= LINK_SAMPLE_MIN_BYTES && msg.payloadNs > 0) {
+                double kbps = Math.min(LINK_SAMPLE_MAX_KBPS, msg.length / 1024.0 / (msg.payloadNs / 1e9));
+                linkKBps = linkKBps < 0 ? kbps : linkKBps + LINK_SMOOTHING * (kbps - linkKBps);
+                linkSampleAt = System.nanoTime();
+            }
             switch (msg.type) {
                 case Protocol.FRAME_FULL:
                     handleFrameFull();
@@ -157,6 +181,10 @@ public final class FrameReceiver {
         blitNs += t2 - t1;
     }
 
+    private String linkText() {
+        return linkKBps < 0 ? "" : "  link=" + Math.round(linkKBps) + "KB/s";
+    }
+
     private void tickStats() {
         long now = System.nanoTime();
         long elapsed = now - windowStart;
@@ -164,10 +192,10 @@ public final class FrameReceiver {
         double secs = elapsed / 1e9;
         String line;
         if (frames == 0) {
-            line = "fps=0  recv=" + (long) (bytes / secs / 1024) + "KB/s" + (skipped > 0 ? "  skip=" + skipped : "");
+            line = "fps=0  recv=" + (long) (bytes / secs / 1024) + "KB/s" + linkText() + (skipped > 0 ? "  skip=" + skipped : "");
         } else {
             line = "fps=" + Math.round(frames / secs)
-                    + "  recv=" + (long) (bytes / secs / 1024) + "KB/s"
+                    + "  recv=" + (long) (bytes / secs / 1024) + "KB/s" + linkText()
                     + "  decode=" + String.format("%.1f", decodeNs / 1e6 / frames) + "ms"
                     + "  blit=" + String.format("%.1f", blitNs / 1e6 / frames) + "ms"
                     + (skipped > 0 ? "  skip=" + skipped : "");

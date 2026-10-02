@@ -1,11 +1,11 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
 import { adjustSprite, colorizeSprite } from '../colorize.js'
-import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_GLASSES_ROWS, PART_SHOULDER_ROW } from '../../constants.js'
+import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_SHOULDER_ROW } from '../../constants.js'
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
-import { splitCharacters, composeParts, frameBob, shiftRows, firstRows, closeGaps, skinTones, wearerSkin } from './characterParts.js'
+import { splitCharacters, composeParts, frameBob, shiftRows, firstRows, closeGaps, skinTones, wearerSkin, glassesRows } from './characterParts.js'
 import type { CharacterPartSet } from './characterParts.js'
 
 // ── Color Palettes ──────────────────────────────────────────────
@@ -1875,13 +1875,14 @@ function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterDa
     for (let f = 0; f < count; f++) {
       const dy = face ? frameBob(face, dir, f) - frameBob(hairFrames, dir, f) : 0
       // Facing down at the desk, the glasses are the top layer's first rows: the face's own, not the shirt's
-      const glasses = dir === 'down' && faceCut && PART_GLASSES_FRAMES.includes(f)
-        ? firstRows(faceCut.top.down[f], PART_GLASSES_ROWS, true)
-        : null
+      const faceTop = faceCut?.top.down[f]
+      const atDesk = dir === 'down' && !!faceTop && PART_GLASSES_FRAMES.includes(f)
+      const glasses = atDesk ? firstRows(faceTop!, glassesRows(faceTop!), true) : null
       const layers = sources.map((src, i) => {
-        const sprite = src.paint(src.frames[dir][f])
+        const raw = src.frames[dir][f]
+        const sprite = src.paint(raw)
         if (i === 3) return shiftRows(sprite, dy)
-        if (i === 2 && glasses) return firstRows(sprite, PART_GLASSES_ROWS, false)
+        if (i === 2 && atDesk) return firstRows(sprite, glassesRows(raw), false)
         return sprite
       })
       if (glasses) layers.push(glasses)

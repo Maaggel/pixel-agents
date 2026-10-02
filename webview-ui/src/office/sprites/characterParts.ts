@@ -36,6 +36,7 @@ import {
   PART_STANDING_FRAME,
   PART_EYE_GREY_SPREAD,
   PART_HEAD_BASE_INSET,
+  PART_HEAD_BASE_SIDE_INSET,
   CLOSE_GAPS_MAX_PASSES,
 } from '../../constants.js'
 
@@ -164,8 +165,11 @@ export function splitCharacters(all: CharacterFrames[]): CharacterPartSet[] {
         if (!tone) continue
         const skin = sets[i].skin[dir][f]
         for (let y = maskTop + PART_HEAD_BASE_INSET; y < PART_SHOULDER_ROW; y++) {
-          for (let x = 0; x < (mask[y]?.length ?? 0); x++) {
-            if (mask[y][x] && !skin[y][x]) skin[y][x] = tone
+          const row = mask[y] ?? []
+          const left = row.indexOf(true) + PART_HEAD_BASE_SIDE_INSET
+          const right = row.lastIndexOf(true) - PART_HEAD_BASE_SIDE_INSET
+          for (let x = left; x <= right; x++) {
+            if (row[x] && !skin[y][x]) skin[y][x] = tone
           }
         }
       }
@@ -229,6 +233,28 @@ export function shiftRows(sprite: SpriteData, dy: number): SpriteData {
   })
 }
 
+/**
+ * How many of a sprite's first drawn rows are glasses: rows of nothing but black, grey and white.
+ * Three on most characters, four where the frame has a bottom bar of its own - a fixed count left
+ * that bar behind on the shirt, a black band across the chin.
+ */
+export function glassesRows(sprite: SpriteData): number {
+  const top = topRow(sprite)
+  if (top < 0) return 0
+  let n = 0
+  for (let y = top; y < sprite.length; y++) {
+    const drawn = sprite[y].filter(Boolean)
+    if (drawn.length === 0 || !drawn.every(isGrey)) break
+    n++
+  }
+  return n
+}
+
+/** The first drawn row of a sprite, or -1 when it is empty */
+export function firstDrawnRow(sprite: SpriteData): number {
+  return topRow(sprite)
+}
+
 /** The first `count` drawn rows of a sprite alone (keep = true), or the sprite without them */
 export function firstRows(sprite: SpriteData, count: number, keep: boolean): SpriteData {
   const top = topRow(sprite)
@@ -246,7 +272,8 @@ export function firstRows(sprite: SpriteData, count: number, keep: boolean): Spr
  * cover the back of the head the way the face's own did leaves a notch there. Filled from the
  * neighbouring colour, the garment or the hair simply carries on:
  *  - a hole is anything the outside cannot reach without crossing something drawn;
- *  - a notch is a gap in a head row (above `headBottom`) between two drawn pixels.
+ *  - a notch is a gap between two drawn pixels in its row or its column - the column catches a
+ *    whole empty row, where a shirt's collar sits lower than the face's own did.
  * Either is filled only where the face's own character (`face`) is drawn: where its artwork is open,
  * so is this - the window between an arm and the page it holds up, the space behind a ponytail.
  * `prefer` says whose colour to borrow first: the hair layer in the head, the top below it.
@@ -291,6 +318,16 @@ function closeGapsOnce(sprite: SpriteData, face: SpriteData | undefined, headBot
   }
 
   const gaps: Array<[number, number]> = []
+  // the drawn extent of each column, for gaps that run across a whole row
+  const colTop: number[] = []
+  const colBottom: number[] = []
+  for (let x = 0; x < W; x++) {
+    let t = -1
+    let b = -1
+    for (let y = 0; y < H; y++) if (out[y][x]) { if (t < 0) t = y; b = y }
+    colTop.push(t)
+    colBottom.push(b)
+  }
   for (let y = 0; y < H; y++) {
     const drawn = out[y].map(Boolean)
     const first = drawn.indexOf(true)
@@ -300,7 +337,7 @@ function closeGapsOnce(sprite: SpriteData, face: SpriteData | undefined, headBot
       // Only where the face's own character is drawn: where its artwork is open, so is this
       if (face && !face[y]?.[x]) continue
       const hole = !outside.has(y * W + x)
-      const notch = y < headBottom && x > first && x < last && first >= 0
+      const notch = (x > first && x < last && first >= 0) || (y > colTop[x] && y < colBottom[x] && colTop[x] >= 0)
       if (hole || notch) gaps.push([x, y])
     }
   }

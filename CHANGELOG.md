@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.45.4
+
+- Heads keep their size at the desk. The bald head laid under every hairstyle filled the silhouette all six characters share, which is as wide as their hair - four pixels wider than a face - so wherever a hairstyle sat a little higher at the sides, as TabScreen's (Oriel's) does reading, it showed past the hair as big ears and a broad forehead in that one frame. It now stops a pixel short of the silhouette on each side.
+- Glasses are as tall as they are: a top's glasses were taken to be its first three rows, but some are four, and the fourth was left on the shirt as a black band under the chin. They are now the leading rows of nothing but black, grey and white.
+- Gap filling also closes a gap between two drawn pixels in a column, which catches a whole empty row - a shirt whose collar sits lower than the face's own left one between the glasses and the page. Still only where the face's own art is drawn.
+- Two scratch scripts that slipped into the last commit are gone.
+
 ## v1.45.3
 
 - Skin that came with a garment is the wearer's skin. Tops and legs were cut with a little of whoever wore them - the neck above a collar, the legs below shorts - so on another face that showed as a patch of somebody else's skin tone, or, recoloured with the garment, a teal or purple one. Any pixel of a top or legs in one of the six characters' skin tones now takes the wearer's tone of the nearest lightness and is left out of the garment's colour. A colour any character wears as clothing is never taken for skin, which keeps the six originals exactly as drawn.

@@ -383,15 +383,20 @@ export const PART_FACE_TOP = 12
  * the head visibly shorter, rather than showing scalp, or bare corners, above itself.
  */
 export const PART_HEAD_BASE_INSET = 4
+/**
+ * Columns left off each side of the bald head. The silhouette the six share is as wide as their
+ * hair, four pixels wider than a face, so wherever a hairstyle sat a little higher at the sides the
+ * bald head showed past it as big ears and a broad forehead.
+ */
+export const PART_HEAD_BASE_SIDE_INSET = 1
 /** Frame order is walk1, walk2, walk3, ... - walk2 is the standing pose */
 export const PART_STANDING_FRAME = 1
 /**
- * The frames where the characters wear glasses - typing and reading - and how many rows of the top
- * layer they take there, facing down. The glasses sit low enough to be cut with the shirt, but they
- * belong to the face: worn with somebody else's top they came out as that top's copy, at its height.
+ * The frames where the characters wear glasses - typing and reading. Facing down they sit low
+ * enough to be cut with the shirt, but they belong to the face: worn with somebody else's top they
+ * came out as that top's copy, at its height.
  */
 export const PART_GLASSES_FRAMES = [3, 4, 5, 6]
-export const PART_GLASSES_ROWS = 3
 /** Passes of closeGaps at most: each can seal a new hole behind the notch it filled */
 export const CLOSE_GAPS_MAX_PASSES = 4
 /** Grey, white and black are the eyes: features, not skin, whatever the skin tone is */

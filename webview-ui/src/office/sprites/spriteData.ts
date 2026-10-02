@@ -5,7 +5,7 @@ import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_GLASSES_ROWS, PART_SHOULDER
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
-import { splitCharacters, composeParts, frameBob, shiftRows, firstRows, closeGaps } from './characterParts.js'
+import { splitCharacters, composeParts, frameBob, shiftRows, firstRows, closeGaps, skinTones, wearerSkin } from './characterParts.js'
 import type { CharacterPartSet } from './characterParts.js'
 
 // ── Color Palettes ──────────────────────────────────────────────
@@ -1783,6 +1783,9 @@ let loadedCharacters: LoadedCharacterData[] | null = null
 let loadedPools: PartPools | null = null
 /** The six characters cut up, kept for the parts that follow the face: its glasses */
 let loadedCut: CharacterPartSet[] | null = null
+/** Each character's skin tones, and all of them together: skin found in a garment is swapped for the wearer's */
+let loadedSkins: Set<string>[] = []
+let anySkin = new Set<string>()
 
 /**
  * Set pre-colored character sprites loaded from PNG assets. Call this when characterSpritesLoaded
@@ -1798,6 +1801,20 @@ export function setCharacterTemplates(
   loadedCharacters = data
   const cut = splitCharacters(data)
   loadedCut = cut
+  loadedSkins = skinTones(data)
+  // A colour some character wears as clothing is clothing, even if it is somebody else's skin tone
+  const worn = new Set<string>()
+  cut.forEach((parts, i) => {
+    for (const layer of [parts.top, parts.legs]) {
+      for (const frames of [layer.down, layer.up, layer.right]) {
+        for (const sprite of frames) for (const row of sprite) for (const px of row) {
+          const key = px.slice(0, 7).toUpperCase()
+          if (px && !loadedSkins[i].has(key)) worn.add(key)
+        }
+      }
+    }
+  })
+  anySkin = new Set(loadedSkins.flatMap((tones) => [...tones]).filter((tone) => !worn.has(tone)))
   const pool = (layer: CharacterLayer) =>
     parts?.[layer]?.length ? parts[layer]! : cut.map((c) => c[layer])
   loadedPools = {
@@ -1833,10 +1850,13 @@ function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterDa
   // Hair is painted on by luminance instead, so blonde is reachable at all and so a colour lands
   // the same whether the hairstyle underneath was drawn black or brown.
   const hairColor = PART_HAIR_COLORS[p.hairColor % PART_HAIR_COLORS.length]
+  const wearer = [...(loadedSkins[look.palette % Math.max(1, loadedSkins.length)] ?? [])]
+  // A garment's own colour is rotated; any skin cut with it becomes the wearer's
+  const garment = (hue: number) => (sprite: SpriteData) => wearerSkin(sprite, rotate(hue)(sprite), anySkin, wearer)
   const sources: Array<{ frames: CharacterFrames; paint: (s: SpriteData) => SpriteData }> = [
     { frames: pick('skin', look.palette), paint: (sprite) => sprite },
-    { frames: pick('legs', p.legs), paint: rotate(p.legsHue) },
-    { frames: pick('top', p.top), paint: rotate(p.topHue) },
+    { frames: pick('legs', p.legs), paint: garment(p.legsHue) },
+    { frames: pick('top', p.top), paint: garment(p.topHue) },
     {
       frames: pick('hair', p.hair),
       paint: (sprite) => (p.hairColor === 0 ? sprite : colorizeSprite(sprite, { ...hairColor, colorize: true })),

@@ -325,6 +325,42 @@ function closeGapsOnce(sprite: SpriteData, face: SpriteData | undefined, headBot
   return out
 }
 
+/** Each character's skin tones, as the cut finds them: the colours of its face */
+export function skinTones(all: CharacterFrames[]): Set<string>[] {
+  return all.map((frames) => new Set([...skinPalette(frames, hairPalette(frames))].map(colourKey)))
+}
+
+/** A colour as compared across sources: #RRGGBB upper case, any alpha dropped */
+function colourKey(hex: string): string {
+  return hex.slice(0, 7).toUpperCase()
+}
+
+function lightness(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return 0.299 * r + 0.587 * g + 0.114 * b
+}
+
+/**
+ * Garments are cut with a little of whoever wore them: the neck above a collar, the legs below
+ * shorts. On another face that showed as a patch of somebody else's skin - and, rotated with the
+ * garment's hue, as a teal or purple one. `paint` is how the garment itself is coloured; pixels in
+ * any character's skin (`anySkin`) are left out of it and given the wearer's tone of the nearest
+ * lightness instead.
+ */
+export function wearerSkin(sprite: SpriteData, painted: SpriteData, anySkin: Set<string>, wearer: string[]): SpriteData {
+  if (wearer.length === 0) return painted
+  return painted.map((row, y) => row.map((px, x) => {
+    const raw = sprite[y][x]
+    if (!raw || !anySkin.has(colourKey(raw))) return px
+    const l = lightness(raw)
+    let best = wearer[0]
+    for (const tone of wearer) if (Math.abs(lightness(tone) - l) < Math.abs(lightness(best) - l)) best = tone
+    return best
+  }))
+}
+
 /** Stack layers back into one sprite. Later layers cover earlier ones. */
 export function composeParts(layers: SpriteData[]): SpriteData {
   const base = layers[0]

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.3
+
+- Skin that came with a garment is the wearer's skin. Tops and legs were cut with a little of whoever wore them - the neck above a collar, the legs below shorts - so on another face that showed as a patch of somebody else's skin tone, or, recoloured with the garment, a teal or purple one. Any pixel of a top or legs in one of the six characters' skin tones now takes the wearer's tone of the nearest lightness and is left out of the garment's colour. A colour any character wears as clothing is never taken for skin, which keeps the six originals exactly as drawn.
+
 ## v1.45.2
 
 - No more holes in mixed looks. The six characters were drawn with slightly different shoulders and heads, so a shirt cut from one over the arms of another let a pixel of background through at the shoulder, and a hairstyle that did not cover the back of the head the way the face's own did left a notch between the hair and the neck - most visible seated in profile (A2B's armchair, the chess table). After the layers are stacked, any pixel the outside cannot reach, and any gap in a head row, is filled from its neighbour - but only where the face's own character is drawn, so the gaps the original art has (between an arm and the page it holds up, behind a ponytail) stay open. 643 of the 660 combinations had at least one such hole; `renderer/test/mixed-looks.mjs` now checks for them, and that the six original characters still come out exactly as drawn.

@@ -1,4 +1,5 @@
-// Hair and glasses follow the face, whichever characters a look's parts were cut from.
+// Mixed looks hold together: hair and glasses follow the face, nothing has holes in it, and the
+// six original characters come out exactly as drawn.
 //
 // The six characters do not bob alike at the desk: reading, one lifts its head a row where another
 // drops it. A look takes its hair from one character and its face from another, so the two parted
@@ -49,4 +50,43 @@ for (let hair = 0; hair < pools.hair.length; hair++) for (let skin = 0; skin < c
   if (bad <= 10) console.log(`OFF hair ${hair} on face ${skin} in top ${top}: ` + gap.map(([n, g]) => `${n}=${g}`).join(' '))
 }
 if (bad) { console.log(`FAIL: ${bad} of ${checked} looks have hair and eyes parting company at the desk`); process.exit(1) }
+
+// No holes: a shirt cut from one character over arms from another left pixels of background
+// showing through, and a hairstyle that did not cover the back of the head left a notch there
+// holes: transparent pixels the outside cannot reach without crossing something drawn
+const enclosed = (s) => { const H = s.length, W = s[0].length, seen = new Set(), q = []
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if ((y === 0 || x === 0 || y === H - 1 || x === W - 1) && !s[y][x]) { seen.add(`${x},${y}`); q.push([x, y]) }
+  while (q.length) { const [x, y] = q.pop(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = `${nx},${ny}`
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H || seen.has(k) || s[ny][nx]) continue; seen.add(k); q.push([nx, ny]) } }
+  const out = new Set(); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (!s[y][x] && !seen.has(`${x},${y}`)) out.add(`${x},${y}`); return out }
+const DIRS = [['down', engine.Direction.DOWN], ['up', engine.Direction.UP], ['right', engine.Direction.RIGHT]]
+let holes = 0
+for (let hair = 0; hair < pools.hair.length; hair++) for (let skin = 0; skin < chars.length; skin++) for (let top = 0; top < pools.top.length; top++) {
+  const sp = engine.getCharacterSprites({ palette: skin, hueShift: 0, parts: { hair, hairColor: 0, top, topHue: 0, legs: 4, legsHue: 0 } })
+  // the same face in its own parts: the gaps its artwork already has (an arm and the page it holds)
+  const own = engine.getCharacterSprites({ palette: skin, hueShift: 0, parts: { hair: skin, hairColor: 0, top: skin, topHue: 0, legs: 4, legsHue: 0 } })
+  const set = (s, d) => [['walk', s.walk[d]], ['type', s.typing[d]], ['read', s.reading[d]]]
+  for (const [dn, d] of DIRS) for (const [[kind, frames], [, ownFrames]] of set(sp, d).map((k, i) => [k, set(own, d)[i]])) frames.forEach((spr, f) => {
+    const base = enclosed(ownFrames[f])
+    // a hole counts only where the face's own artwork is drawn: a gap between a long strand of hair
+    // and the neck is background showing where it would with real hair
+    const art = chars[skin][dn][kind === 'walk' ? [0, 1, 2, 1][f] : (kind === 'type' ? 3 : 5) + f]
+    const n = [...enclosed(spr)].filter((p) => { const [x, y] = p.split(',').map(Number); return !base.has(p) && art[y][x] }).length
+    if (n && ++holes <= 10) console.log(`HOLE hair ${hair} on face ${skin} in top ${top}: ${dn} ${kind}${f + 1}, ${n} px`)
+  })
+}
+if (holes) { console.log(`FAIL: ${holes} frames with holes in them`); process.exit(1) }
+console.log(`OK: no holes in any frame of the ${checked} looks beyond the gaps the face's own artwork has`)
+
+// The six characters as drawn: wearing their own parts, every frame is the original pixel for pixel
+let changed = 0
+for (let i = 0; i < chars.length; i++) {
+  const sp = engine.getCharacterSprites({ palette: i, hueShift: 0, parts: { hair: i, hairColor: 0, top: i, topHue: 0, legs: i, legsHue: 0 } })
+  const built = { down: [...sp.walk[engine.Direction.DOWN].slice(0, 3), ...sp.typing[engine.Direction.DOWN], ...sp.reading[engine.Direction.DOWN]],
+    up: [...sp.walk[engine.Direction.UP].slice(0, 3), ...sp.typing[engine.Direction.UP], ...sp.reading[engine.Direction.UP]],
+    right: [...sp.walk[engine.Direction.RIGHT].slice(0, 3), ...sp.typing[engine.Direction.RIGHT], ...sp.reading[engine.Direction.RIGHT]] }
+  for (const dir of ['down', 'up', 'right']) built[dir].forEach((spr, f) => spr.forEach((row, y) => row.forEach((px, x) => { if (px !== chars[i][dir][f][y][x] && ++changed <= 30) console.log(`char_${i} ${dir} f${f} (${x},${y}): ${chars[i][dir][f][y][x] || "empty"} -> ${px || "empty"}`) })))
+}
+if (changed) { console.log(`FAIL: ${changed} pixels of the six original characters changed`); process.exit(1) }
+console.log('OK: the six original characters are unchanged, pixel for pixel')
 console.log(`OK: ${checked} looks (every hairstyle on every face in every top) keep hair and eyes together at the desk`)

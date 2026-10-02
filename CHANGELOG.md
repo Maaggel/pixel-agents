@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.2
+
+- No more holes in mixed looks. The six characters were drawn with slightly different shoulders and heads, so a shirt cut from one over the arms of another let a pixel of background through at the shoulder, and a hairstyle that did not cover the back of the head the way the face's own did left a notch between the hair and the neck - most visible seated in profile (A2B's armchair, the chess table). After the layers are stacked, any pixel the outside cannot reach, and any gap in a head row, is filled from its neighbour - but only where the face's own character is drawn, so the gaps the original art has (between an arm and the page it holds up, behind a ponytail) stay open. 643 of the 660 combinations had at least one such hole; `renderer/test/mixed-looks.mjs` now checks for them, and that the six original characters still come out exactly as drawn.
+
 ## v1.45.1
 
 - Mixed looks no longer go strange at the desk. The six original characters do not bob alike while typing and reading - one lifts its head a row where another drops it - and a look that takes its hair from one and its face from another came apart: a strip of bare forehead under the hair, worst on LeaBox (Cadence) reading. The hair now follows the face's own bob, frame by frame. And the glasses worn at the desk, which sit low enough to be cut out with the shirt, came from whichever character lent the top - at its height, and on two drawn tops with the eyes behind them blacked out - so they come from the face's own character now. 281 of the 660 hairstyle/face/top combinations were off; `renderer/test/mixed-looks.mjs` builds all of them and checks the eyes stay put under the hair. Original looks are pixel-identical to before.

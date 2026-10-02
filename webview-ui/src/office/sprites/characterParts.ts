@@ -36,6 +36,7 @@ import {
   PART_STANDING_FRAME,
   PART_EYE_GREY_SPREAD,
   PART_HEAD_BASE_INSET,
+  CLOSE_GAPS_MAX_PASSES,
 } from '../../constants.js'
 
 /** The layers a character is built from, in draw order: back to front. */
@@ -236,6 +237,92 @@ export function firstRows(sprite: SpriteData, count: number, keep: boolean): Spr
     const inside = y >= top && y < top + count
     return inside === keep ? [...row] : row.map(() => '')
   })
+}
+
+/**
+ * Close the gaps that mixing parts opens. The six characters were drawn with slightly different
+ * shoulders and heads, so a shirt cut from one, laid over arms and a face cut from another, can
+ * leave a pixel of background between them - a hole in the clothes - and a hairstyle that does not
+ * cover the back of the head the way the face's own did leaves a notch there. Filled from the
+ * neighbouring colour, the garment or the hair simply carries on:
+ *  - a hole is anything the outside cannot reach without crossing something drawn;
+ *  - a notch is a gap in a head row (above `headBottom`) between two drawn pixels.
+ * Either is filled only where the face's own character (`face`) is drawn: where its artwork is open,
+ * so is this - the window between an arm and the page it holds up, the space behind a ponytail.
+ * `prefer` says whose colour to borrow first: the hair layer in the head, the top below it.
+ */
+export function closeGaps(sprite: SpriteData, face: SpriteData | undefined, headBottom: number, hairLayer: SpriteData, topLayer: SpriteData): SpriteData {
+  // Again until nothing changes: filling a notch can seal a pixel behind it into a hole that the
+  // outside could still reach through the notch a moment before
+  let out = sprite
+  for (let pass = 0; pass < CLOSE_GAPS_MAX_PASSES; pass++) {
+    const next = closeGapsOnce(out, face, headBottom, hairLayer, topLayer)
+    if (next === out) break
+    out = next
+  }
+  return out
+}
+
+/** One pass of closeGaps; returns the same sprite when there was nothing to fill */
+function closeGapsOnce(sprite: SpriteData, face: SpriteData | undefined, headBottom: number, hairLayer: SpriteData, topLayer: SpriteData): SpriteData {
+  const H = sprite.length
+  const W = sprite[0]?.length ?? 0
+  const out = sprite.map((row) => [...row])
+  const outside = new Set<number>()
+  const queue: number[] = []
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if ((y === 0 || x === 0 || y === H - 1 || x === W - 1) && !out[y][x]) { outside.add(y * W + x); queue.push(y * W + x) }
+    }
+  }
+  while (queue.length > 0) {
+    const i = queue.pop()!
+    const x = i % W
+    const y = (i - x) / W
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || out[ny][nx]) continue
+      const j = ny * W + nx
+      if (outside.has(j)) continue
+      outside.add(j)
+      queue.push(j)
+    }
+  }
+
+  const gaps: Array<[number, number]> = []
+  for (let y = 0; y < H; y++) {
+    const drawn = out[y].map(Boolean)
+    const first = drawn.indexOf(true)
+    const last = drawn.lastIndexOf(true)
+    for (let x = 0; x < W; x++) {
+      if (out[y][x]) continue
+      // Only where the face's own character is drawn: where its artwork is open, so is this
+      if (face && !face[y]?.[x]) continue
+      const hole = !outside.has(y * W + x)
+      const notch = y < headBottom && x > first && x < last && first >= 0
+      if (hole || notch) gaps.push([x, y])
+    }
+  }
+  if (gaps.length === 0) return sprite
+
+  // Fill from the edges of each gap inwards, borrowing a sideways neighbour before one above or below
+  let pending = gaps
+  while (pending.length > 0) {
+    const next: Array<[number, number]> = []
+    const fills: Array<[number, number, string]> = []
+    for (const [x, y] of pending) {
+      const prefer = y < headBottom ? hairLayer : topLayer
+      const around: Array<[number, number]> = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
+      const pick = around.find(([nx, ny]) => out[ny]?.[nx] && prefer[ny]?.[nx]) ?? around.find(([nx, ny]) => out[ny]?.[nx])
+      if (pick) fills.push([x, y, out[pick[1]][pick[0]]])
+      else next.push([x, y])
+    }
+    if (fills.length === 0) break
+    for (const [x, y, px] of fills) out[y][x] = px
+    pending = next
+  }
+  return out
 }
 
 /** Stack layers back into one sprite. Later layers cover earlier ones. */

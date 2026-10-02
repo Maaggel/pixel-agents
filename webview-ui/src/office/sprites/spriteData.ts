@@ -1,11 +1,11 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
 import { adjustSprite, colorizeSprite } from '../colorize.js'
-import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_GLASSES_ROWS } from '../../constants.js'
+import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_GLASSES_ROWS, PART_SHOULDER_ROW } from '../../constants.js'
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
-import { splitCharacters, composeParts, frameBob, shiftRows, firstRows } from './characterParts.js'
+import { splitCharacters, composeParts, frameBob, shiftRows, firstRows, closeGaps } from './characterParts.js'
 import type { CharacterPartSet } from './characterParts.js'
 
 // ── Color Palettes ──────────────────────────────────────────────
@@ -1865,7 +1865,9 @@ function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterDa
         return sprite
       })
       if (glasses) layers.push(glasses)
-      out[dir].push(composeParts(layers))
+      // The head ends at the shoulders, wherever this frame's bob has put them
+      const headBottom = PART_SHOULDER_ROW + (face ? frameBob(face, dir, f) : 0)
+      out[dir].push(closeGaps(composeParts(layers), face?.[dir][f], headBottom, layers[3], layers[2]))
     }
   }
   return out

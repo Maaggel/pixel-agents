@@ -385,6 +385,13 @@ export const PART_FACE_TOP = 12
 export const PART_HEAD_BASE_INSET = 4
 /** Frame order is walk1, walk2, walk3, ... - walk2 is the standing pose */
 export const PART_STANDING_FRAME = 1
+/**
+ * The frames where the characters wear glasses - typing and reading - and how many rows of the top
+ * layer they take there, facing down. The glasses sit low enough to be cut with the shirt, but they
+ * belong to the face: worn with somebody else's top they came out as that top's copy, at its height.
+ */
+export const PART_GLASSES_FRAMES = [3, 4, 5, 6]
+export const PART_GLASSES_ROWS = 3
 /** Grey, white and black are the eyes: features, not skin, whatever the skin tone is */
 export const PART_EYE_GREY_SPREAD = 24
 /** How many hairstyles, tops and pairs of legs there are to draw from */

@@ -1,11 +1,12 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
 import { adjustSprite, colorizeSprite } from '../colorize.js'
-import { PART_HAIR_COLORS } from '../../constants.js'
+import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_GLASSES_ROWS } from '../../constants.js'
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
-import { splitCharacters, composeParts } from './characterParts.js'
+import { splitCharacters, composeParts, frameBob, shiftRows, firstRows } from './characterParts.js'
+import type { CharacterPartSet } from './characterParts.js'
 
 // ── Color Palettes ──────────────────────────────────────────────
 const _ = '' // transparent
@@ -1780,6 +1781,8 @@ type PartPools = Record<CharacterLayer, CharacterFrames[]>
 
 let loadedCharacters: LoadedCharacterData[] | null = null
 let loadedPools: PartPools | null = null
+/** The six characters cut up, kept for the parts that follow the face: its glasses */
+let loadedCut: CharacterPartSet[] | null = null
 
 /**
  * Set pre-colored character sprites loaded from PNG assets. Call this when characterSpritesLoaded
@@ -1794,6 +1797,7 @@ export function setCharacterTemplates(
 ): void {
   loadedCharacters = data
   const cut = splitCharacters(data)
+  loadedCut = cut
   const pool = (layer: CharacterLayer) =>
     parts?.[layer]?.length ? parts[layer]! : cut.map((c) => c[layer])
   loadedPools = {
@@ -1839,11 +1843,29 @@ function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterDa
     },
   ]
 
+  // The hair follows the face's head, not the head it was cut from: measured on the whole character
+  // the skin came from, since the skin layer's own top is the bald head every character shares
+  const face = loadedCharacters?.[look.palette % loadedCharacters.length]
+  const faceCut = loadedCut?.[look.palette % loadedCut.length]
+  const hairFrames = sources[3].frames
+
   const out: LoadedCharacterData = { down: [], up: [], right: [] }
   for (const dir of ['down', 'up', 'right'] as const) {
     const count = sources[0].frames[dir].length
     for (let f = 0; f < count; f++) {
-      out[dir].push(composeParts(sources.map((src) => src.paint(src.frames[dir][f]))))
+      const dy = face ? frameBob(face, dir, f) - frameBob(hairFrames, dir, f) : 0
+      // Facing down at the desk, the glasses are the top layer's first rows: the face's own, not the shirt's
+      const glasses = dir === 'down' && faceCut && PART_GLASSES_FRAMES.includes(f)
+        ? firstRows(faceCut.top.down[f], PART_GLASSES_ROWS, true)
+        : null
+      const layers = sources.map((src, i) => {
+        const sprite = src.paint(src.frames[dir][f])
+        if (i === 3) return shiftRows(sprite, dy)
+        if (i === 2 && glasses) return firstRows(sprite, PART_GLASSES_ROWS, false)
+        return sprite
+      })
+      if (glasses) layers.push(glasses)
+      out[dir].push(composeParts(layers))
     }
   }
   return out

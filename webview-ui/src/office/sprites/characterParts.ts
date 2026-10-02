@@ -200,6 +200,44 @@ function splitCharacter(frames: CharacterFrames): CharacterPartSet {
   return out
 }
 
+/** The first row with anything drawn on it, or -1 for an empty sprite */
+function topRow(sprite: SpriteData | undefined): number {
+  if (!sprite) return -1
+  for (let y = 0; y < sprite.length; y++) if (sprite[y].some(Boolean)) return y
+  return -1
+}
+
+/**
+ * How many rows a frame's top sits below the same direction's standing frame: the head's bob. The
+ * six characters do not all bob alike - reading, one lifts its head a row where another drops it -
+ * so a hairstyle cut from one and a face cut from another part company by up to two rows.
+ */
+export function frameBob(frames: CharacterFrames, dir: typeof DIRECTIONS[number], frame: number): number {
+  const here = topRow(frames[dir][frame])
+  const standing = topRow(frames[dir][PART_STANDING_FRAME] ?? frames[dir][0])
+  return here < 0 || standing < 0 ? 0 : here - standing
+}
+
+/** Move a sprite down by dy rows (up when negative); what is pushed off the edge is dropped */
+export function shiftRows(sprite: SpriteData, dy: number): SpriteData {
+  if (dy === 0) return sprite
+  const blank = () => sprite[0].map(() => '')
+  return sprite.map((_, y) => {
+    const from = y - dy
+    return from >= 0 && from < sprite.length ? [...sprite[from]] : blank()
+  })
+}
+
+/** The first `count` drawn rows of a sprite alone (keep = true), or the sprite without them */
+export function firstRows(sprite: SpriteData, count: number, keep: boolean): SpriteData {
+  const top = topRow(sprite)
+  if (top < 0) return keep ? blankLike(sprite) : sprite
+  return sprite.map((row, y) => {
+    const inside = y >= top && y < top + count
+    return inside === keep ? [...row] : row.map(() => '')
+  })
+}
+
 /** Stack layers back into one sprite. Later layers cover earlier ones. */
 export function composeParts(layers: SpriteData[]): SpriteData {
   const base = layers[0]

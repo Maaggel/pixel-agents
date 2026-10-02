@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.1
+
+- Mixed looks no longer go strange at the desk. The six original characters do not bob alike while typing and reading - one lifts its head a row where another drops it - and a look that takes its hair from one and its face from another came apart: a strip of bare forehead under the hair, worst on LeaBox (Cadence) reading. The hair now follows the face's own bob, frame by frame. And the glasses worn at the desk, which sit low enough to be cut out with the shirt, came from whichever character lent the top - at its height, and on two drawn tops with the eyes behind them blacked out - so they come from the face's own character now. 281 of the 660 hairstyle/face/top combinations were off; `renderer/test/mixed-looks.mjs` builds all of them and checks the eyes stay put under the hair. Original looks are pixel-identical to before.
+
 ## v1.45.0
 
 - The tablet app fixes a Wi-Fi link that has got stuck slow, which until now took restarting the tablet. On 2026-09-30 it came back from the night carrying 11 to 120 KB/s where it had carried 600 the afternoon before, and stayed there until a restart. The app now measures the link on every frame - how long its data takes to arrive once it has started, which is the Wi-Fi's speed whether the office is busy or still - and shows it on the info line as `link=`. Under 100 KB/s for 2 minutes, it reconnects to the router; still slow 2 minutes later, it switches Wi-Fi off and on, at most once every 10 minutes. The overlay says what it is doing and the info line counts `wifi resets=`. "Fix slow Wi-Fi automatically" in the long-press menu, on by default.

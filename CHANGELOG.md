@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.45.6
+
+- No agent vanishes because of where its project lives. Every viewer gives an agent the id `local id + hash(window) * 1000`, and the hash had only a hundred values: with twelve projects running, two of them sharing one was close to a coin toss, and when they did, their agents got the same id and one was never drawn. Blommemix Admin (Plumb) and LeaBox-v2 both hashed to 18, so when Cadence moved to her new repository one of the two disappeared - on the tablet and in the browser alike. A million values now, in the relay's bridge, the tablet engine and the standalone viewer. Seats remembered by a browser are keyed by those ids and get dealt afresh once.
+- Scratch scripts in `renderer/` (`.*.mjs`) are ignored by git; one had been committed by mistake in v1.45.5 and is removed.
+
 ## v1.45.5
 
 - A session renamed while it is in the office (`/rename`) now changes in place: its nametag follows, and so does its look, which is chosen by name. Before, both the tablet and every open browser kept the name the session had arrived with until they reloaded - LeaBox (Cadence), moved to a new repository and renamed back to herself, stayed on the tablet as "LeaBox-v2 Lead" in that name's random look. `officeState.renameAgent()`, called from the tablet engine and, through a new `agentRenamed` message from the relay, from the browser.

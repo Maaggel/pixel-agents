@@ -18,3 +18,6 @@ renderer/native/engine.mjs.map
 # Contact sheets from renderer/tools/parts-sheet.mjs
 renderer/parts-sheet.png
 renderer/parts-anim.png
+
+# Scratch scripts while investigating (renderer/.who.mjs and friends); never part of the repo
+renderer/.*.mjs

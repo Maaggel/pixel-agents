@@ -121,7 +121,9 @@ function stripEmoji(label: string): string {
 function hashCode(str: string): number {
   let hash = 0
   for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0
-  return Math.abs(hash) % 100
+  // A million buckets, as in the relay's bridge: with a hundred, two of twelve windows shared one,
+  // their agents shared an id, and one of them was never drawn
+  return Math.abs(hash) % 1000000
 }
 
 interface RelayAgent {

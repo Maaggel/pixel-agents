@@ -912,7 +912,11 @@ function hashCode(str) {
   for (let i = 0; i < str.length; i++) {
     hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
   }
-  return Math.abs(hash) % 100;
+  // A million buckets, not a hundred: twelve windows in a hundred collided about half the time,
+  // and two windows with the same hash gave their agents the same id, so one of them vanished
+  // (Blommemix Admin and LeaBox-v2 both hashed to 18, 2026-10-05). The id is local + hash * 1000,
+  // which stays well inside a 32-bit integer.
+  return Math.abs(hash) % 1000000;
 }
 
 function connectRelay() {

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.7
+
+- No more of somebody else's shirt at the waist. A shirt's hem hangs below the waist line the cut goes by - a band at the belt, and seated, over the lap - so it was cut out with the trousers: legs 2, cut from the character in the orange-and-red shirt, gave its wearers an orange belt line walking (Memory Lane in profile) and an orange-and-red lap at the desk (LeaBox). Colours in a legs part that are on the chest of the character it was cut from are now left out, unless the wearer's own top has them too - which keeps the six originals as drawn - and the gap is closed from the wearer's own top. Reading the shirt's colours from the chest, not the whole top layer, matters: lower down the top layer holds the waistband of the jeans, and the first attempt took the jeans away too.
+
 ## v1.45.6
 
 - No agent vanishes because of where its project lives. Every viewer gives an agent the id `local id + hash(window) * 1000`, and the hash had only a hundred values: with twelve projects running, two of them sharing one was close to a coin toss, and when they did, their agents got the same id and one was never drawn. Blommemix Admin (Plumb) and LeaBox-v2 both hashed to 18, so when Cadence moved to her new repository one of the two disappeared - on the tablet and in the browser alike. A million values now, in the relay's bridge, the tablet engine and the standalone viewer. Seats remembered by a browser are keyed by those ids and get dealt afresh once.

@@ -397,6 +397,8 @@ export const PART_STANDING_FRAME = 1
  * came out as that top's copy, at its height.
  */
 export const PART_GLASSES_FRAMES = [3, 4, 5, 6]
+/** Rows above the hip that are still the waistband, not the chest: a shirt's colours are read above them */
+export const PART_CHEST_ABOVE_HIP = 3
 /** Passes of closeGaps at most: each can seal a new hole behind the notch it filled */
 export const CLOSE_GAPS_MAX_PASSES = 4
 /** Grey, white and black are the eyes: features, not skin, whatever the skin tone is */

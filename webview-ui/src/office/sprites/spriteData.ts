@@ -1,7 +1,7 @@
 import type { Direction, SpriteData, FloorColor } from '../types.js'
 import { Direction as Dir } from '../types.js'
 import { adjustSprite, colorizeSprite } from '../colorize.js'
-import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_SHOULDER_ROW } from '../../constants.js'
+import { PART_HAIR_COLORS, PART_GLASSES_FRAMES, PART_SHOULDER_ROW, PART_HIP_ROW, PART_CHEST_ABOVE_HIP } from '../../constants.js'
 import type { CharacterLook } from '../lookFromName.js'
 import { lookKey } from '../lookFromName.js'
 import type { CharacterFrames, CharacterLayer } from './characterParts.js'
@@ -1786,6 +1786,15 @@ let loadedCut: CharacterPartSet[] | null = null
 /** Each character's skin tones, and all of them together: skin found in a garment is swapped for the wearer's */
 let loadedSkins: Set<string>[] = []
 let anySkin = new Set<string>()
+/**
+ * Per legs part, the colours that are somebody else's shirt. A shirt's hem falls below the waist the
+ * cut goes by - a band at the belt, and seated, over the lap - so it was cut with the trousers: the
+ * legs cut from the character in the orange-and-red shirt gave everybody an orange belt and sat them
+ * down in an orange-and-red hem. These are the colours of a legs part that are in the top of the
+ * character it was cut from; they are dropped unless the wearer's own top has them too, which keeps
+ * the original characters as drawn and the page held up to read, which every top has.
+ */
+let borrowedHems: Array<Set<string>> = []
 
 /**
  * Set pre-colored character sprites loaded from PNG assets. Call this when characterSpritesLoaded
@@ -1817,6 +1826,7 @@ export function setCharacterTemplates(
   anySkin = new Set(loadedSkins.flatMap((tones) => [...tones]).filter((tone) => !worn.has(tone)))
   const pool = (layer: CharacterLayer) =>
     parts?.[layer]?.length ? parts[layer]! : cut.map((c) => c[layer])
+  borrowedHems = findBorrowedHems(pool('legs'), cut.map((c) => c.top))
   loadedPools = {
     skin: cut.map((c) => c.skin),
     hair: pool('hair'),
@@ -1825,6 +1835,33 @@ export function setCharacterTemplates(
   }
   // Clear cache so sprites are rebuilt from loaded data
   spriteCache.clear()
+}
+
+function findBorrowedHems(legs: CharacterFrames[], donorTops: CharacterFrames[]): Array<Set<string>> {
+  const key = (px: string) => px.slice(0, 7).toUpperCase()
+  // The shirt is what the standing figure wears across its chest; lower down the top layer also
+  // holds the waistband of the jeans, which must not count
+  const chest = (frames: CharacterFrames | undefined) => {
+    const out = new Set<string>()
+    if (!frames) return out
+    for (const sprite of frames.down.slice(0, PART_GLASSES_FRAMES[0])) {
+      for (let y = PART_SHOULDER_ROW; y < PART_HIP_ROW - PART_CHEST_ABOVE_HIP; y++) for (const px of sprite[y] ?? []) if (px) out.add(key(px))
+    }
+    return out
+  }
+  // Legs drawn on their own (beyond the six cut ones) came from nobody's shirt
+  return legs.map((frames, i) => {
+    const shirt = chest(donorTops[i])
+    const found = new Set<string>()
+    for (const dir of ['down', 'up', 'right'] as const) for (const sprite of frames[dir]) for (const row of sprite) for (const px of row) if (px && shirt.has(key(px))) found.add(key(px))
+    return found
+  })
+}
+
+/** A part without the colours that are not its own, the gaps they leave filled later from the wearer's own top */
+function withoutColours(sprite: SpriteData, drop: Set<string> | undefined): SpriteData {
+  if (!drop || drop.size === 0) return sprite
+  return sprite.map((row) => row.map((px) => (px && drop.has(px.slice(0, 7).toUpperCase()) ? '' : px)))
 }
 
 /** Rotate a garment's hue, or leave it alone when there is nothing to rotate it by. */
@@ -1851,11 +1888,16 @@ function assembleParts(look: CharacterLook, pools: PartPools): LoadedCharacterDa
   // the same whether the hairstyle underneath was drawn black or brown.
   const hairColor = PART_HAIR_COLORS[p.hairColor % PART_HAIR_COLORS.length]
   const wearer = [...(loadedSkins[look.palette % Math.max(1, loadedSkins.length)] ?? [])]
+  // a borrowed hem stays when it is in the wearer's own top - then it is theirs, as it is on the
+  // character the trousers were cut from
+  const ownTop = new Set<string>()
+  for (const frames of Object.values(pick('top', p.top))) for (const sprite of frames) for (const row of sprite) for (const px of row) if (px) ownTop.add(px.slice(0, 7).toUpperCase())
+  const notTheirs = new Set([...(borrowedHems[p.legs % Math.max(1, borrowedHems.length)] ?? [])].filter((c) => !ownTop.has(c)))
   // A garment's own colour is rotated; any skin cut with it becomes the wearer's
   const garment = (hue: number) => (sprite: SpriteData) => wearerSkin(sprite, rotate(hue)(sprite), anySkin, wearer)
   const sources: Array<{ frames: CharacterFrames; paint: (s: SpriteData) => SpriteData }> = [
     { frames: pick('skin', look.palette), paint: (sprite) => sprite },
-    { frames: pick('legs', p.legs), paint: garment(p.legsHue) },
+    { frames: pick('legs', p.legs), paint: (sprite: SpriteData) => garment(p.legsHue)(withoutColours(sprite, notTheirs)) },
     { frames: pick('top', p.top), paint: garment(p.topHue) },
     {
       frames: pick('hair', p.hair),

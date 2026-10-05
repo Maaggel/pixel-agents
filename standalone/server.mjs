@@ -284,7 +284,7 @@ console.log(`  Furniture: ${cachedFurniture ? cachedFurniture.catalog.length + '
 // ── Bridge script (injected into index.html) ────────────────
 const BRIDGE_SCRIPT = `
 <style>
-  /* VS Code CSS variables that the webview expects — provide dark theme defaults for standalone browser */
+  /* VS Code CSS variables that the webview expects - provide dark theme defaults for standalone browser */
   :root {
     --vscode-foreground: #cccccc;
     --vscode-editor-background: #1e1e2e;
@@ -326,7 +326,7 @@ window.acquireVsCodeApi = function() {
           const hh = String(now.getHours()).padStart(2, '0');
           const mm = String(now.getMinutes()).padStart(2, '0');
           const ss = String(now.getSeconds()).padStart(2, '0');
-          const conn = '[' + hh + ':' + mm + ':' + ss + '] CONN   ${VERSION_STAMP} — standalone browser connected';
+          const conn = '[' + hh + ':' + mm + ':' + ss + '] CONN   ${VERSION_STAMP} - standalone browser connected';
           dispatch({ type: 'devConsoleHistory', entries: [conn] });
           // Start polling for sync updates
           startSyncPolling();
@@ -372,7 +372,7 @@ const knownAgents = new Map();
 
 function startSyncPolling() {
   setInterval(() => {
-    // Poll sync state — treat agents as LOCAL characters with full FSM
+    // Poll sync state - treat agents as LOCAL characters with full FSM
     fetch('/api/sync').then(r => r.json()).then(data => {
       // Build map of all current agents across all windows
       const currentAgents = new Map();
@@ -400,7 +400,7 @@ function startSyncPolling() {
         }
       }
 
-      // Detect new agents — send existingAgents in the format the webview expects
+      // Detect new agents - send existingAgents in the format the webview expects
       const newAgentIds = [];
       const newAgentMeta = {};
       const newFolderNames = {};
@@ -409,7 +409,7 @@ function startSyncPolling() {
       for (const [id, agent] of currentAgents) {
         if (!knownAgents.has(id)) {
           newAgentIds.push(id);
-          // Only pass palette/hueShift if explicitly set (non-default) —
+          // Only pass palette/hueShift if explicitly set (non-default) -
           // otherwise let the webview's pickDiversePalette() assign diverse skins
           // Publishers ≥1.6.14 say whether the look was user-chosen; older ones: guess from non-zero values
           const hasExplicitPalette = agent.lookExplicit !== undefined ? agent.lookExplicit === true : (agent.palette > 0 || agent.hueShift > 0);
@@ -455,7 +455,7 @@ function startSyncPolling() {
         dispatch({ type: 'personalitiesUpdate', personalities: allPersonalities });
       }
 
-      // Detect removed agents — send agentClosed to despawn them
+      // Detect removed agents - send agentClosed to despawn them
       for (const id of knownAgents.keys()) {
         if (!currentAgents.has(id)) {
           dispatch({ type: 'agentClosed', id });

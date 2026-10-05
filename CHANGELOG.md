@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.5
+
+- A session renamed while it is in the office (`/rename`) now changes in place: its nametag follows, and so does its look, which is chosen by name. Before, both the tablet and every open browser kept the name the session had arrived with until they reloaded - LeaBox (Cadence), moved to a new repository and renamed back to herself, stayed on the tablet as "LeaBox-v2 Lead" in that name's random look. `officeState.renameAgent()`, called from the tablet engine and, through a new `agentRenamed` message from the relay, from the browser.
+
 ## v1.45.4
 
 - Heads keep their size at the desk. The bald head laid under every hairstyle filled the silhouette all six characters share, which is as wide as their hair - four pixels wider than a face - so wherever a hairstyle sat a little higher at the sides, as TabScreen's (Oriel's) does reading, it showed past the hair as big ears and a broad forehead in that one frame. It now stops a pixel short of the silhouette on each side.

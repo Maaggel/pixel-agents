@@ -227,6 +227,8 @@ export function useExtensionMessages(
           os.addAgent(id, undefined, undefined, undefined, undefined, folderName, false, projectName)
         }
         saveAgentSeats(os)
+      } else if (msg.type === 'agentRenamed') {
+        os.renameAgent(msg.id as number, msg.name as string, msg.relook !== false)
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number
         // Defer removal with a grace period — if the agent reappears (e.g. rebinding),

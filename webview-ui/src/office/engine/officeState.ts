@@ -1439,6 +1439,23 @@ export class OfficeState {
     this.characters.set(id, ch)
   }
 
+  /**
+   * A session renamed while it is in the office: the nametag follows, and so does the look when it
+   * comes from the name (`relook`) - a chosen look is stored under the name, so without this a
+   * sibling who renamed herself kept the look of the name she had arrived with until a reload.
+   */
+  renameAgent(id: number, name: string, relook: boolean): void {
+    const ch = this.characters.get(id)
+    if (!ch || ch.nametag === name) return
+    ch.nametag = name
+    ch.folderName = name
+    if (!relook) return
+    const look = resolveLook(name)
+    ch.look = look
+    ch.palette = look.palette
+    ch.hueShift = look.hueShift
+  }
+
   removeAgent(id: number): void {
     const ch = this.characters.get(id)
     if (!ch) return

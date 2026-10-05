@@ -397,7 +397,16 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
 
     for (const [id, agent] of current) {
       const snap = JSON.stringify(agent)
-      if (knownAgents.get(id) !== snap) {
+      const prevSnap = knownAgents.get(id)
+      if (prevSnap && prevSnap !== snap) {
+        const prevName = (JSON.parse(prevSnap) as FlatAgent).name
+        if (prevName !== agent.name) {
+          const explicit = agent.lookExplicit !== undefined ? agent.lookExplicit === true : (agent.palette > 0 || agent.hueShift > 0)
+          os.renameAgent(id, agent.name, !explicit)
+          log(`RENAME #${id} "${prevName}" -> "${agent.name}"`)
+        }
+      }
+      if (prevSnap !== snap) {
         // Buffered agents get their state once the layout has created them
         if (layoutReady || os.characters.has(id)) onAgentStateUpdate(agent)
         else pendingState.set(id, agent)

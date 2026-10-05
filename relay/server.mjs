@@ -870,6 +870,12 @@ function reconcileAgents(windows) {
     const snap = JSON.stringify(agent);
     if (knownAgents.get(id) !== snap) {
       const prev = knownAgents.get(id) ? JSON.parse(knownAgents.get(id)) : null;
+      // A session renamed in place (/rename): the nametag, and the look that hangs off the name
+      if (prev && prev.name !== agent.name) {
+        const explicit = agent.lookExplicit !== undefined ? agent.lookExplicit === true : (agent.palette > 0 || agent.hueShift > 0);
+        dispatch({ type: 'agentRenamed', id, name: agent.name, relook: !explicit });
+        devLog('RENAME #' + id + ' "' + prev.name + '" -> "' + agent.name + '"');
+      }
       const toolChange = prev && prev.currentTool !== agent.currentTool;
       const activeChange = prev && prev.isActive !== agent.isActive;
       const waitChange = prev && prev.isWaiting !== agent.isWaiting;

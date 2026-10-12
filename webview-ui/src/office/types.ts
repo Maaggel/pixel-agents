@@ -454,6 +454,10 @@ export interface Character {
   bubbleTimer: number
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
   seatTimer: number
+  /** How long a busy agent has found no way to its desk (seconds), 0 when it has one */
+  noRouteSec: number
+  /** Walking a route that squeezes past people sitting in the way - the only way out of a room */
+  squeezePast: boolean
   /** Whether this character represents a sub-agent (spawned by Task tool) */
   isSubagent: boolean
   /** Parent agent ID if this is a sub-agent, null otherwise */

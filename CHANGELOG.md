@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.45.8
+
+- Busy agents go to a desk instead of working standing in the middle of the floor (Iacta's Tessera, 2026-10-12). Four causes, all fixed:
+  - **A window sealed the top-left office.** The double window hung on 2026-09-28 where the corridor out of it turns along a wall has a second row drawn over the floor above the wall, and that row counted as blocked - so nobody in that office could get out to a desk anywhere else, and nobody outside could get in. Wall-mounted items no longer block the floor at all; the wall they hang on does that.
+  - **Sitting anywhere counted as sitting at the desk.** Someone on a sofa on a break, or in a meeting chair, who became busy started work right there. They now get up and go to their own desk.
+  - **No route meant "already there".** An agent whose desk was cut off for the moment - a chair in a row of chairs, with people sitting either side - started work where it stood. It now waits, takes a desk it can reach after 5 s, squeezes past somebody sitting in the only way out if that is what it takes, and works where it stands only after 20 s with nothing reachable at all. An agent with no seat looks for a reachable desk first too.
+  - **A seat could be released before the next one was secured** when a busy agent was moved to a desk, leaving it on a seat marked free when the new one turned out to be taken.
+- `renderer/test/busy-seats.mjs` runs two office hours with every agent flipped busy and idle at random, and fails if more than 5% of the work is done standing. It was 19%; it is now between 0.1% and about 2% from run to run - the remainder is agents who find no desk they can reach for 20 seconds, still to be looked into.
+
 ## v1.45.7
 
 - No more of somebody else's shirt at the waist. A shirt's hem hangs below the waist line the cut goes by - a band at the belt, and seated, over the lap - so it was cut out with the trousers: legs 2, cut from the character in the orange-and-red shirt, gave its wearers an orange belt line walking (Memory Lane in profile) and an orange-and-red lap at the desk (LeaBox). Colours in a legs part that are on the chest of the character it was cut from are now left out, unless the wearer's own top has them too - which keeps the six originals as drawn - and the gap is closed from the wearer's own top. Reading the shirt's colours from the chest, not the whole top layer, matters: lower down the top layer holds the waistband of the jeans, and the first attempt took the jeans away too.

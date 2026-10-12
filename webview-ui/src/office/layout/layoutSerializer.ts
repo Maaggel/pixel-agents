@@ -212,6 +212,10 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
     // An empty chair is furniture you can squeeze past. Only a chair with somebody on it blocks,
     // and officeState adds those each tick - otherwise a row of chairs walls a room into cells.
     if (entry.isSeat) continue
+    // Hung on a wall, it blocks nothing the wall does not: its upper rows are only drawn over the
+    // floor above the wall. A double window hung where a corridor turns along a wall sealed the
+    // top-left office from 2026-09-28, and whoever was in there and got busy worked standing up.
+    if (entry.canPlaceOnWalls) continue
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
       if (dr < bgRows) continue // skip background rows - characters can walk through

@@ -216,6 +216,8 @@ export interface HeadlessOffice {
     officeHour: () => number
     workload: () => number
     characters: () => Character[]
+    /** Where each seat is, for tests */
+    seats: () => Array<{ id: string; col: number; row: number; assigned: boolean }>
     furniture: () => FurnitureInstance[]
     /** Drop a prop where a character could have left one, for tests */
     dropProp: (kind: string) => { col: number; row: number } | null
@@ -825,6 +827,7 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       officeHour: getOfficeHour,
       workload: () => os.getWorkload(),
       characters: () => os.getCharacters(),
+      seats: () => [...os.seats].map(([id, s]) => ({ id, col: s.seatCol, row: s.seatRow, assigned: s.assigned })),
       furniture: () => os.furniture,
       dropProp: (kind: string) => {
         const desk = os.getLayout().furniture.find((f) => getCatalogEntry(f.type)?.isDesk)

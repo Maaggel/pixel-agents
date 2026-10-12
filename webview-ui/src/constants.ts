@@ -697,3 +697,11 @@ export const SKILL_AURA_MIN_ALPHA = 0.18
 export const SKILL_AURA_RADIUS_PX = 22
 /** Extra vertical center offset for aura (negative = raise toward character chest) */
 export const SKILL_AURA_CENTER_OFFSET_Y = -10
+
+/**
+ * A busy agent whose desk cannot be reached - a chair in a row of chairs, with people sitting on
+ * either side of it - waits this long for the way to clear, then takes a desk it can reach.
+ */
+export const SEAT_NO_ROUTE_SWITCH_SEC = 5
+/** ...and only works where it stands when no desk at all could be reached for this long */
+export const SEAT_NO_ROUTE_GIVE_UP_SEC = 20

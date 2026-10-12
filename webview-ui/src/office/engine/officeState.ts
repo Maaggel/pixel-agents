@@ -693,6 +693,28 @@ export class OfficeState {
     return result
   }
 
+  /**
+   * Run with the people sitting down taken out of the way. Chairs are walked past when empty, so a
+   * room whose only way out is a row of chairs is shut while somebody sits in it; somebody going
+   * back to work squeezes past rather than standing there to work.
+   */
+  private withSittingUnblocked<T>(fn: () => T): T {
+    const lifted = this.sittingBlockKeys.filter((k) => this.blockedTiles.has(k))
+    for (const k of lifted) this.blockedTiles.delete(k)
+    try {
+      return fn()
+    } finally {
+      for (const k of lifted) this.blockedTiles.add(k)
+    }
+  }
+
+  /** A route to a seat that may squeeze past people sitting in the way */
+  private squeezePathTo(ch: Character, toCol: number, toRow: number): Array<{ col: number; row: number }> {
+    return this.withSittingUnblocked(() => this.withOwnSeatUnblocked(ch, () =>
+      findPath(ch.tileCol, ch.tileRow, toCol, toRow, this.tileMap, this.blockedTiles)
+    ))
+  }
+
   /** Build context object for idle action functions */
   private buildIdleActionContext(): IdleActionContext {
     return {
@@ -1817,9 +1839,25 @@ export class OfficeState {
         if (ch.seatId) {
           const seat = this.seats.get(ch.seatId)
           if (seat && (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow)) {
-            const path = this.withOwnSeatUnblocked(ch, () =>
+            let path = this.withOwnSeatUnblocked(ch, () =>
               findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
             )
+            // Cut off from that desk for now: take one that can be reached instead
+            if (path.length === 0) {
+              const other = this.reachableWorkSeat(ch, ch.seatId)
+              if (other && this.moveToSeat(ch, other)) {
+                const s2 = this.seats.get(other)!
+                path = this.withOwnSeatUnblocked(ch, () =>
+                  findPath(ch.tileCol, ch.tileRow, s2.seatCol, s2.seatRow, this.tileMap, this.blockedTiles)
+                )
+              }
+            }
+            // Still nothing: shut in by somebody sitting in the way - squeeze past them
+            if (path.length === 0 && ch.seatId) {
+              const own = this.seats.get(ch.seatId)!
+              path = this.squeezePathTo(ch, own.seatCol, own.seatRow)
+              ch.squeezePast = path.length > 0
+            }
             if (path.length > 0) {
               ch.path = path
               ch.moveProgress = 0
@@ -1887,17 +1925,46 @@ export class OfficeState {
 
     const newSeatId = this.findZoneSeatOrAny(ch.seatId, zoneTypes, ch.tileCol, ch.tileRow)
     if (!newSeatId || newSeatId === ch.seatId) return
+    this.moveToSeat(ch, newSeatId)
+  }
 
-    // Free old seat
+  /**
+   * Give a character another seat: the new one is secured before the old one is let go, so a
+   * seat that turns out to be taken leaves it where it was rather than on a seat marked free.
+   */
+  private moveToSeat(ch: Character, newSeatId: string): boolean {
+    const seat = this.seats.get(newSeatId)
+    if (!seat || seat.assigned) return false
+    this.assignSeat(seat)
     if (ch.seatId) {
       const old = this.seats.get(ch.seatId)
       if (old) old.assigned = false
     }
-    // Assign new seat
-    const seat = this.seats.get(newSeatId)
-    if (!seat || seat.assigned) return
-    this.assignSeat(seat)
     ch.seatId = newSeatId
+    return true
+  }
+
+  /**
+   * The nearest free desk a character can actually walk to now, by the length of the walk. A desk
+   * in a row of chairs is cut off while people sit on both sides of it; handing a busy agent one
+   * of those left it working where it stood.
+   */
+  private reachableWorkSeat(ch: Character, excludeSeatId: string | null): string | null {
+    const zones = this.layout.zones
+    let best: string | null = null
+    let bestLen = Infinity
+    let bestInZone = false
+    for (const [uid, seat] of this.seats) {
+      if (uid === excludeSeatId || seat.assigned || this.isPrivacySeat(uid)) continue
+      if (this.isMeetingZoneSeat(seat) || this.isTileOccupiedBySitting(seat.seatCol, seat.seatRow)) continue
+      const inZone = !!zones && zones[seat.seatRow * this.layout.cols + seat.seatCol] === ZoneTypeValues.WORKSPACE
+      if (bestInZone && !inZone) continue
+      const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+      const len = path.length
+      if (len === 0 && !(ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow)) continue
+      if ((inZone && !bestInZone) || len < bestLen) { best = uid; bestLen = len; bestInZone = inZone }
+    }
+    return best
   }
 
   /** Reassign an idle character using weighted zone preferences (rest > kitchen > other).
@@ -2736,10 +2803,16 @@ export class OfficeState {
 
       // Temporarily unblock own seat so character can pathfind to it
       const pickNewSeat = (excludeSeatId: string | null) => this.findWeightedIdleZoneSeat(excludeSeatId)
+      const pickWorkSeat = (excludeSeatId: string | null) => this.reachableWorkSeat(ch, excludeSeatId)
+      const squeezePath = (toCol: number, toRow: number) => this.squeezePathTo(ch, toCol, toRow)
       const wasWalking = ch.state === CharacterState.WALK
-      this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles, pickNewSeat)
+      const step = () => this.withOwnSeatUnblocked(ch, () =>
+        updateCharacter(ch, dt, preferredTiles, this.seats, this.tileMap, this.blockedTiles, pickNewSeat, pickWorkSeat, squeezePath)
       )
+      // a squeezing walk sees the seated as passable all the way, or it would stop at them and turn back
+      if (ch.squeezePast) this.withSittingUnblocked(step)
+      else step()
+      if (ch.squeezePast && ch.state !== CharacterState.WALK) ch.squeezePast = false
       // Active agent just sat down - rebuild furniture to turn on electronics
       if (wasWalking && ch.isActive && isSittingState(ch.state)) {
         needFurnitureRebuild = true

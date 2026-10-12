@@ -17,6 +17,8 @@ import {
   INITIAL_IDLE_SEAT_REST_MIN_SEC,
   INITIAL_IDLE_SEAT_REST_MAX_SEC,
   SEAT_RETURN_SAME_CHANCE,
+  SEAT_NO_ROUTE_SWITCH_SEC,
+  SEAT_NO_ROUTE_GIVE_UP_SEC,
 } from '../../constants.js'
 import { addBehaviourEntry } from '../../behaviourLog.js'
 
@@ -101,6 +103,8 @@ export function createCharacter(
     bubbleTimer: 0,
     bubbleItemType: null,
     seatTimer: 0,
+    noRouteSec: 0,
+    squeezePast: false,
     idleZoneTimer: 0,
     idleAction: null,
     conversationPartnerId: null,
@@ -122,6 +126,29 @@ export function createCharacter(
   }
 }
 
+/** Is the character on the seat it owns? A busy one sitting anywhere else is on a break seat */
+function atOwnSeat(ch: Character, seats: Map<string, Seat>): boolean {
+  const seat = ch.seatId ? seats.get(ch.seatId) : undefined
+  return !!seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow
+}
+
+/** Start work where the character is: on its own seat, or - having no seat - wherever it stands */
+function startWork(ch: Character, seats: Map<string, Seat>): void {
+  ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
+  const seat = ch.seatId ? seats.get(ch.seatId) : undefined
+  if (seat && atOwnSeat(ch, seats)) ch.dir = seat.facingDir
+  ch.frame = 0
+  ch.frameTimer = 0
+  ch.noRouteSec = 0
+}
+
+/** Get up from a seat that is not this character's own, to walk to its desk */
+function standUp(ch: Character): void {
+  ch.state = CharacterState.IDLE
+  ch.frame = 0
+  ch.frameTimer = 0
+}
+
 export function updateCharacter(
   ch: Character,
   dt: number,
@@ -130,6 +157,10 @@ export function updateCharacter(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
   pickNewSeat?: (excludeSeatId: string | null) => string | null,
+  /** A free desk this character can actually walk to, for when the way to its own is blocked */
+  pickWorkSeat?: (excludeSeatId: string | null) => string | null,
+  /** A route that squeezes past people sitting in the way, for when there is no other */
+  squeezePath?: (toCol: number, toRow: number) => Array<{ col: number; row: number }>,
 ): void {
   ch.frameTimer += dt
 
@@ -193,22 +224,22 @@ export function updateCharacter(
     }
 
     case CharacterState.SIT_IDLE: {
-      // Sitting at seat, not working — slow idle animation (casually looking around)
+      // Sitting at seat, not working - slow idle animation (casually looking around)
       if (ch.frameTimer >= SIT_WAIT_FRAME_DURATION_SEC) {
         ch.frameTimer -= SIT_WAIT_FRAME_DURATION_SEC
         ch.frame = (ch.frame + 1) % 2
       }
-      // If became active, start working
+      // If became active, start working - at its own desk. Sitting anywhere else (a sofa on a
+      // break, a meeting chair) it gets up and goes there, rather than working from the sofa.
       if (ch.isActive) {
-        ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
-        ch.frame = 0
-        ch.frameTimer = 0
+        if (ch.seatId && !atOwnSeat(ch, seats)) standUp(ch)
+        else startWork(ch, seats)
         break
       }
       // After sitting idle for a while, stand up and wander
       // seatTimer counts down from a pre-set value (set on state entry)
       // Pause countdown during meetings/conversations (they have their own timers)
-      // WANDER is treated as "no action" — it's just a marker from returnToSeat walk
+      // WANDER is treated as "no action" - it's just a marker from returnToSeat walk
       if (ch.seatTimer > 0) {
         if (!ch.idleAction || ch.idleAction === IdleActionType.WANDER) ch.seatTimer -= dt
         break
@@ -226,16 +257,15 @@ export function updateCharacter(
     }
 
     case CharacterState.SIT_WAIT: {
-      // Sitting at seat, waiting for user response — slow reading animation
+      // Sitting at seat, waiting for user response - slow reading animation
       if (ch.frameTimer >= SIT_WAIT_FRAME_DURATION_SEC) {
         ch.frameTimer -= SIT_WAIT_FRAME_DURATION_SEC
         ch.frame = (ch.frame + 1) % 2
       }
-      // If became active again, start working
+      // If became active again, start working - at its own desk, as from SIT_IDLE
       if (ch.isActive) {
-        ch.state = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
-        ch.frame = 0
-        ch.frameTimer = 0
+        if (ch.seatId && !atOwnSeat(ch, seats)) standUp(ch)
+        else startWork(ch, seats)
         break
       }
       // If no longer waiting (dismissed), transition to sitting idle
@@ -249,13 +279,21 @@ export function updateCharacter(
     }
 
     case CharacterState.IDLE: {
-      // No idle animation — static pose
+      // No idle animation - static pose
       ch.frame = 0
       // If became active, pathfind to seat
       if (ch.isActive) {
         const activeState = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
         if (!ch.seatId) {
-          // No seat assigned — work in place
+          // No seat: take a free desk it can walk to, and only work where it stands when there is none
+          const found = pickWorkSeat ? pickWorkSeat(null) : null
+          const foundSeat = found ? seats.get(found) : undefined
+          if (found && foundSeat && !foundSeat.assigned) {
+            foundSeat.assigned = true
+            foundSeat.lastUsedAt = Date.now()
+            ch.seatId = found
+            break // next tick walks there
+          }
           ch.state = activeState
           ch.frame = 0
           ch.frameTimer = 0
@@ -270,12 +308,43 @@ export function updateCharacter(
             ch.state = CharacterState.WALK
             ch.frame = 0
             ch.frameTimer = 0
-          } else {
-            // Already at seat or no path — sit down
-            ch.state = activeState
-            ch.dir = seat.facingDir
+            ch.noRouteSec = 0
+          } else if (atOwnSeat(ch, seats)) {
+            startWork(ch, seats)
+          } else if (squeezePath && (ch.path = squeezePath(seat.seatCol, seat.seatRow)).length > 0) {
+            // Somebody sitting in the only way out - a meeting room whose door is a row of chairs.
+            // Squeeze past them rather than work where it stands.
+            ch.squeezePast = true
+            ch.moveProgress = 0
+            ch.state = CharacterState.WALK
             ch.frame = 0
             ch.frameTimer = 0
+            ch.noRouteSec = 0
+          } else {
+            // No way to the desk right now - it is a chair in a row of chairs, with people sitting
+            // either side. This used to sit down to work on the spot, standing in the middle of the
+            // floor. Wait for the way to clear; after a while take a desk that can be reached; work
+            // where it stands only when nothing can be reached at all.
+            const before = ch.noRouteSec
+            ch.noRouteSec += dt
+            if (pickWorkSeat && before < SEAT_NO_ROUTE_SWITCH_SEC && ch.noRouteSec >= SEAT_NO_ROUTE_SWITCH_SEC) {
+              const next = pickWorkSeat(ch.seatId)
+              const nextSeat = next ? seats.get(next) : undefined
+              if (next && nextSeat && !nextSeat.assigned) {
+                // the new seat first, then the old one: never left sitting on a seat marked free
+                nextSeat.assigned = true
+                nextSeat.lastUsedAt = Date.now()
+                seat.assigned = false
+                ch.seatId = next
+                logIdle(ch, 'taking a desk it can get to')
+              }
+            }
+            if (ch.noRouteSec >= SEAT_NO_ROUTE_GIVE_UP_SEC) {
+              ch.state = activeState
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.noRouteSec = 0
+            }
           }
         }
         break
@@ -286,7 +355,7 @@ export function updateCharacter(
       // Countdown wander timer
       ch.wanderTimer -= dt
       if (ch.wanderTimer <= 0) {
-        // Check if we've wandered enough — return to a seat for a rest
+        // Check if we've wandered enough - return to a seat for a rest
         if (ch.wanderCount >= ch.wanderLimit && ch.seatId) {
           // 40% chance to return to same seat, 60% chance to pick a new one
           if (Math.random() >= SEAT_RETURN_SAME_CHANCE && pickNewSeat) {
@@ -339,7 +408,7 @@ export function updateCharacter(
       }
 
       if (ch.path.length === 0) {
-        // Path complete — snap to tile center and transition
+        // Path complete - snap to tile center and transition
         const center = tileCenter(ch.tileCol, ch.tileRow)
         ch.x = center.x
         ch.y = center.y
@@ -347,7 +416,7 @@ export function updateCharacter(
         if (ch.isActive) {
           const activeState = isBuildTool(ch.currentTool) ? CharacterState.BUILD : CharacterState.TYPE
           if (!ch.seatId) {
-            // No seat — work in place
+            // No seat - work in place
             ch.state = activeState
           } else {
             const seat = seats.get(ch.seatId)
@@ -359,11 +428,11 @@ export function updateCharacter(
             }
           }
         } else {
-          // Check if arrived at assigned seat — sit down for a rest
+          // Check if arrived at assigned seat - sit down for a rest
           if (ch.seatId) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
-              // Don't log "sitting down to rest" for meetings/conversations — those handle their own logging
+              // Don't log "sitting down to rest" for meetings/conversations - those handle their own logging
               if (ch.idleAction === IdleActionType.MEETING) {
                 logIdle(ch, 'arrived at meeting')
               } else if (ch.idleAction === IdleActionType.CONVERSATION) {
@@ -373,7 +442,7 @@ export function updateCharacter(
               }
               ch.dir = seat.facingDir
               ch.state = ch.isWaiting ? CharacterState.SIT_WAIT : CharacterState.SIT_IDLE
-              // Rest at seat before wandering again (skip for meetings/conversations — they manage their own timers)
+              // Rest at seat before wandering again (skip for meetings/conversations - they manage their own timers)
               if (!ch.isWaiting && ch.seatTimer <= 0 && ch.idleAction !== IdleActionType.MEETING && ch.idleAction !== IdleActionType.CONVERSATION) {
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
               }
@@ -413,7 +482,7 @@ export function updateCharacter(
         ch.path.shift()
         ch.moveProgress = 0
 
-        // Check if the next step is now blocked (e.g. by a moving vacuum) — reroute
+        // Check if the next step is now blocked (e.g. by a moving vacuum) - reroute
         if (ch.path.length > 0) {
           const upcoming = ch.path[0]
           const upKey = `${upcoming.col},${upcoming.row}`
@@ -424,7 +493,7 @@ export function updateCharacter(
             if (reroute.length > 0) {
               ch.path = reroute
             } else {
-              // Can't reroute — wait in place
+              // Can't reroute - wait in place
               ch.path = []
             }
             ch.moveProgress = 0
@@ -453,7 +522,7 @@ export function updateCharacter(
 
 /** Get the correct sprite frame for a character's current state and direction */
 export function getCharacterSprite(ch: Character, sprites: CharacterSprites): SpriteData {
-  // Guard: ensure dir is a valid Direction (0-3) — can be corrupted when
+  // Guard: ensure dir is a valid Direction (0-3) - can be corrupted when
   // wanderTimer (a float) is cast to dir via idle action repurposing
   const dir = (Number.isInteger(ch.dir) && ch.dir >= 0 && ch.dir <= 3) ? ch.dir : Direction.DOWN
   switch (ch.state) {

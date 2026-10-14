@@ -99,6 +99,14 @@ function edit(rows, fn) {
   return out
 }
 
+/** A grey, white or black: glasses, the page somebody reads, outlines. Never dyed. */
+function isNeutral(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16)
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 20
+}
+/** The dark red edge of the page held up to read, which lives in the top layer too */
+const PAGE_EDGE = '#391624'
+
 /** The middle of the chest, for anything worn down the front. Sleeves are outside it. */
 const isChest = (p) => p.x >= 4 && p.x <= 11
 
@@ -140,6 +148,28 @@ const GARMENTS = [
       if (p.x <= 5 || p.x >= 10) return shade(px, -0.3)                        // panels either side
       if (p.facing === FACING_DOWN && (p.y === 20 || p.y === 22) && p.x === 7) return shade(px, -0.45)
       return null
+    }),
+  },
+  {
+    // Asked for by Merlon, who draws elves and skeletons all day: a cloak, hood down so the hair
+    // stays readable across a room. Off the red jumper, because the cloth has to be a colour - the
+    // glasses and the page held up to read are greys and white in the same layer, and the dye
+    // passes those by. Deep blue; topHue takes it anywhere.
+    name: 'cloak',
+    base: 'top_5',
+    draw: (rows) => edit(rows, (px, p) => {
+      if (isNeutral(px) || px === PAGE_EDGE) return null                    // glasses, the page, outlines
+      const cloth = dye(shade(px, -0.12), 225, 0.42)
+      // the hood, down and bunched: the jumper's collar under it is near white, so it is taken down
+      // to the cloak's own depth first, or the hood reads as a white stripe from behind
+      if (p.y === 18) return shade(dye(shade(px, -0.42), 225, 0.42), 0.06)
+      if (p.facing === FACING_UP) return p.y === 19 ? shade(cloth, -0.12) : cloth
+      if (p.facing === FACING_DOWN && p.y >= 19 && p.y <= 24 && p.x >= 7 && p.x <= 8) {
+        if (p.y === 19) return dye(shade(px, 0.3), 45, 0.75)                  // the clasp
+        return dye(shade(px, 0.32), 38, 0.22)                                 // the tunic underneath
+      }
+      if (p.facing === FACING_DOWN && p.y >= 20 && p.y <= 24 && (p.x === 6 || p.x === 9)) return shade(cloth, -0.16) // its edges
+      return cloth
     }),
   },
 ]

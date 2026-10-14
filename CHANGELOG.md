@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.46.0
+
+- A new top, 10: a deep blue cloak with the hood down, open over a pale tunic with a gold clasp. Merlon asked for it - PixelTowerWars is high fantasy and Mix suggested the look could lean that way, and every top in the catalogue was modern clothing. Hood down so the hair stays readable across a room. The cloak takes `topHue`; the tunic, the clasp, and the glasses and page that share the layer at the desk keep their colours. Drawn by `renderer/tools/make-tops.mjs` off the red jumper like the others, so it fits every frame; `docs/LOOKS.md` and the catalogue list it.
+
 ## v1.45.9
 
 - A look chosen while the tablet is running shows on the tablet at once. The relay broadcasts every choice (`looksLoaded`) and the browser applied it straight away, but the tablet's engine only read looks when it started - so every sibling's choice reached the wall at the next deploy, and Merlon's, made today, would have waited for one.

@@ -119,6 +119,7 @@ end; Plumb picked a grey sweatshirt for precisely that reason.
 | 7 | white shirt and tie - the tie takes the hue, the shirt does not |
 | 8 | grey hoodie with a front pocket - steady |
 | 9 | waistcoat over a white shirt - steadiest of all |
+| 10 | deep blue cloak, hood down, open over a pale tunic with a gold clasp - drawn for Merlon; the cloak takes the hue, the tunic and clasp keep theirs |
 
 **Legs** (`legs`), dyed by `legsHue` the same way - the catalogue demonstrates it on legs 2.
 

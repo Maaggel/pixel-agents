@@ -154,7 +154,8 @@ const GARMENTS = [
     // Asked for by Merlon, who draws elves and skeletons all day: a cloak, hood down so the hair
     // stays readable across a room. Off the red jumper, because the cloth has to be a colour - the
     // glasses and the page held up to read are greys and white in the same layer, and the dye
-    // passes those by. Deep blue; topHue takes it anywhere.
+    // passes those by. Deep blue; topHue takes the cloak - and the clasp - anywhere, and leaves the
+    // near-neutral tunic pale.
     name: 'cloak',
     base: 'top_5',
     draw: (rows) => edit(rows, (px, p) => {
@@ -166,7 +167,7 @@ const GARMENTS = [
       if (p.facing === FACING_UP) return p.y === 19 ? shade(cloth, -0.12) : cloth
       if (p.facing === FACING_DOWN && p.y >= 19 && p.y <= 24 && p.x >= 7 && p.x <= 8) {
         if (p.y === 19) return dye(shade(px, 0.3), 45, 0.75)                  // the clasp
-        return dye(shade(px, 0.32), 38, 0.22)                                 // the tunic underneath
+        return dye(shade(px, 0.32), 38, 0.04)                                 // the tunic underneath: all but neutral, so no topHue turns it pink
       }
       if (p.facing === FACING_DOWN && p.y >= 20 && p.y <= 24 && (p.x === 6 || p.x === 9)) return shade(cloth, -0.16) // its edges
       return cloth

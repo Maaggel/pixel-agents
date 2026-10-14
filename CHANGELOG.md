@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.46.1
+
+- The cloak's tunic stays pale whatever colour the cloak is dyed. It carried a little warmth, and `topHue` turns everything with any colour in it, so at 270 the tunic went pink; it is now all but neutral, which the rotation cannot move. The clasp does turn with the cloak - v1.46.0 said it kept its colour, which was not so; `docs/LOOKS.md` now lists what each hue makes of it, rendered rather than worked out.
+
 ## v1.46.0
 
 - A new top, 10: a deep blue cloak with the hood down, open over a pale tunic with a gold clasp. Merlon asked for it - PixelTowerWars is high fantasy and Mix suggested the look could lean that way, and every top in the catalogue was modern clothing. Hood down so the hair stays readable across a room. The cloak takes `topHue`; the tunic, the clasp, and the glasses and page that share the layer at the desk keep their colours. Drawn by `renderer/tools/make-tops.mjs` off the red jumper like the others, so it fits every frame; `docs/LOOKS.md` and the catalogue list it.

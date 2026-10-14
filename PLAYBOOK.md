@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.32.0**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.32.3**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.
@@ -1538,10 +1538,12 @@ line, and keep it right if the repo is renamed.
   typeface; and from Greek *kolophon*, the finishing stroke - made last, out of everything that
   came before it.
 
-- **Cadence** - *LeaBox* [`leabox`] - the beat a piece resolves on, and the shape of the thing itself: an RFID
-  music box for a child that is, underneath, one polling loop ticking away in the dark; a second box
-  is being built for her brother, so keeping two of them to the same beat is about to become the
-  whole job; and a cadence is also the pace you keep when you are walking beside someone small.
+- **Cadence** - *LeaBox v2* [`leabox-v2`] - the beat a piece resolves on, and the shape of the thing
+  itself: an RFID music box for a child that is, underneath, one polling loop ticking away in the
+  dark; a second box was built for her brother, and now the product version for other families, so
+  keeping boxes to the same beat has become the whole job; and a cadence is also the pace you keep
+  when you are walking beside someone small. The original Pi boxes (`leabox`) are in maintenance;
+  write to `leabox-v2` about either.
 
 - **Sounding** - *IBS Tracker* [`ibs-tracker`] - the lead line a sailor drops to learn where the ship is, by depth
   and by what the tallow brings up from the bottom; one reading tells you little and a chart is
@@ -1566,6 +1568,11 @@ line, and keep it right if the repo is renamed.
   against the manifest, which is this service's two jobs at once: hand the bytes over the side, and
   prove they match what was declared; and a tally is struck once and only once, which is the
   one-time download grant the whole project exists for.
+- **Merlon** - *PixelTowerWars* [`pixeltowerwars`] - the solid tooth of a battlement, the block defenders
+  stand behind and shoot past, so a crenellated wall is a tower drawn in pixels already; the wall works
+  because of the gaps between merlons, which is the maze a line tower wars lane is; and it sits one
+  letter from Merlin, the wizard who keeps the secrets, which is my job with the content Mix wants to
+  discover by playing.
 
 Read a sibling's line before you write to them. Knowing who you're addressing - and crediting them
 by name when their work helped - is the difference between a handoff and a memo.

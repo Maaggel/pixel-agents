@@ -1,6 +1,6 @@
 # Playbook
 
-> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.32.3**
+> **Canonical source:** `https://github.com/Maaggel/Playbook` - **Playbook v1.32.4**
 >
 > If you're reading this inside a *project* repo, it's a **vendored copy**: don't edit it here.
 > Fix it upstream and re-sync (§16). The version above tells you whether you're behind.

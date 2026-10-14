@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.45.9
+
+- A look chosen while the tablet is running shows on the tablet at once. The relay broadcasts every choice (`looksLoaded`) and the browser applied it straight away, but the tablet's engine only read looks when it started - so every sibling's choice reached the wall at the next deploy, and Merlon's, made today, would have waited for one.
+
 ## v1.45.8
 
 - Busy agents go to a desk instead of working standing in the middle of the floor (Iacta's Tessera, 2026-10-12). Four causes, all fixed:

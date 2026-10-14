@@ -459,6 +459,11 @@ export function createHeadlessOffice(opts: HeadlessOptions): HeadlessOffice {
       const windows = msg.windows as RelayWindow[] | undefined
       if (windows && windows.length > 0) reconcileAgents(windows)
       applyKioskOptions(msg.kioskOptions as Record<string, unknown> | undefined)
+    } else if (type === 'looksLoaded') {
+      // Somebody chose a look while the tablet was running. Only init carried looks before, so a
+      // choice reached the tablet at its next restart and not a moment sooner.
+      setLookTable(msg.looks as Parameters<typeof setLookTable>[0])
+      os.applyLooks()
     } else if (type === 'kioskOptions') {
       applyKioskOptions(msg.options as Record<string, unknown> | undefined)
     } else if (type === 'sync') {
